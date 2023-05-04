@@ -3,6 +3,7 @@
 .env
 .idea
 .bin
+.pprof
 
 # llama.cpp
 
