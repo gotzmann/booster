@@ -1,5 +1,6 @@
 # Define the default target now so that it is always the first target
-default: main quantize quantize-stats perplexity embedding vdot
+# default: main quantize quantize-stats perplexity embedding vdot 
+default: llamazoo
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -86,17 +87,17 @@ ifeq ($(UNAME_M),$(filter $(UNAME_M),x86_64 i686))
 	#CFLAGS   += -mfma -mf16c -mavx
 	#CXXFLAGS += -mfma -mf16c -mavx
 endif
-ifneq ($(filter ppc64%,$(UNAME_M)),)
-	POWER9_M := $(shell grep "POWER9" /proc/cpuinfo)
-	ifneq (,$(findstring POWER9,$(POWER9_M)))
-		CFLAGS   += -mcpu=power9
-		CXXFLAGS += -mcpu=power9
-	endif
-	# Require c++23's std::byteswap for big-endian support.
-	ifeq ($(UNAME_M),ppc64)
-		CXXFLAGS += -std=c++23 -DGGML_BIG_ENDIAN
-	endif
-endif
+#ifneq ($(filter ppc64%,$(UNAME_M)),)
+#	POWER9_M := $(shell grep "POWER9" /proc/cpuinfo)
+#	ifneq (,$(findstring POWER9,$(POWER9_M)))
+#		CFLAGS   += -mcpu=power9
+#		CXXFLAGS += -mcpu=power9
+#	endif
+#	# Require c++23's std::byteswap for big-endian support.
+#	ifeq ($(UNAME_M),ppc64)
+#		CXXFLAGS += -std=c++23 -DGGML_BIG_ENDIAN
+#	endif
+#endif
 ifndef LLAMA_NO_ACCELERATE
 	# Mac M1 - include Accelerate framework.
 	# `-framework Accelerate` works on Mac Intel as well, with negliable performance boost (as of the predict time).
@@ -121,7 +122,12 @@ ggml-cuda.o: ggml-cuda.cu ggml-cuda.h
 endif
 ifdef LLAMA_CLBLAST
 	CFLAGS  += -DGGML_USE_CLBLAST
-	LDFLAGS += -lclblast -lOpenCL
+    # Mac provides OpenCL as a framework
+    ifeq ($(UNAME_S),Darwin)
+        LDFLAGS += -lclblast -framework OpenCL
+    else
+        LDFLAGS += -lclblast -lOpenCL
+    endif
 	OBJS    += ggml-opencl.o
 ggml-opencl.o: ggml-opencl.c ggml-opencl.h
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -173,9 +179,11 @@ $(info )
 #
 
 ggml.o: ggml.c ggml.h ggml-cuda.h
+#ggml.o: ggml.c ggml.h
 	$(CC)  $(CFLAGS)   -c $< -o $@
 
 llama.o: llama.cpp ggml.h ggml-cuda.h llama.h llama-util.h
+#llama.o: llama.cpp ggml.h llama.h llama-util.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 common.o: examples/common.cpp examples/common.h
@@ -184,41 +192,48 @@ common.o: examples/common.cpp examples/common.h
 libllama.so: llama.o ggml.o $(OBJS)
 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
+bridge.o: bridge.cpp bridge.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@	
+
 clean:
 	rm -vf *.o main quantize quantize-stats perplexity embedding benchmark-matmult save-load-state build-info.h
+	rm -f *.a llamazoo
 
 #
 # Examples
 #
 
-main: examples/main/main.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-	@echo
-	@echo '====  Run ./main -h for help.  ===='
-	@echo
+#main: examples/main/main.cpp build-info.h ggml.o llama.o common.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+#	@echo
+#	@echo '====  Run ./main -h for help.  ===='
+#	@echo
 
-quantize: examples/quantize/quantize.cpp build-info.h ggml.o llama.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+#quantize: examples/quantize/quantize.cpp build-info.h ggml.o llama.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
-quantize-stats: examples/quantize-stats/quantize-stats.cpp build-info.h ggml.o llama.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+#quantize-stats: examples/quantize-stats/quantize-stats.cpp build-info.h ggml.o llama.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
-perplexity: examples/perplexity/perplexity.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+#perplexity: examples/perplexity/perplexity.cpp build-info.h ggml.o llama.o common.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
-embedding: examples/embedding/embedding.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+#embedding: examples/embedding/embedding.cpp build-info.h ggml.o llama.o common.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
-save-load-state: examples/save-load-state/save-load-state.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+#save-load-state: examples/save-load-state/save-load-state.cpp build-info.h ggml.o llama.o common.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
-build-info.h: $(wildcard .git/index) scripts/build-info.sh
-	@sh scripts/build-info.sh > $@.tmp
-	@if ! cmp -s $@.tmp $@; then \
-		mv $@.tmp $@; \
-	else \
-		rm $@.tmp; \
-	fi
+#build-info.h: $(wildcard .git/index) scripts/build-info.sh
+#	@sh scripts/build-info.sh > $@.tmp
+#	@if ! cmp -s $@.tmp $@; then \
+#		mv $@.tmp $@; \
+#	else \
+#		rm $@.tmp; \
+#	fi
+
+llamazoo: main.go bridge.o ggml.o llama.o common.o $(OBJS)
+	CGO_CFLAGS_ALLOW='-mf.*' go build .
 
 #
 # Tests

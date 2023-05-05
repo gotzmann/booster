@@ -1,5 +1,55 @@
 package main
 
+// https://kofo.dev/build-tags-in-golang
+
+// invalid flag in #cgo CFLAGS: -mfma -mf16c
+// argument unused during compilation: -mavx -mavx2  -msse3
+
+// CC="clang"
+// CXX="clang++"
+
+// /Library/Developer/CommandLineTools/usr/include/c++/v1/string.h
+// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1/string.h
+// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/string.h
+
+// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/simd/vector.h
+
+// #cgo CCV:  $(shell $(CC) --version | head -n 1)
+// #cgo CXXV: $(shell $(CXX) --version | head -n 1)
+
+// find / -name vector 2>/dev/null
+
+// #cgo CFLAGS:   -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c11
+// #cgo CXXFLAGS: -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c++11
+
+//#cgo CFLAGS:   -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/ -O3 -DNDEBUG -fPIC -pthread -std=c11
+//#cgo CXXFLAGS: -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/ -O3 -DNDEBUG -fPIC -pthread -std=c++11
+
+//#cgo CFLAGS:   -I. -I./examples -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c11
+//#cgo CXXFLAGS: -I. -I./examples -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c++11
+
+// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1
+
+//#cgo CPATH:    /Library/Developer/CommandLineTools/usr/include/c++/v1/
+
+//#cgo CFLAGS:   -I. -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c17
+//#cgo CXXFLAGS: -I. -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c++17
+
+//#cgo CFLAGS:   -I. -I./examples -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c11
+//#cgo CXXFLAGS: -I. -I./examples -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c++11
+
+// #include "bridge.cpp"
+
+// -lc++ -lstdc++ ggml.o llama.o common.o
+
+/*
+#cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c11
+#cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++11
+#cgo LDFLAGS: -lstdc++ bridge.o
+#include "bridge.h"
+*/
+import "C"
+
 import (
 	"fmt"
 	"io"
@@ -94,19 +144,34 @@ func main() {
 
 	// --- load the model and vocab
 
-	vocab, model, err := llama.LoadModel(params.Model, params, opts.Silent)
-	if err != nil {
+	//// vocab, model, err := llama.LoadModel(params.Model, params, opts.Silent)
+	// load the model and apply lora adapter, if any
+	//ctx := C.llama_init_from_gpt_params(params)
+	paramsModel := C.CString(params.Model)
+	ctx := C.initFromParams(paramsModel)
+	//if (ctx == NULL) {
+	//	fprintf(stderr, "%s: error: unable to load model\n", __func__);
+	//	return 1;
+	//}
+	if ctx == nil {
 		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		os.Exit(0)
 	}
+
+	os.Exit(0)
+
+	//if err != nil {
+	//	Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
+	//	os.Exit(0)
+	//}
 
 	// --- set up internal REST server
 
 	server.MaxPods = opts.Pods
 	server.Host = opts.Host
 	server.Port = opts.Port
-	server.Vocab = vocab
-	server.Model = model
+	server.Vocab = nil // vocab
+	server.Model = nil // model
 	server.Params = params
 
 	go server.Run()

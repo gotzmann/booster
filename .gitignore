@@ -4,6 +4,9 @@
 .idea
 .bin
 .pprof
+__debug_bin
+llamazoo
+tmp/
 
 # llama.cpp
 
