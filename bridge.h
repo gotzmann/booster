@@ -1,8 +1,10 @@
-#ifdef __cplusplus
-extern "C" {
-#endif
+//#ifdef __cplusplus
+//extern "C" {
+//#endif
 
 void * initFromParams(char * modelName);
+void * tokenize(void * ctx, char * prompt);
+void loop(struct llama_context * ctx, std::vector<llama_token> & embd_inp);
 
 //#define __has_cpp_attribute(__x) 0
 //#define __has_keyword(__x) !(__is_identifier(__x))
@@ -47,6 +49,6 @@ void llama_free_params(void* params_ptr);
 int llama_predict(void* params_ptr, void* state_pr);
 */
 
-#ifdef __cplusplus
+//#ifdef __cplusplus
 }
-#endif
+//#endif

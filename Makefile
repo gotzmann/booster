@@ -1,3 +1,5 @@
+LLAMA_NO_ACCELERATE := true
+
 # Define the default target now so that it is always the first target
 # default: main quantize quantize-stats perplexity embedding vdot 
 default: llamazoo
@@ -232,7 +234,8 @@ clean:
 #		rm $@.tmp; \
 #	fi
 
-llamazoo: main.go bridge.o ggml.o llama.o common.o $(OBJS)
+#llamazoo: main.go bridge.o ggml.o llama.o $(OBJS)
+llamazoo: main.go bridge.o ggml.o llama.o $(OBJS)
 	CGO_CFLAGS_ALLOW='-mf.*' go build .
 
 #

@@ -41,12 +41,16 @@ package main
 // #include "bridge.cpp"
 
 // -lc++ -lstdc++ ggml.o llama.o common.o
+// #include "bridge.h"
+// void loop(void * ctx, void * embd_inp);
 
 /*
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c11
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++11
-#cgo LDFLAGS: -lstdc++ bridge.o
-#include "bridge.h"
+#cgo LDFLAGS: -lstdc++ bridge.o ggml.o llama.o
+void * initFromParams(char * modelName);
+void * tokenize(void * ctx, char * prompt);
+void loop(void * ctx, char * prompt);
 */
 import "C"
 
@@ -147,6 +151,7 @@ func main() {
 	//// vocab, model, err := llama.LoadModel(params.Model, params, opts.Silent)
 	// load the model and apply lora adapter, if any
 	//ctx := C.llama_init_from_gpt_params(params)
+	params.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
 	paramsModel := C.CString(params.Model)
 	ctx := C.initFromParams(paramsModel)
 	//if (ctx == NULL) {
@@ -157,6 +162,20 @@ func main() {
 		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		os.Exit(0)
 	}
+
+	prompt := C.CString(" " + opts.Prompt)
+	//tokens := C.tokenize(ctx, prompt)
+
+	//fmt.Print(tokens)
+
+	// TODO: replace with ring-buffer
+	//std::vector<llama_token> last_n_tokens(n_ctx);
+	//std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
+
+	//std::vector<llama_token> embd;
+
+	//C.loop(ctx, tokens)
+	C.loop(ctx, prompt)
 
 	os.Exit(0)
 
