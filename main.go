@@ -174,8 +174,34 @@ func main() {
 
 	//std::vector<llama_token> embd;
 
+	ctx2 := C.initFromParams(paramsModel)
+	prompt2 := C.CString(" " + "Why the Earth is flat?")
+	prompt3 := C.CString(" " + "Давным-давно, в одном далеком царстве, в тридесятом государстве")
+	prompt4 := C.CString(" " + "Write a Python program which will parse the content of Wikipedia")
+
+	var wg2 sync.WaitGroup
+	wg2.Add(2)
 	//C.loop(ctx, tokens)
-	C.loop(ctx, prompt)
+	go func() {
+		C.loop(ctx, prompt)
+		time.Sleep(5 * time.Second)
+		C.loop(ctx, prompt2)
+		time.Sleep(10 * time.Second)
+		C.loop(ctx, prompt3)
+		time.Sleep(15 * time.Second)
+		C.loop(ctx, prompt4)
+		wg2.Done()
+	}()
+
+	go func() {
+		time.Sleep(20 * time.Second)
+		C.loop(ctx2, prompt2)
+		C.loop(ctx2, prompt)
+		C.loop(ctx2, prompt3)
+		C.loop(ctx2, prompt4)
+		wg2.Done()
+	}()
+	wg2.Wait()
 
 	os.Exit(0)
 
