@@ -37,8 +37,11 @@ endif
 #
 
 # keep standard at C11 and C++11
-CFLAGS   = -I.              -O3 -std=c11   -fPIC
-CXXFLAGS = -I. -I./examples -O3 -std=c++11 -fPIC
+#CFLAGS   = -I.              -O3 -std=c11   -fPIC
+#CXXFLAGS = -I. -I./examples -O3 -std=c++11 -fPIC
+
+CFLAGS   = -I.              -O3 -std=c17   -fPIC
+CXXFLAGS = -I. -I./examples -O3 -std=c++17 -fPIC
 LDFLAGS  =
 
 ifndef LLAMA_DEBUG
@@ -188,11 +191,11 @@ llama.o: llama.cpp ggml.h ggml-cuda.h llama.h llama-util.h
 #llama.o: llama.cpp ggml.h llama.h llama-util.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-common.o: examples/common.cpp examples/common.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+#common.o: examples/common.cpp examples/common.h
+#	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-libllama.so: llama.o ggml.o $(OBJS)
-	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
+#libllama.so: llama.o ggml.o $(OBJS)
+#	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
 bridge.o: bridge.cpp bridge.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@	
@@ -235,8 +238,9 @@ clean:
 #	fi
 
 #llamazoo: main.go bridge.o ggml.o llama.o $(OBJS)
+#llamazoo: main.go bridge.o ggml.o llama.o $(OBJS)
 llamazoo: main.go bridge.o ggml.o llama.o $(OBJS)
-	CGO_CFLAGS_ALLOW='-mf.*' go build .
+	CGO_CFLAGS_ALLOW='-mf.*' go build main.go
 
 #
 # Tests

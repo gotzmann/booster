@@ -7,7 +7,46 @@
 #include <vector>
 #include <random>
 #include <thread>
+//#include <mutex>
+#include <shared_mutex>
 #include <unordered_map>
+
+// Shared map for storing pairs of [UUID] -> [Output] while processing within C++ side
+// After returning final result to Go side, we can safely remove the current result from the map
+
+/*mutable*/ std::shared_mutex mutex;
+
+// NB! Always use mutex to access map  thread-safe way
+
+// https://www.geeksforgeeks.org/map-vs-unordered_map-c/
+// https://github.com/bdasgupta02/dynamap/issues/1
+// https://github.com/tsixta/tsmap
+// https://github.com/kshk123/hashMap
+
+std::unordered_map<std::string, std::string> jobs;
+
+// Suspend stdout / stderr messaging
+// https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
+
+#ifdef _WIN32
+#define NULL_DEVICE "NUL:"
+#define TTY_DEVICE "COM1:"
+#else
+#define NULL_DEVICE "/dev/null"
+#define TTY_DEVICE "/dev/tty"
+#endif
+
+// FIXME: Redirect C++ stderr into log file 
+void hide() {
+    freopen(NULL_DEVICE, "w", stdout);
+    freopen(NULL_DEVICE, "w", stderr);
+}    
+
+// FIXME: Doesn't work for MacOS ?
+void show() {
+    freopen(TTY_DEVICE, "w", stdout);
+    freopen(TTY_DEVICE, "w", stderr);
+}
 
 //
 // CLI argument parsing
@@ -127,7 +166,7 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
     return res;
 }
 
-void loopCPP(struct llama_context * ctx, /*std::vector<llama_token> & embd_inp*/ const std::string & text) {
+void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vector<llama_token> & embd_inp*/ const std::string & text) {
 
     bool add_bos = true;
 
@@ -141,10 +180,10 @@ void loopCPP(struct llama_context * ctx, /*std::vector<llama_token> & embd_inp*/
 
     //fprintf(stderr, "\n=== loop 00 | N tokens = %d", n);
 
-    fprintf(stderr, "\n=== TOKENS ===\n");
-    for (auto id : embd_inp) {
-        printf(" [ %d ] ", id); // DEBUG
-    }
+    //fprintf(stderr, "\n=== TOKENS ===\n");
+    //for (auto id : embd_inp) {
+    //    printf(" [ %d ] ", id); // DEBUG
+    //}
 
     //fprintf(stderr, "\n=== loop 01 ===");
 
@@ -164,9 +203,9 @@ void loopCPP(struct llama_context * ctx, /*std::vector<llama_token> & embd_inp*/
     //const int n_ctx = llama_n_ctx(ctx);
 
     int n_past             = 0;
-    int n_remain           = 64; // FIXME params.n_predict;
+    int n_remain           = 128; // FIXME params.n_predict;
     int n_consumed         = 0;
-    int n_session_consumed = 0;
+    ////int n_session_consumed = 0;
 
     std::vector<llama_token> embd;
 
@@ -393,7 +432,17 @@ void loopCPP(struct llama_context * ctx, /*std::vector<llama_token> & embd_inp*/
         ////if (input_echo) {
             for (auto id : embd) {
                 //printf(" [ %d ] ", id); // DEBUG
-                printf("%s", llama_token_to_str(ctx, id));
+                ////printf("%s", llama_token_to_str(ctx, id));
+
+                // FIXME: Experimental Code
+
+                //printf(" [ LOCK ] "); // DEBUG
+                //unique_lock<std::shared_mutex> lk(mutex);
+                mutex.lock();
+                jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+                mutex.unlock();
+                //printf(" [ UNLOCK ] "); // DEBUG
+
             }
             fflush(stdout);
         ////}
@@ -508,7 +557,8 @@ void loopCPP(struct llama_context * ctx, /*std::vector<llama_token> & embd_inp*/
             ////if (params.instruct) {
             ////    is_interacting = true;
             ////} else {
-                fprintf(stderr, " [end of text]\n");
+                // TODO: Some handler / special token for this case?
+                ////fprintf(stderr, " [end of text]\n");
                 break;
             ////}
         }
@@ -521,30 +571,51 @@ void loopCPP(struct llama_context * ctx, /*std::vector<llama_token> & embd_inp*/
     }
 }
 
+// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+const char * statusCPP(/*struct llama_context * ctx,*/ const std::string & jobID) {
+    mutex.lock_shared();
+    const char * res = jobs[jobID].c_str();
+    //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+    mutex.unlock_shared();
+    return res;
+}
+
 extern "C" { // ------------------------------------------------------
 
 void * initFromParams(char * modelName) {
-    fprintf(stderr, "\n=== initFromParams ===");
+
+    //fprintf(stderr, "\n=== initFromParams ===");
     
     gpt_params params;
-    fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
+    //fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
     params.model = modelName;
     
-    return llama_init_from_gpt_params(params);
-    //return NULL;
+    hide();
+    auto res =  llama_init_from_gpt_params(params);
+    show();
+    
+    return res;
 }
 
-void * tokenize(void * ctx, char * prompt) {
-    fprintf(stderr, "\n=== tokenize ===");
+////void * tokenize(void * ctx, char * prompt) {
+////    fprintf(stderr, "\n=== tokenize ===");
+////    std::string text = prompt;
+////    std::vector<llama_token> tokens = llama_tokenize((struct llama_context *)ctx, text, true);
+////    return &tokens;
+////}
+
+void loop(void * ctx, char * jobID, /*void * embd_inp*/ char * prompt) {
+    //fprintf(stderr, "\n=== loop ===");
+    std::string id = jobID;
     std::string text = prompt;
-    std::vector<llama_token> tokens = llama_tokenize((struct llama_context *)ctx, text, true);
-    return &tokens;
+    loopCPP((struct llama_context *)ctx, id, text);
 }
 
-void loop(void * ctx, /*void * embd_inp*/ char * prompt) {
-    fprintf(stderr, "\n=== loop ===");
-    std::string text = prompt;
-    loopCPP((struct llama_context *)ctx, text);
+// return current result of processing
+const char * status(char * jobID) {
+    //fprintf(stderr, "\n=== status ===");
+    std::string id = jobID;
+    return statusCPP(id);
 }
 
 }  // ------------------------------------------------------

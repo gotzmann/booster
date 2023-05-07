@@ -1,5 +1,8 @@
 package main
 
+// TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
+// TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
+
 // https://kofo.dev/build-tags-in-golang
 
 // invalid flag in #cgo CFLAGS: -mfma -mf16c
@@ -43,14 +46,17 @@ package main
 // -lc++ -lstdc++ ggml.o llama.o common.o
 // #include "bridge.h"
 // void loop(void * ctx, void * embd_inp);
+// void * tokenize(void * ctx, char * prompt);
+
+// TODO: c++11 VS c++17 ??
 
 /*
-#cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c11
-#cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++11
+#cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
+#cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
 #cgo LDFLAGS: -lstdc++ bridge.o ggml.o llama.o
 void * initFromParams(char * modelName);
-void * tokenize(void * ctx, char * prompt);
-void loop(void * ctx, char * prompt);
+void loop(void * ctx, char * jobID, char * prompt);
+const char * status(char * jobID);
 */
 import "C"
 
@@ -146,24 +152,55 @@ func main() {
 		MemoryFP16: true,
 	}
 
+	// https://eli.thegreenplace.net/2019/passing-callbacks-and-pointers-to-cgo/
+	// https://github.com/golang/go/wiki/cgo
+	// https://pkg.go.dev/cmd/cgo
+
 	// --- load the model and vocab
+
+	id1 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc1")
+	id2 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc2")
+	id3 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc3")
+	id4 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc4")
+	id5 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc5")
+	id6 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6")
+	id7 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc7")
+	id8 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc8")
 
 	//// vocab, model, err := llama.LoadModel(params.Model, params, opts.Silent)
 	// load the model and apply lora adapter, if any
 	//ctx := C.llama_init_from_gpt_params(params)
 	params.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
 	paramsModel := C.CString(params.Model)
-	ctx := C.initFromParams(paramsModel)
+
+	/* --- Suppress C++ output - DOESNT WORK !
+
+	null, _ := os.Open(os.DevNull)
+	sout := os.Stdout
+	serr := os.Stderr
+	os.Stdout = null
+	os.Stderr = null
+	null.Close()
+	os.Stdout = sout
+	os.Stderr = serr */
+
+	ctx1 := C.initFromParams(paramsModel)
+	ctx2 := C.initFromParams(paramsModel)
+
 	//if (ctx == NULL) {
 	//	fprintf(stderr, "%s: error: unable to load model\n", __func__);
 	//	return 1;
 	//}
-	if ctx == nil {
+	if ctx1 == nil || ctx2 == nil {
 		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
 		os.Exit(0)
 	}
 
-	prompt := C.CString(" " + opts.Prompt)
+	prompt1 := C.CString(" " + "Why Golang is so popular?")
+	prompt2 := C.CString(" " + "Why the Earth is flat?")
+	prompt3 := C.CString(" " + "Давным-давно, в одном далеком царстве, в тридесятом государстве")
+	prompt4 := C.CString(" " + "Write a Python program which will parse the content of Wikipedia")
+
 	//tokens := C.tokenize(ctx, prompt)
 
 	//fmt.Print(tokens)
@@ -174,34 +211,70 @@ func main() {
 
 	//std::vector<llama_token> embd;
 
-	ctx2 := C.initFromParams(paramsModel)
-	prompt2 := C.CString(" " + "Why the Earth is flat?")
-	prompt3 := C.CString(" " + "Давным-давно, в одном далеком царстве, в тридесятом государстве")
-	prompt4 := C.CString(" " + "Write a Python program which will parse the content of Wikipedia")
+	var wg3 sync.WaitGroup
+	wg3.Add(3)
+	time.Sleep(6 * time.Second)
 
-	var wg2 sync.WaitGroup
-	wg2.Add(2)
-	//C.loop(ctx, tokens)
 	go func() {
-		C.loop(ctx, prompt)
-		time.Sleep(5 * time.Second)
-		C.loop(ctx, prompt2)
-		time.Sleep(10 * time.Second)
-		C.loop(ctx, prompt3)
-		time.Sleep(15 * time.Second)
-		C.loop(ctx, prompt4)
-		wg2.Done()
+		C.loop(ctx1, id1, prompt1)
+		time.Sleep(3 * time.Second)
+		C.loop(ctx1, id2, prompt2)
+		time.Sleep(3 * time.Second)
+		C.loop(ctx1, id3, prompt3)
+		C.loop(ctx1, id4, prompt4)
+		wg3.Done()
 	}()
 
 	go func() {
-		time.Sleep(20 * time.Second)
-		C.loop(ctx2, prompt2)
-		C.loop(ctx2, prompt)
-		C.loop(ctx2, prompt3)
-		C.loop(ctx2, prompt4)
-		wg2.Done()
+		time.Sleep(6 * time.Second)
+		C.loop(ctx2, id5, prompt1)
+		time.Sleep(3 * time.Second)
+		C.loop(ctx2, id6, prompt2)
+		C.loop(ctx2, id7, prompt3)
+		time.Sleep(3 * time.Second)
+		C.loop(ctx2, id8, prompt4)
+		wg3.Done()
 	}()
-	wg2.Wait()
+
+	go func() {
+		iter := 0
+		for {
+
+			Colorize("\n\n=== === === === CTX #1 === === === ===")
+			fmt.Printf("\n\n=== === === === CTX #1 === === === ===")
+			fmt.Printf("\n%s = %s", C.GoString(id1), C.GoString(C.status(id1)))
+			fmt.Printf("\n%s = %s", C.GoString(id2), C.GoString(C.status(id2)))
+			fmt.Printf("\n%s = %s", C.GoString(id3), C.GoString(C.status(id3)))
+			fmt.Printf("\n%s = %s", C.GoString(id4), C.GoString(C.status(id4)))
+			fmt.Printf("\n=== === === === CTX #2 === === === ===")
+			fmt.Printf("\n%s = %s", C.GoString(id5), C.GoString(C.status(id5)))
+			fmt.Printf("\n%s = %s", C.GoString(id6), C.GoString(C.status(id6)))
+			fmt.Printf("\n%s = %s", C.GoString(id7), C.GoString(C.status(id7)))
+			fmt.Printf("\n%s = %s", C.GoString(id8), C.GoString(C.status(id8)))
+			fmt.Printf("\n=== === === ===  ===  === === === ===\n")
+
+			time.Sleep(1 * time.Second)
+			iter++
+			if iter > 60 {
+				break
+			}
+		}
+		wg3.Done()
+	}()
+
+	wg3.Wait()
+
+	fmt.Printf("\n\n=== === === === FINAL CTX #1 === === === ===")
+	fmt.Printf("\n%s = %s", C.GoString(id1), C.GoString(C.status(id1)))
+	fmt.Printf("\n%s = %s", C.GoString(id2), C.GoString(C.status(id2)))
+	fmt.Printf("\n%s = %s", C.GoString(id3), C.GoString(C.status(id3)))
+	fmt.Printf("\n%s = %s", C.GoString(id4), C.GoString(C.status(id4)))
+	fmt.Printf("\n=== === === === FINAL CTX #2 === === === ===")
+	fmt.Printf("\n%s = %s", C.GoString(id5), C.GoString(C.status(id5)))
+	fmt.Printf("\n%s = %s", C.GoString(id6), C.GoString(C.status(id6)))
+	fmt.Printf("\n%s = %s", C.GoString(id7), C.GoString(C.status(id7)))
+	fmt.Printf("\n%s = %s", C.GoString(id8), C.GoString(C.status(id8)))
+	fmt.Printf("\n=== === === === === === === === === === ===\n")
 
 	os.Exit(0)
 
@@ -449,7 +522,7 @@ func parseOptions() *Options {
 		os.Exit(0)
 	}
 
-	if opts.Model == "" {
+	if opts.Server == false && opts.Model == "" {
 		Colorize("\n[magenta][ ERROR ][white] Please specify correct model path with [light_magenta]--model[white] parameter!\n\n")
 		os.Exit(0)
 	}

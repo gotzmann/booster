@@ -2,9 +2,9 @@
 //extern "C" {
 //#endif
 
-void * initFromParams(char * modelName);
-void * tokenize(void * ctx, char * prompt);
-void loop(struct llama_context * ctx, std::vector<llama_token> & embd_inp);
+extern void * initFromParams(char * modelName);
+////extern void * tokenize(void * ctx, char * prompt);
+extern void loop(struct llama_context * ctx, char * prompt);
 
 //#define __has_cpp_attribute(__x) 0
 //#define __has_keyword(__x) !(__is_identifier(__x))
