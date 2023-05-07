@@ -79,7 +79,7 @@ import (
 	"github.com/gotzmann/llama.go/pkg/server"
 )
 
-const VERSION = "1.4.0"
+const VERSION = "0.6.0"
 
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -576,15 +576,16 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 
 func showLogo() {
 
+	// Rozzo + 3-D + some free time
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
 
 	logo := `                                                    
-  /88       /88         /888/888   /88/8888/88   /888/888      /8888/88   /888/888    
-  /888      /888      /888/ /888 /888/8888/888 /888/ /888     /8888 //   /8888//888  
-  /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888 /88 /8888/8888 /888 /8888 
-  /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /888//8888/88  //888/888
-  //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  ///  //// //    /// ///`
+  /88       /88         /888/888   /88/8888/88   /888/888  /888/8888 /888/888   /888/888    
+  /888      /888      /888/ /888 /888/8888/888 /888/ /888  ///8888/ /8888//888 /8888//888  
+  /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888  /8888/   /888 /8888 /888 /8888 
+  /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /8888/888 //888/888  //888/888
+  //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  //// ///   /// ///    /// ///`
 
 	logoColored := ""
 	prevColor := ""
@@ -610,9 +611,9 @@ func showLogo() {
 
 	Colorize(logoColored)
 	Colorize(
-		"\n\n   [magenta]▒▒▒▒[light_magenta] [ LLaMA.go v" +
+		"\n\n   [magenta]▒▒▒▒▒[light_magenta] [ LLaMAZoo v" +
 			VERSION +
-			" ] [light_blue][ LLaMA GPT in pure Golang - based on LLaMA C++ ] [magenta]▒▒▒▒\n\n")
+			" ] [light_blue][ Platform for serving any GPT model of LLaMA family ] [magenta]▒▒▒▒▒\n\n")
 }
 
 func downloadModel(dir, model string) (int64, error) {
