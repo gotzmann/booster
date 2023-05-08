@@ -31,6 +31,8 @@ import (
 // TODO: Rate Limiter based on end-user IP address
 // TODO: Guard access with API Tokens
 // TODO: Each use of C.CString() should be complemented with C.free() operation
+// TODO: GetStatus - update partial output if processing within C++ core
+// TODO: Looks like all generations use THE SAME seed?
 
 // Unix timestamps VS ISO-8601 Stripe perspective:
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh

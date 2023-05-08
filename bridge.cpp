@@ -59,7 +59,7 @@ struct gpt_params {
     int32_t n_predict     = 512;   // new tokens to predict
     int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
     int32_t n_ctx         = 1024; // context size
-    int32_t n_batch       = 1024; // FIXME // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch       = 64; // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
 
     // sampling parameters
@@ -70,7 +70,7 @@ struct gpt_params {
     float   typical_p         = 1.00f; // 1.0 = disabled
     float   temp              = 0.80f; // 1.0 = disabled
     float   repeat_penalty    = 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = 64; // FIXME   // last n tokens to penalize (0 = disable penalty, -1 = context size)
+    int32_t repeat_last_n     = -1 /*64*/; // FIXME // last n tokens to penalize (0 = disable penalty, -1 = context size)
     float   frequency_penalty = 0.00f; // 0.0 = disabled
     float   presence_penalty  = 0.00f; // 0.0 = disabled
     int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
@@ -87,7 +87,7 @@ struct gpt_params {
     std::string lora_adapter = "";  // lora adapter path
     std::string lora_base = "";     // base model path for the lora adapter
 
-    bool memory_f16        = false; // true;  // use f16 instead of f32 for memory kv
+    bool memory_f16        = true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
     bool interactive       = false; // interactive mode
@@ -174,8 +174,20 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
 // TODO: Better naming
 void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::string & text) {
 
-    bool add_bos = true;
+    // TODO: Duplicate initialization code from llama_init_from_file
+    // TODO: Use local copy of global params !!
 
+    //if (params.seed < 0) {
+        params.seed = time(NULL);
+    //}
+
+    // --- Restoring ctx buffers
+    // FIXME: Free buffers after use
+
+    reset_logits(ctx); // FIXME: Experimental, reset logits for the vocab size
+    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
+
+    bool add_bos = true;
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
     std::vector<llama_token> embd_inp(text.size() + (int)add_bos);
     int n = llama_tokenize(ctx, text.c_str(), embd_inp.data(), embd_inp.size(), add_bos);
@@ -187,10 +199,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
     //    printf(" [ %d ] ", id); // DEBUG
     //}
 
-    const int n_ctx = llama_n_ctx(ctx);
-
-    // sampling parameters
-    //std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
+    const int n_ctx = llama_n_ctx(ctx); // FIXME: What if model ctx is different from user set ??
 
     // TODO: replace with ring-buffer
     std::vector<llama_token> last_n_tokens(n_ctx);
@@ -218,7 +227,9 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
 
                 const int n_left = n_past - ::params.n_keep;
 
-                n_past = ::params.n_keep;
+                ////n_past = ::params.n_keep;
+                // always keep the first token - BOS
+                n_past = std::max(1, params.n_keep);
 
                 // insert n_left/2 tokens at the start of embd from last_n_tokens
                 embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
@@ -309,11 +320,12 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
             llama_token id = 0;
 
             {
-                auto logits  = llama_get_logits(ctx);
+                auto logits  = llama_get_logits(ctx); // FIXME: Are there problem if logits not cleared after another request ??
                 auto n_vocab = llama_n_vocab(ctx);
 
+                // FIXME: local logit_bias VS gpt_params context bias
                 // Apply params.logit_bias map
-                for (auto it = ::params.logit_bias.begin(); it != ::params.logit_bias.end(); it++) {
+                for (auto it = /*::params.*/logit_bias.begin(); it != /*::params.*/logit_bias.end(); it++) {
                     logits[it->first] += it->second;
                 }
 
@@ -353,10 +365,10 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
                         id = llama_sample_token_mirostat_v2(ctx, &candidates_p, mirostat_tau, mirostat_eta, &mirostat_mu);
                     } else {
                         // Temperature sampling
-                        llama_sample_top_k(ctx, &candidates_p, top_k);
-                        llama_sample_tail_free(ctx, &candidates_p, tfs_z);
-                        llama_sample_typical(ctx, &candidates_p, typical_p);
-                        llama_sample_top_p(ctx, &candidates_p, top_p);
+                        llama_sample_top_k(ctx, &candidates_p, top_k, 1);
+                        llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
+                        llama_sample_typical(ctx, &candidates_p, typical_p, 1);
+                        llama_sample_top_p(ctx, &candidates_p, top_p, 1);
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token(ctx, &candidates_p);
                     }
@@ -530,7 +542,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
             ////    is_interacting = true;
             ////} else {
                 // TODO: Some handler / special token for this case?
-                ////fprintf(stderr, " [end of text]\n");
+                fprintf(stderr, " [END]\n");
                 break;
             ////}
         }
@@ -563,6 +575,7 @@ void * initFromParams(char * modelName, int threads, int context, int predict, f
     ::params.n_threads = threads;
     ::params.n_ctx = context;
     ::params.n_predict = predict;
+    ::params.n_batch = predict; // TODO: Not sure about better value
     ::params.temp = temp;
 
     fprintf(stderr, "\nthreads = %d\n", threads);
@@ -584,6 +597,7 @@ void * initFromParams(char * modelName, int threads, int context, int predict, f
 
 void loop(void * ctx, char * jobID, char * prompt) {
     //fprintf(stderr, "\n=== loop ===");
+
     std::string id = jobID;
     std::string text = prompt;
     loopCPP((struct llama_context *)ctx, id, text);

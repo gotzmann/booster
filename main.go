@@ -227,7 +227,7 @@ func main() {
 
 			Colorize("\n[magenta]============== queue ==============")
 			for job := range server.Queue {
-				Colorize("\n[light_magenta]%s [light_blue]%s", job, "waits")
+				Colorize("\n[light_magenta]%s", job)
 			}
 
 			Colorize("\n[magenta]============== jobs ==============")
