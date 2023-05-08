@@ -144,15 +144,15 @@ func main() {
 	// --- set up internal REST server
 
 	//server.MaxPods = opts.Pods
-	server.Host = opts.Host
-	server.Port = opts.Port
+	//server.Host = opts.Host
+	//server.Port = opts.Port
 	//server.Vocab = nil // vocab
 	//server.Model = nil // model
 	server.Params = params
 
 	opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin" // DEBUG
-	server.Init(opts.Pods, opts.Threads, opts.Model, int(opts.Predict), opts.Temp)
+	server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp)
 
 	// --- load the model and vocab
 

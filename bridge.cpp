@@ -179,7 +179,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
     std::vector<llama_token> embd_inp(text.size() + (int)add_bos);
     int n = llama_tokenize(ctx, text.c_str(), embd_inp.data(), embd_inp.size(), add_bos);
-    assert(n >= 0);
+    assert(n >= 0); // FIXME: Fix for less than zero !!
     embd_inp.resize(n);
 
     //fprintf(stderr, "\n=== TOKENS ===\n");
@@ -284,19 +284,21 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
             // out of user input, sample next token
-            const float   temp            = params.temp;
-            const int32_t top_k           = params.top_k <= 0 ? llama_n_vocab(ctx) : params.top_k;
-            const float   top_p           = params.top_p;
-            const float   tfs_z           = params.tfs_z;
-            const float   typical_p       = params.typical_p;
-            const int32_t repeat_last_n   = params.repeat_last_n < 0 ? n_ctx : params.repeat_last_n;
-            const float   repeat_penalty  = params.repeat_penalty;
-            const float   alpha_presence  = params.presence_penalty;
-            const float   alpha_frequency = params.frequency_penalty;
-            const int     mirostat        = params.mirostat;
-            const float   mirostat_tau    = params.mirostat_tau;
-            const float   mirostat_eta    = params.mirostat_eta;
-            const bool    penalize_nl     = params.penalize_nl;
+            const float   temp            = ::params.temp;
+            const int32_t top_k           = ::params.top_k <= 0 ? llama_n_vocab(ctx) : ::params.top_k;
+            const float   top_p           = ::params.top_p;
+            const float   tfs_z           = ::params.tfs_z;
+            const float   typical_p       = ::params.typical_p;
+            const int32_t repeat_last_n   = ::params.repeat_last_n < 0 ? n_ctx : ::params.repeat_last_n;
+            const float   repeat_penalty  = ::params.repeat_penalty;
+            const float   alpha_presence  = ::params.presence_penalty;
+            const float   alpha_frequency = ::params.frequency_penalty;
+            const int     mirostat        = ::params.mirostat;
+            const float   mirostat_tau    = ::params.mirostat_tau;
+            const float   mirostat_eta    = ::params.mirostat_eta;
+            const bool    penalize_nl     = ::params.penalize_nl;
+
+
 
             // optionally save the session on first sample (for faster prompt loading next time)
             ////if (!path_session.empty() && need_to_save_session) {
@@ -383,6 +385,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
 
             // decrement remaining sampling budget
             --n_remain;
+
         } else {
 
             // some user input remains from prompt or interaction, forward it to processing
@@ -550,7 +553,7 @@ const char * statusCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void * initFromParams(char * modelName, int threads, int predict, float temp) {
+void * initFromParams(char * modelName, int threads, int context, int predict, float temp) {
 
     fprintf(stderr, "\n\n=== initFromParams ===");
     
@@ -558,6 +561,7 @@ void * initFromParams(char * modelName, int threads, int predict, float temp) {
     //fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
     ::params.model = modelName;
     ::params.n_threads = threads;
+    ::params.n_ctx = context;
     ::params.n_predict = predict;
     ::params.temp = temp;
 

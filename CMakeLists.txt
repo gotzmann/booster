@@ -207,11 +207,11 @@ if (LLAMA_CLBLAST)
     if (CLBlast_FOUND)
         message(STATUS "CLBlast found")
 
-        #set(GGML_OPENCL_SOURCES ggml-opencl.c ggml-opencl.h)
+        set(GGML_OPENCL_SOURCES ggml-opencl.c ggml-opencl.h)
 
-        #add_compile_definitions(GGML_USE_CLBLAST)
+        add_compile_definitions(GGML_USE_CLBLAST)
 
-        #set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} clblast)
+        set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} clblast)
     else()
         message(WARNING "CLBlast not found")
     endif()
