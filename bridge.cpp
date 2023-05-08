@@ -55,7 +55,7 @@ void show() {
 
 struct gpt_params {
     int32_t seed          = -1;   // RNG seed
-    int32_t n_threads     = 6; // FIXME //// get_num_physical_cores();
+    int32_t n_threads     = 1; // FIXME //// get_num_physical_cores();
     int32_t n_predict     = -1;  // new tokens to predict
     int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
     int32_t n_ctx         = 512;  // context size
@@ -582,18 +582,22 @@ const char * statusCPP(/*struct llama_context * ctx,*/ const std::string & jobID
 
 extern "C" { // ------------------------------------------------------
 
-void * initFromParams(char * modelName) {
+void * initFromParams(char * modelName, int threads) {
 
-    //fprintf(stderr, "\n=== initFromParams ===");
+    fprintf(stderr, "\n\n=== initFromParams ===");
     
     gpt_params params;
     //fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
     params.model = modelName;
+    params.n_threads = threads;
+
+    fprintf(stderr, "\nthreads = %d\n", threads);
     
-    hide();
+    // FIXME: Hide and Show init messages
+    ////hide();
     auto res =  llama_init_from_gpt_params(params);
-    show();
-    
+    ////show();
+
     return res;
 }
 

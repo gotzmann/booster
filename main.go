@@ -54,7 +54,7 @@ package main
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
 #cgo LDFLAGS: -lstdc++ bridge.o ggml.o llama.o
-void * initFromParams(char * modelName);
+void * initFromParams(char * modelName, int threads);
 void loop(void * ctx, char * jobID, char * prompt);
 const char * status(char * jobID);
 */
@@ -62,21 +62,18 @@ import "C"
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"runtime"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	flags "github.com/jessevdk/go-flags"
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
 	"github.com/pkg/profile"
 
-	"github.com/gotzmann/llama.go/pkg/llama"
-	"github.com/gotzmann/llama.go/pkg/server"
+	"github.com/gotzmann/llamazoo/pkg/llama"
+	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
 const VERSION = "0.6.0"
@@ -87,7 +84,7 @@ type Options struct {
 	Server  bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
 	Host    string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
 	Port    string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
-	Pods    int64   `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
+	Pods    int     `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
 	Threads int     `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
 	Context uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
 	Predict uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
@@ -110,19 +107,6 @@ func main() {
 
 	if !opts.Silent {
 		showLogo()
-	}
-
-	// --- special command to load model file
-
-	if len(os.Args) > 1 && os.Args[1] == "load" {
-		Colorize("[magenta][ LOAD ][light_blue] Downloading model [light_magenta]%s[light_blue] into [light_magenta]%s[light_blue]", opts.Model, opts.Dir)
-		size, err := downloadModel(opts.Dir, opts.Model)
-		if err != nil {
-			Colorize("\n[magenta][ ERROR ][light_blue] Model [light_magenta]%s[light_blue] was not downloaded: [light_red]%s!\n\n", opts.Model, err.Error())
-		} else {
-			Colorize("\n[magenta][ LOAD ][light_blue] Model [light_magenta]%s[light_blue] of size [light_magenta]%d Gb[light_blue] was successfully downloaded!\n\n", opts.Model, size/1024/1024/1024)
-		}
-		os.Exit(0)
 	}
 
 	// --- set model parameters from user settings and safe defaults
@@ -156,22 +140,30 @@ func main() {
 	// https://github.com/golang/go/wiki/cgo
 	// https://pkg.go.dev/cmd/cgo
 
+	// --- set up internal REST server
+
+	//server.MaxPods = opts.Pods
+	server.Host = opts.Host
+	server.Port = opts.Port
+	//server.Vocab = nil // vocab
+	//server.Model = nil // model
+	server.Params = params
+
+	opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
+	server.Init(opts.Pods, opts.Threads, opts.Model)
+
 	// --- load the model and vocab
 
-	id1 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc1")
-	id2 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc2")
-	id3 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc3")
-	id4 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc4")
-	id5 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc5")
-	id6 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6")
-	id7 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc7")
-	id8 := C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc8")
-
-	//// vocab, model, err := llama.LoadModel(params.Model, params, opts.Silent)
-	// load the model and apply lora adapter, if any
-	//ctx := C.llama_init_from_gpt_params(params)
-	params.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
-	paramsModel := C.CString(params.Model)
+	ids := [9]*C.char{}
+	ids[0] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc0")
+	ids[1] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc1")
+	ids[2] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc2")
+	ids[3] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc3")
+	ids[4] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc4")
+	ids[5] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc5")
+	ids[6] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6")
+	ids[7] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc7")
+	ids[8] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc8")
 
 	/* --- Suppress C++ output - DOESNT WORK !
 
@@ -184,26 +176,19 @@ func main() {
 	os.Stdout = sout
 	os.Stderr = serr */
 
-	ctx1 := C.initFromParams(paramsModel)
-	ctx2 := C.initFromParams(paramsModel)
+	//ctx1 := C.initFromParams(paramsModel)
+	//ctx2 := C.initFromParams(paramsModel)
 
-	//if (ctx == NULL) {
-	//	fprintf(stderr, "%s: error: unable to load model\n", __func__);
-	//	return 1;
-	//}
-	if ctx1 == nil || ctx2 == nil {
-		Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
-		os.Exit(0)
-	}
-
-	prompt1 := C.CString(" " + "Why Golang is so popular?")
-	prompt2 := C.CString(" " + "Why the Earth is flat?")
-	prompt3 := C.CString(" " + "Давным-давно, в одном далеком царстве, в тридесятом государстве")
-	prompt4 := C.CString(" " + "Write a Python program which will parse the content of Wikipedia")
-
-	//tokens := C.tokenize(ctx, prompt)
-
-	//fmt.Print(tokens)
+	var prompts [9]*C.char
+	prompts[0] = C.CString(" " + "Why Golang is so popular?")
+	prompts[1] = C.CString(" " + "Why the Earth is flat?")
+	prompts[2] = C.CString(" " + "Давным-давно, в одном далеком царстве, в тридесятом государстве")
+	prompts[3] = C.CString(" " + "Write a Python program which will parse the content of Wikipedia")
+	prompts[4] = C.CString(" " + "Please compute how much will be 2 + 2?")
+	prompts[5] = C.CString(" " + "Do you think the AI will dominate in the future?")
+	prompts[6] = C.CString(" " + "Волков бояться, в лес")
+	prompts[7] = C.CString(" " + "Compose a Golang program fetching a Wikipedia page")
+	prompts[8] = C.CString(" " + "Who was the father of 'Capital' book?")
 
 	// TODO: replace with ring-buffer
 	//std::vector<llama_token> last_n_tokens(n_ctx);
@@ -211,86 +196,54 @@ func main() {
 
 	//std::vector<llama_token> embd;
 
-	var wg3 sync.WaitGroup
-	wg3.Add(3)
-	time.Sleep(6 * time.Second)
+	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
 
-	go func() {
-		C.loop(ctx1, id1, prompt1)
-		time.Sleep(3 * time.Second)
-		C.loop(ctx1, id2, prompt2)
-		time.Sleep(3 * time.Second)
-		C.loop(ctx1, id3, prompt3)
-		C.loop(ctx1, id4, prompt4)
-		wg3.Done()
-	}()
+	// TODO: Control signals between main() and server
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	go func() {
-		time.Sleep(6 * time.Second)
-		C.loop(ctx2, id5, prompt1)
-		time.Sleep(3 * time.Second)
-		C.loop(ctx2, id6, prompt2)
-		C.loop(ctx2, id7, prompt3)
-		time.Sleep(3 * time.Second)
-		C.loop(ctx2, id8, prompt4)
-		wg3.Done()
-	}()
+	//wg3.Add(int(opts.Pods) + 1)
+	//time.Sleep(6 * time.Second)
+
+	//var counter int
+	//for pod := 0; pod < int(opts.Pods); pod++ {
+
+	//go func(pod int) {
+	//	for job := pod * 3; job < pod*3+3; job++ {
+	//time.Sleep(1 * time.Second)
+	//		C.loop(server.Contexts[pod], ids[job], prompts[job])
+	//	}
+	//	wg3.Done()
+	//}(pod)
+	//}
 
 	go func() {
 		iter := 0
 		for {
 
-			Colorize("\n\n=== === === === CTX #1 === === === ===")
-			fmt.Printf("\n\n=== === === === CTX #1 === === === ===")
-			fmt.Printf("\n%s = %s", C.GoString(id1), C.GoString(C.status(id1)))
-			fmt.Printf("\n%s = %s", C.GoString(id2), C.GoString(C.status(id2)))
-			fmt.Printf("\n%s = %s", C.GoString(id3), C.GoString(C.status(id3)))
-			fmt.Printf("\n%s = %s", C.GoString(id4), C.GoString(C.status(id4)))
-			fmt.Printf("\n=== === === === CTX #2 === === === ===")
-			fmt.Printf("\n%s = %s", C.GoString(id5), C.GoString(C.status(id5)))
-			fmt.Printf("\n%s = %s", C.GoString(id6), C.GoString(C.status(id6)))
-			fmt.Printf("\n%s = %s", C.GoString(id7), C.GoString(C.status(id7)))
-			fmt.Printf("\n%s = %s", C.GoString(id8), C.GoString(C.status(id8)))
-			fmt.Printf("\n=== === === ===  ===  === === === ===\n")
+			fmt.Printf("\n")
+			for pod := 0; pod < int(opts.Pods); pod++ {
+
+				Colorize("\n[magenta]============== queue ==============")
+				for job := range server.Queue {
+					Colorize("\n[light_magenta]%s [light_blue]%s", job, "waits")
+				}
+
+				Colorize("\n[magenta]============== jobs ==============")
+				for _, job := range server.Jobs {
+					Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, job.Output)
+				}
+			}
 
 			time.Sleep(1 * time.Second)
 			iter++
-			if iter > 60 {
+			if iter > 300 {
 				break
 			}
+
 		}
-		wg3.Done()
+		wg.Done()
 	}()
-
-	wg3.Wait()
-
-	fmt.Printf("\n\n=== === === === FINAL CTX #1 === === === ===")
-	fmt.Printf("\n%s = %s", C.GoString(id1), C.GoString(C.status(id1)))
-	fmt.Printf("\n%s = %s", C.GoString(id2), C.GoString(C.status(id2)))
-	fmt.Printf("\n%s = %s", C.GoString(id3), C.GoString(C.status(id3)))
-	fmt.Printf("\n%s = %s", C.GoString(id4), C.GoString(C.status(id4)))
-	fmt.Printf("\n=== === === === FINAL CTX #2 === === === ===")
-	fmt.Printf("\n%s = %s", C.GoString(id5), C.GoString(C.status(id5)))
-	fmt.Printf("\n%s = %s", C.GoString(id6), C.GoString(C.status(id6)))
-	fmt.Printf("\n%s = %s", C.GoString(id7), C.GoString(C.status(id7)))
-	fmt.Printf("\n%s = %s", C.GoString(id8), C.GoString(C.status(id8)))
-	fmt.Printf("\n=== === === === === === === === === === ===\n")
-
-	os.Exit(0)
-
-	//if err != nil {
-	//	Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
-	//	os.Exit(0)
-	//}
-
-	// --- set up internal REST server
-
-	server.MaxPods = opts.Pods
-	server.Host = opts.Host
-	server.Port = opts.Port
-	server.Vocab = nil // vocab
-	server.Model = nil // model
-	server.Params = params
 
 	go server.Run()
 
@@ -298,218 +251,14 @@ func main() {
 		Colorize("\n[light_magenta][ INIT ][light_blue] REST server ready on [light_magenta]%s:%s", opts.Host, opts.Port)
 	}
 
-	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
+	wg.Wait()
+	os.Exit(0)
 
-	// TODO: Control signals between main() and server
-	var wg sync.WaitGroup
-	wg.Add(1)
+	//if err != nil {
+	//	Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
+	//	os.Exit(0)
+	//}
 
-	if opts.Server {
-		wg.Wait()
-	} else {
-
-		// add a space to match LLaMA tokenizer behavior
-		prompt := " " + opts.Prompt
-		jobID := uuid.New().String()
-		server.PlaceJob(jobID, prompt)
-		output := ""
-
-		//Colorize("\n\n[magenta]▒▒▒[light_yellow]" + prompt + "\n[light_blue]▒▒▒ ")
-		Colorize("\n\n[magenta][ PROMPT ][light_magenta]" + prompt + "\n[light_blue][ OUTPUT ][white]")
-
-		for {
-			time.Sleep(100 * time.Millisecond)
-			if output != server.Jobs[jobID].Output {
-				diff := server.Jobs[jobID].Output[len(output):]
-				fmt.Printf(diff)
-				output += diff
-			}
-			if server.Jobs[jobID].Status == "finished" {
-				break
-			}
-		}
-		os.Exit(0)
-	}
-
-	/*
-		// tokenize the prompt
-		embdInp := ml.Tokenize(ctx.Vocab, prompt, true)
-
-		var embd []uint32
-
-		// Initialize the ring buffer
-		lastNTokens := ring.New(int(params.CtxSize))
-
-		for i := 0; i < int(params.CtxSize); i++ {
-			lastNTokens.Value = uint32(0)
-			lastNTokens = lastNTokens.Next()
-		}
-
-		// A function to append a token to the ring buffer
-		appendToken := func(token uint32) {
-			lastNTokens.Value = token
-			lastNTokens = lastNTokens.Next()
-		}
-
-		inputNoEcho := false
-		pastCount := uint32(0)
-		remainCount := params.PredictCount
-		consumedCount := uint32(0)
-
-		tokenCounter := 0
-		evalPerformance := make([]int64, 0, params.PredictCount)
-		fullPerformance := make([]int64, 0, params.PredictCount)
-	*/ /*
-			for remainCount != 0 || params.Interactive {
-
-				start := time.Now().UnixNano()
-
-				// --- predict
-
-				if len(embd) > 0 {
-
-					// infinite text generation via context swapping
-					// if we run out of context:
-					// - take the n_keep first tokens from the original prompt (via n_past)
-					// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
-
-					if pastCount+uint32(len(embd)) > params.CtxSize {
-						leftCount := pastCount - params.KeepCount
-						pastCount = params.KeepCount
-
-						// insert n_left/2 tokens at the start of embd from last_n_tokens
-						//embd = append(lastNTokens[:leftCount/2], embd...)
-						embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
-					}
-
-					evalStart := time.Now().UnixNano()
-					if err := llama.Eval(ctx, embd, pastCount, params); err != nil {
-						fmt.Printf("\n[ERROR] Failed to eval")
-						os.Exit(1)
-					}
-					evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
-				}
-
-				pastCount += uint32(len(embd))
-				embd = []uint32{}
-
-				if len(embdInp) <= int(consumedCount) { // && !isInteracting {
-
-					if params.IgnoreEOS {
-						ctx.Logits[ml.TOKEN_EOS] = 0
-					}
-
-						//id := llama.SampleTopPTopK(ctx,
-						//	lastNTokens[params.ctxSize-params.repeatLastN:], params.repeatLastN,
-						//	params.topK, params.topP, params.temp, params.repeatPenalty)
-		                //
-						//lastNTokens = lastNTokens[1:] ////last_n_tokens.erase(last_n_tokens.begin());
-						//lastNTokens = append(lastNTokens, id)
-
-					id := llama.SampleTopPTopK(ctx,
-						lastNTokens, params.RepeatLastN,
-						params.TopK, params.TopP, params.Temp, params.RepeatPenalty)
-
-					appendToken(id)
-
-					// replace end of text token with newline token when in interactive mode
-					if id == ml.TOKEN_EOS && params.Interactive && !params.Instruct {
-						id = ml.NewLineToken
-					}
-
-					// add it to the context
-					embd = append(embd, id)
-
-					// echo this to console
-					inputNoEcho = false
-
-					// decrement remaining sampling budget
-					remainCount--
-
-				} else {
-
-					// some user input remains from prompt or interaction, forward it to processing
-
-						//for len(embdInp) > int(consumedCount) {
-						//	embd = append(embd, embdInp[consumedCount])
-						//	if len(lastNTokens) > 0 {
-						//		lastNTokens = lastNTokens[1:]
-						//	}
-						//	lastNTokens = append(lastNTokens, embdInp[consumedCount])
-						//	consumedCount++
-						//	if len(embd) >= int(params.batchSize) {
-						//		break
-						//	}
-						//}
-
-					for len(embdInp) > int(consumedCount) {
-						embd = append(embd, embdInp[consumedCount])
-						appendToken(embdInp[consumedCount])
-						consumedCount++
-						if len(embd) >= int(params.BatchSize) {
-							break
-						}
-					}
-				}
-
-				// --- display text
-
-				if !inputNoEcho {
-					for _, id := range embd {
-
-						token := ml.Token2Str(ctx.Vocab, id)
-						final += token
-
-						if len(strings.TrimSpace(final)) < len(strings.TrimSpace(prompt)) {
-							continue
-						}
-
-						out := strings.Split(final, prompt)
-
-						if len(out) == 2 && token == "\n" {
-							continue
-						}
-
-						if len(strings.TrimSpace(final)) == len(strings.TrimSpace(prompt)) && (token != "\n") && (len(out) == 2) {
-							Colorize("\n\n[magenta]▒▒▒ [light_yellow]" + strings.TrimSpace(prompt) + "\n[light_blue]▒▒▒ ")
-							continue
-						}
-
-						Colorize("[white]" + token)
-
-						tokenCounter++
-						fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
-
-						if ml.DEBUG {
-							fmt.Printf(" [ #%d | %d ] ", tokenCounter, fullPerformance[len(fullPerformance)-1]/1_000_000)
-						}
-					}
-				}
-			}
-
-			if ml.DEBUG {
-				//Colorize("\n\n=== TOKEN EVAL TIMINGS ===\n\n")
-				//for _, time := range evalPerformance {
-				//	Colorize("%d | ", time/1_000_000)
-				//}
-
-				Colorize("\n\n=== FULL TIMINGS ===\n\n")
-				for _, time := range fullPerformance {
-					Colorize("%d | ", time/1_000_000)
-				}
-			}
-
-			avgEval := int64(0)
-			for _, time := range fullPerformance {
-				avgEval += time / 1_000_000
-			}
-			avgEval /= int64(len(fullPerformance))
-
-			Colorize(
-				"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
-				avgEval,
-				float64(1000)/float64(avgEval))
-	*/
 }
 
 func parseOptions() *Options {
@@ -614,34 +363,4 @@ func showLogo() {
 		"\n\n   [magenta]▒▒▒▒▒[light_magenta] [ LLaMAZoo v" +
 			VERSION +
 			" ] [light_blue][ Platform for serving any GPT model of LLaMA family ] [magenta]▒▒▒▒▒\n\n")
-}
-
-func downloadModel(dir, model string) (int64, error) {
-
-	url := "https://nogpu.com/" + model
-	file := dir + "/" + model
-
-	// TODO: check file existence first with io.IsExist
-	output, err := os.Create(file)
-	if err != nil {
-		return 0, err
-	}
-	defer output.Close()
-
-	response, err := http.Get(url)
-	if err != nil {
-		return 0, err
-	}
-	defer response.Body.Close()
-
-	n, err := io.Copy(output, response.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	if n < 1_000_000 {
-		return 0, fmt.Errorf("some problem with target file")
-	}
-
-	return n, nil
 }

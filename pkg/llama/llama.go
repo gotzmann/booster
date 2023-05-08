@@ -19,7 +19,7 @@ import (
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
-	"github.com/gotzmann/llama.go/pkg/ml"
+	"github.com/gotzmann/llamazoo/pkg/ml"
 )
 
 const (
