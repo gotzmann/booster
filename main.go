@@ -2,6 +2,7 @@ package main
 
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
+// TODO: Option to disable params.use_mmap
 
 // https://kofo.dev/build-tags-in-golang
 
@@ -76,7 +77,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.6.0"
+const VERSION = "0.8.0"
 
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -150,7 +151,8 @@ func main() {
 	server.Params = params
 
 	opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
-	server.Init(opts.Pods, opts.Threads, opts.Model)
+	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin" // DEBUG
+	server.Init(opts.Pods, opts.Threads, opts.Model, int(opts.Predict), opts.Temp)
 
 	// --- load the model and vocab
 
@@ -222,17 +224,16 @@ func main() {
 		for {
 
 			fmt.Printf("\n")
-			for pod := 0; pod < int(opts.Pods); pod++ {
 
-				Colorize("\n[magenta]============== queue ==============")
-				for job := range server.Queue {
-					Colorize("\n[light_magenta]%s [light_blue]%s", job, "waits")
-				}
+			Colorize("\n[magenta]============== queue ==============")
+			for job := range server.Queue {
+				Colorize("\n[light_magenta]%s [light_blue]%s", job, "waits")
+			}
 
-				Colorize("\n[magenta]============== jobs ==============")
-				for _, job := range server.Jobs {
-					Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, job.Output)
-				}
+			Colorize("\n[magenta]============== jobs ==============")
+			for _, job := range server.Jobs {
+				//Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, job.Output)
+				Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, C.GoString(C.status(C.CString(job.ID))))
 			}
 
 			time.Sleep(1 * time.Second)
@@ -309,7 +310,7 @@ func parseOptions() *Options {
 	}
 
 	if opts.Temp == 0 {
-		opts.Temp = 0.5
+		opts.Temp = 0.80
 	}
 
 	return &opts

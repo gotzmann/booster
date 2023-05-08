@@ -1,7 +1,7 @@
 package server
 
 /*
-void * initFromParams(char * modelName, int threads);
+void * initFromParams(char * modelName, int threads, int predict, float temp);
 void loop(void * ctx, char * jobID, char * prompt);
 const char * status(char * jobID);
 */
@@ -84,7 +84,7 @@ func init() {
 
 // Init allocates contexts for independent pods
 // TODO: Allow to load and work with different models at the same time
-func Init(pods int, threads int, model string) {
+func Init(pods int, threads int, model string, predict int, temp float32) {
 
 	ServerMode = CPPMode
 	MaxPods = int64(pods)
@@ -95,7 +95,7 @@ func Init(pods int, threads int, model string) {
 	// --- Starting pods incorporating isolated C++ context and runtime
 
 	for i := 0; i < pods; i++ {
-		ctx := C.initFromParams(C.CString(model), C.int(threads))
+		ctx := C.initFromParams(C.CString(model), C.int(threads), C.int(predict), C.float(temp))
 		if ctx == nil {
 			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", i, pods)
 			os.Exit(0)
@@ -170,7 +170,16 @@ func Do(jobID string, pod int) {
 	if ServerMode == CPPMode { // --- use llama.cpp backend
 
 		C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
-		// TODO: Move results to finished Jobs map
+
+		// TODO: Trim prompt from beginning
+		result := C.GoString(C.status(C.CString(jobID)))
+
+		mu.Lock()
+		Jobs[jobID].FinishedAt = time.Now().Unix()
+		Jobs[jobID].Output = strings.Trim(result, "\n ")
+		Jobs[jobID].Status = "finished"
+		IdlePods = append(IdlePods, pod) // return pod to the pool
+		mu.Unlock()
 
 	} else { // --- use llama.go framework
 
@@ -293,6 +302,12 @@ func Do(jobID string, pod int) {
 		// close sync channel and stop compute workers
 		ctx.ReleaseContext()
 
+		mu.Lock()
+		Jobs[jobID].FinishedAt = time.Now().Unix()
+		Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
+		Jobs[jobID].Status = "finished"
+		mu.Unlock()
+
 		//if ml.DEBUG {
 		Colorize("\n\n=== EVAL TIME | ms ===\n\n")
 		for _, time := range evalPerformance {
@@ -325,13 +340,6 @@ func Do(jobID string, pod int) {
 		// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
 
 	}
-
-	mu.Lock()
-	Jobs[jobID].FinishedAt = time.Now().Unix()
-	Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
-	Jobs[jobID].Status = "finished"
-	IdlePods = append(IdlePods, pod) // return pod to the pool
-	mu.Unlock()
 }
 
 // --- Place new job into queue

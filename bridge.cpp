@@ -55,11 +55,11 @@ void show() {
 
 struct gpt_params {
     int32_t seed          = -1;   // RNG seed
-    int32_t n_threads     = 1; // FIXME //// get_num_physical_cores();
-    int32_t n_predict     = -1;  // new tokens to predict
+    int32_t n_threads     = 1;    // get_num_physical_cores();
+    int32_t n_predict     = 512;   // new tokens to predict
     int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
-    int32_t n_ctx         = 512;  // context size
-    int32_t n_batch       = 512;  // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_ctx         = 1024; // context size
+    int32_t n_batch       = 1024; // FIXME // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
 
     // sampling parameters
@@ -70,7 +70,7 @@ struct gpt_params {
     float   typical_p         = 1.00f; // 1.0 = disabled
     float   temp              = 0.80f; // 1.0 = disabled
     float   repeat_penalty    = 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
+    int32_t repeat_last_n     = 64; // FIXME   // last n tokens to penalize (0 = disable penalty, -1 = context size)
     float   frequency_penalty = 0.00f; // 0.0 = disabled
     float   presence_penalty  = 0.00f; // 0.0 = disabled
     int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
@@ -87,7 +87,7 @@ struct gpt_params {
     std::string lora_adapter = "";  // lora adapter path
     std::string lora_base = "";     // base model path for the lora adapter
 
-    bool memory_f16        = true;  // use f16 instead of f32 for memory kv
+    bool memory_f16        = false; // true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
     bool interactive       = false; // interactive mode
@@ -103,6 +103,10 @@ struct gpt_params {
     bool mem_test          = false; // compute maximum memory usage
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
+
+// --- Global params for all pods
+
+gpt_params params;
 
 ////bool gpt_params_parse(int argc, char ** argv, gpt_params & params);
 
@@ -123,6 +127,7 @@ struct gpt_params {
 //struct llama_context * llama_init_from_gpt_params(const gpt_params & params);
 
 struct llama_context * llama_init_from_gpt_params(const gpt_params & params) {
+
     auto lparams = llama_context_default_params();
 
     lparams.n_ctx      = params.n_ctx;
@@ -166,11 +171,10 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
     return res;
 }
 
-void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vector<llama_token> & embd_inp*/ const std::string & text) {
+// TODO: Better naming
+void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::string & text) {
 
     bool add_bos = true;
-
-    //std::vector<llama_token> embd_inp = llama_tokenize((struct llama_context *)ctx, text, true);
 
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
     std::vector<llama_token> embd_inp(text.size() + (int)add_bos);
@@ -178,48 +182,33 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
     assert(n >= 0);
     embd_inp.resize(n);
 
-    //fprintf(stderr, "\n=== loop 00 | N tokens = %d", n);
-
     //fprintf(stderr, "\n=== TOKENS ===\n");
     //for (auto id : embd_inp) {
     //    printf(" [ %d ] ", id); // DEBUG
     //}
 
-    //fprintf(stderr, "\n=== loop 01 ===");
-
     const int n_ctx = llama_n_ctx(ctx);
 
-    //fprintf(stderr, "\n=== loop 02 ===");
-
     // sampling parameters
-    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
+    //std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
     // TODO: replace with ring-buffer
     std::vector<llama_token> last_n_tokens(n_ctx);
     std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
 
-    //fprintf(stderr, "\n=== loop 03 ===");
-
     //const int n_ctx = llama_n_ctx(ctx);
 
     int n_past             = 0;
-    int n_remain           = 128; // FIXME params.n_predict;
+    int n_remain           = ::params.n_predict;
     int n_consumed         = 0;
     ////int n_session_consumed = 0;
 
     std::vector<llama_token> embd;
 
-    //fprintf(stderr, "\n=== loop 04 ===");
-
     while (n_remain != 0 /*|| params.interactive*/) {
-
-        //fprintf(stderr, "\n=== loop 05 ===");
 
         // predict
         if (embd.size() > 0) {
-
-
-            //fprintf(stderr, "\n=== loop 06 ===");
 
             // infinite text generation via context swapping
             // if we run out of context:
@@ -227,11 +216,9 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
             // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
             if (n_past + (int) embd.size() > n_ctx) {
 
-                //fprintf(stderr, "\n=== loop 07 ===");
+                const int n_left = n_past - ::params.n_keep;
 
-                const int n_left = n_past - /*params.n_keep*/ 16;
-
-                n_past = 16; // params.n_keep;
+                n_past = ::params.n_keep;
 
                 // insert n_left/2 tokens at the start of embd from last_n_tokens
                 embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
@@ -271,23 +258,16 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
                 }
             } */
 
-            //fprintf(stderr, "\n=== loop 08 ===");
-
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
-            for (int i = 0; i < (int) embd.size(); i += /*params.n_batch*/ 16) {
+            for (int i = 0; i < (int) embd.size(); i += ::params.n_batch) {
 
-                //fprintf(stderr, "\n=== loop 09 ===");
                 int n_eval = (int) embd.size() - i;
-                if (n_eval > /*params.n_batch*/ 16) {
-                    n_eval = /*params.n_batch*/ 16;
+                if (n_eval > ::params.n_batch) {
+                    n_eval = ::params.n_batch;
                 }
-                if (llama_eval(ctx, &embd[i], n_eval, n_past, /*params.n_threads*/ 6)) {
+                if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params.n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
-                    ////return 1;
-                    
-
-                    //fprintf(stderr, "\n=== loop 10 ===");
                     return;
                 }
                 n_past += n_eval;
@@ -299,28 +279,24 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
             ////}
         }
 
-        //fprintf(stderr, "\n=== loop 11 ===");
-
         embd.clear();
 
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
-            //fprintf(stderr, "\n=== loop 12 ===");
-
             // out of user input, sample next token
-            const float   temp            = 0.8; // params.temp;
-            const int32_t top_k           = 40; //params.top_k <= 0 ? llama_n_vocab(ctx) : params.top_k;
-            const float   top_p           = 40; //params.top_p;
-            const float   tfs_z           = 0; //params.tfs_z;
-            const float   typical_p       = 0; //params.typical_p;
-            const int32_t repeat_last_n   = 40; //params.repeat_last_n < 0 ? n_ctx : params.repeat_last_n;
-            const float   repeat_penalty  = 1; //params.repeat_penalty;
-            const float   alpha_presence  = 1;//params.presence_penalty;
-            const float   alpha_frequency = 1;//params.frequency_penalty;
-            const int     mirostat        = 0;//params.mirostat;
-            const float   mirostat_tau    = 0;//params.mirostat_tau;
-            const float   mirostat_eta    = 0;//params.mirostat_eta;
-            const bool    penalize_nl     = 0;//params.penalize_nl;
+            const float   temp            = params.temp;
+            const int32_t top_k           = params.top_k <= 0 ? llama_n_vocab(ctx) : params.top_k;
+            const float   top_p           = params.top_p;
+            const float   tfs_z           = params.tfs_z;
+            const float   typical_p       = params.typical_p;
+            const int32_t repeat_last_n   = params.repeat_last_n < 0 ? n_ctx : params.repeat_last_n;
+            const float   repeat_penalty  = params.repeat_penalty;
+            const float   alpha_presence  = params.presence_penalty;
+            const float   alpha_frequency = params.frequency_penalty;
+            const int     mirostat        = params.mirostat;
+            const float   mirostat_tau    = params.mirostat_tau;
+            const float   mirostat_eta    = params.mirostat_eta;
+            const bool    penalize_nl     = params.penalize_nl;
 
             // optionally save the session on first sample (for faster prompt loading next time)
             ////if (!path_session.empty() && need_to_save_session) {
@@ -331,14 +307,11 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
             llama_token id = 0;
 
             {
-
-                //fprintf(stderr, "\n=== loop 13 ===");
-
                 auto logits  = llama_get_logits(ctx);
                 auto n_vocab = llama_n_vocab(ctx);
 
                 // Apply params.logit_bias map
-                for (auto it = /*params.*/logit_bias.begin(); it != /*params.*/logit_bias.end(); it++) {
+                for (auto it = ::params.logit_bias.begin(); it != ::params.logit_bias.end(); it++) {
                     logits[it->first] += it->second;
                 }
 
@@ -405,8 +378,6 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
             // add it to the context
             embd.push_back(id);
 
-            //fprintf(stderr, "\n=== loop 20 ===");
-
             // echo this to console
             ////input_echo = true;
 
@@ -414,15 +385,13 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
             --n_remain;
         } else {
 
-            //fprintf(stderr, "\n=== loop 30 ===");
-
             // some user input remains from prompt or interaction, forward it to processing
             while ((int) embd_inp.size() > n_consumed) {
                 embd.push_back(embd_inp[n_consumed]);
                 last_n_tokens.erase(last_n_tokens.begin());
                 last_n_tokens.push_back(embd_inp[n_consumed]);
                 ++n_consumed;
-                if ((int) embd.size() >= /*params.n_batch*/ 16) {
+                if ((int) embd.size() >= ::params.n_batch) {
                     break;
                 }
             }
@@ -572,30 +541,31 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, /*std::vecto
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-const char * statusCPP(/*struct llama_context * ctx,*/ const std::string & jobID) {
+const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
     const char * res = jobs[jobID].c_str();
-    //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
     mutex.unlock_shared();
     return res;
 }
 
 extern "C" { // ------------------------------------------------------
 
-void * initFromParams(char * modelName, int threads) {
+void * initFromParams(char * modelName, int threads, int predict, float temp) {
 
     fprintf(stderr, "\n\n=== initFromParams ===");
     
-    gpt_params params;
+    //gpt_params params;
     //fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
-    params.model = modelName;
-    params.n_threads = threads;
+    ::params.model = modelName;
+    ::params.n_threads = threads;
+    ::params.n_predict = predict;
+    ::params.temp = temp;
 
     fprintf(stderr, "\nthreads = %d\n", threads);
     
     // FIXME: Hide and Show init messages
     ////hide();
-    auto res =  llama_init_from_gpt_params(params);
+    auto res =  llama_init_from_gpt_params(::params);
     ////show();
 
     return res;
@@ -608,7 +578,7 @@ void * initFromParams(char * modelName, int threads) {
 ////    return &tokens;
 ////}
 
-void loop(void * ctx, char * jobID, /*void * embd_inp*/ char * prompt) {
+void loop(void * ctx, char * jobID, char * prompt) {
     //fprintf(stderr, "\n=== loop ===");
     std::string id = jobID;
     std::string text = prompt;
