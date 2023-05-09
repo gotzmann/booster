@@ -32,20 +32,20 @@ std::unordered_map<std::string, std::string> jobs;
 #define NULL_DEVICE "NUL:"
 #define TTY_DEVICE "COM1:"
 #else
-#define NULL_DEVICE "/dev/null"
-#define TTY_DEVICE "/dev/tty"
+//#define NULL_DEVICE "/dev/null"
+//#define TTY_DEVICE "/dev/tty"
 #endif
 
 // FIXME: Redirect C++ stderr into log file 
 void hide() {
-    freopen(NULL_DEVICE, "w", stdout);
-    freopen(NULL_DEVICE, "w", stderr);
+//    freopen(NULL_DEVICE, "w", stdout);
+//    freopen(NULL_DEVICE, "w", stderr);
 }    
 
 // FIXME: Doesn't work for MacOS ?
 void show() {
-    freopen(TTY_DEVICE, "w", stdout);
-    freopen(TTY_DEVICE, "w", stderr);
+//    freopen(TTY_DEVICE, "w", stdout);
+//    freopen(TTY_DEVICE, "w", stderr);
 }
 
 //
@@ -54,28 +54,46 @@ void show() {
 ////int32_t get_num_physical_cores();
 
 struct gpt_params {
+
     int32_t seed          = -1;   // RNG seed
     int32_t n_threads     = 1;    // get_num_physical_cores();
     int32_t n_predict     = 512;   // new tokens to predict
     int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
     int32_t n_ctx         = 1024; // context size
-    int32_t n_batch       = 64; // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch       = 128; // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
 
-    // sampling parameters
+    // --- sampling parameters
+
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
-    int32_t top_k             = 40;    // <= 0 to use vocab size
-    float   top_p             = 0.95f; // 1.0 = disabled
-    float   tfs_z             = 1.00f; // 1.0 = disabled
-    float   typical_p         = 1.00f; // 1.0 = disabled
-    float   temp              = 0.80f; // 1.0 = disabled
-    float   repeat_penalty    = 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = -1 /*64*/; // FIXME // last n tokens to penalize (0 = disable penalty, -1 = context size)
-    float   frequency_penalty = 0.00f; // 0.0 = disabled
-    float   presence_penalty  = 0.00f; // 0.0 = disabled
+
+    float   temp              = 0.80; // FIXME 0.80f; // 1.0 = disabled
+
+    int32_t top_k             = 16; // FIXME 40;    // <= 0 to use vocab size
+    float   top_p             = 0.9; // FIXME 0.95f; // 1.0 = disabled
+
+    float   tfs_z             = 1.00; //1.0; // 1.0 = disabled
+    float   typical_p         = 1.00; //1.0; // 1.0 = disabled
+
+    float   repeat_penalty    = 5.0; // FIXME 1.10f; // 1.0 = disabled
+    int32_t repeat_last_n     = 128; // -1; // 64; // FIXME // last n tokens to penalize (0 = disable penalty, -1 = context size)
+
+    float   frequency_penalty = 0.0; // 0.0 = disabled
+    float   presence_penalty  = 0.0; // 0.0 = disabled
+
     int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 5.00f; // target entropy
-    float   mirostat_eta      = 0.10f; // learning rate
+    float   mirostat_tau      = 1.0; // FIXME 5.0 // target entropy
+    float   mirostat_eta      = 0.1; // FIXME 0.1 //learning rate
+
+    // --- Some (might be wrong) observations
+
+    // Mirostat v2 looks better than v1
+    // Results with tau = 5 norm, better with lower values down to 1.0 and wild bad up to 9.0
+    // Not sure how eta plays here
+
+    // TopK over 40 (up to 100) might produce crazy irrelevant results. But usually it safe to reduce for lower 10
+
+    // ---
 
     std::string model  = "models/lamma-7B/ggml-model.bin"; // model path
     std::string prompt = "";
@@ -94,6 +112,7 @@ struct gpt_params {
 
     bool embedding         = false; // get only sentence embedding
     bool interactive_first = false; // wait for user input immediately
+    bool multiline_input   = false; // reverse the usage of `\`
 
     bool instruct          = false; // instruction mode (used for Alpaca models)
     bool penalize_nl       = true;  // consider newlines as a repeatable token
@@ -174,18 +193,21 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
 // TODO: Better naming
 void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::string & text) {
 
-    // TODO: Duplicate initialization code from llama_init_from_file
+    // TODO: Duplicate initialization code of [ llama_init_from_file ]
     // TODO: Use local copy of global params !!
 
-    //if (params.seed < 0) {
-        params.seed = time(NULL);
-    //}
+    //printf("\n\n=== seed = %d", ::params.seed);
+    if (::params.seed <= 0) {
+        ::params.seed = time(NULL);
+    }
 
     // --- Restoring ctx buffers
     // FIXME: Free buffers after use
 
-    reset_logits(ctx); // FIXME: Experimental, reset logits for the vocab size
-    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
+    //ctx->rng = std::mt19937(params.seed);
+    llama_set_rng_seed(ctx, ::params.seed);
+    //reset_logits(ctx); // FIXME: Experimental, reset logits for the vocab size
+    //std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
     bool add_bos = true;
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
@@ -309,8 +331,6 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
             const float   mirostat_eta    = ::params.mirostat_eta;
             const bool    penalize_nl     = ::params.penalize_nl;
 
-
-
             // optionally save the session on first sample (for faster prompt loading next time)
             ////if (!path_session.empty() && need_to_save_session) {
             ////    need_to_save_session = false;
@@ -325,10 +345,11 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
 
                 // FIXME: local logit_bias VS gpt_params context bias
                 // Apply params.logit_bias map
-                for (auto it = /*::params.*/logit_bias.begin(); it != /*::params.*/logit_bias.end(); it++) {
-                    logits[it->first] += it->second;
-                }
+                ////for (auto it = /*::params.*/logit_bias.begin(); it != /*::params.*/logit_bias.end(); it++) {
+                ////    logits[it->first] += it->second;
+                ////}
 
+                // FIXME: Do we always need to copy logits into candidates ??
                 std::vector<llama_token_data> candidates;
                 candidates.reserve(n_vocab);
                 for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
@@ -337,42 +358,66 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
 
                 llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
 
-                // Apply penalties
+                // --- Apply penalties
+
                 float nl_logit = logits[llama_token_nl()];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
+                
                 llama_sample_repetition_penalty(ctx, &candidates_p,
                     last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
                     last_n_repeat, repeat_penalty);
-                llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
-                    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
-                    last_n_repeat, alpha_frequency, alpha_presence);
+
+                // https://github.com/ggerganov/llama.cpp/issues/331
+                // Just throwing 2c at past implementations:
+                // OpenAI uses 2 variables for this - they have a presence penalty and a frequency penalty. 
+                // The current implementation of rep pen in llama.cpp is equivalent to a presence penalty, 
+                // adding an additional penalty based on frequency of tokens in the penalty window might be worth exploring too.
+                // KoboldAI instead uses a group of 3 values, what we call "Repetition Penalty", a "Repetition Penalty Slope" and 
+                // a "Repetition Penalty Range". This is the repetition penalty value applied as a sigmoid interpolation between 
+                // the Repetition Penalty value (at the most recent token) and 1.0 (at the end of the Repetition Penalty Range). 
+                // The defaults we use for this are 1.1 rep pen, 1024 range and 0.7 slope which provides what our community 
+                // agrees to be relatively decent results across most models.    
+
+                // TODO: Play with frequency and presence penalties    
+                ////llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
+                ////    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
+                ////    last_n_repeat, alpha_frequency, alpha_presence);
+                
                 if (!penalize_nl) {
                     logits[llama_token_nl()] = nl_logit;
                 }
 
-                if (temp <= 0) {
-                    // Greedy sampling
-                    id = llama_sample_token_greedy(ctx, &candidates_p);
-                } else {
+                ////if (temp <= 0) {
+                ////    printf("[GREEDY-SAMPLING]");
+                ////    // Greedy sampling
+                ////    id = llama_sample_token_greedy(ctx, &candidates_p);
+                ////} else {
                     if (mirostat == 1) {
+                    
+                        printf("[MIROSTAT-V1]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         const int mirostat_m = 100;
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat(ctx, &candidates_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
+                    
                     } else if (mirostat == 2) {
+                        
+                        printf("[MIROSTAT-V2]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat_v2(ctx, &candidates_p, mirostat_tau, mirostat_eta, &mirostat_mu);
-                    } else {
-                        // Temperature sampling
+
+                    } else { // --- Temperature sampling
+
+                        //printf("[TEMP-SAMPLING]");
                         llama_sample_top_k(ctx, &candidates_p, top_k, 1);
-                        llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
-                        llama_sample_typical(ctx, &candidates_p, typical_p, 1);
+                        ////llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
+                        ////llama_sample_typical(ctx, &candidates_p, typical_p, 1);
                         llama_sample_top_p(ctx, &candidates_p, top_p, 1);
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token(ctx, &candidates_p);
                     }
-                }
+                ////}
                 // printf("`%d`", candidates_p.size);
 
                 last_n_tokens.erase(last_n_tokens.begin());
@@ -543,7 +588,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
             ////} else {
                 // TODO: Some handler / special token for this case?
                 fprintf(stderr, " [END]\n");
-                break;
+                ////break;
             ////}
         }
 
@@ -565,9 +610,9 @@ const char * statusCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void * initFromParams(char * modelName, int threads, int context, int predict, float temp) {
+void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed) {
 
-    fprintf(stderr, "\n\n=== initFromParams ===");
+    //fprintf(stderr, "\n\n=== initFromParams ===");
     
     //gpt_params params;
     //fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
@@ -575,10 +620,9 @@ void * initFromParams(char * modelName, int threads, int context, int predict, f
     ::params.n_threads = threads;
     ::params.n_ctx = context;
     ::params.n_predict = predict;
-    ::params.n_batch = predict; // TODO: Not sure about better value
+    //::params.n_batch = predict; // TODO: Not sure about better value
     ::params.temp = temp;
-
-    fprintf(stderr, "\nthreads = %d\n", threads);
+    ::params.seed = seed;
     
     // FIXME: Hide and Show init messages
     ////hide();

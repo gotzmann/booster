@@ -1,7 +1,8 @@
 package server
 
 /*
-void * initFromParams(char * modelName, int threads, int context, int predict, float temp);
+#include <stdint.h>
+void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed);
 void loop(void * ctx, char * jobID, char * prompt);
 const char * status(char * jobID);
 */
@@ -86,7 +87,7 @@ func init() {
 
 // Init allocates contexts for independent pods
 // TODO: Allow to load and work with different models at the same time
-func Init(host string, port string, pods int, threads int, model string, context int, predict int, temp float32) {
+func Init(host string, port string, pods int, threads int, model string, context int, predict int, temp float32, seed uint32) {
 
 	ServerMode = CPPMode
 	Host = host
@@ -100,7 +101,7 @@ func Init(host string, port string, pods int, threads int, model string, context
 	// --- Starting pods incorporating isolated C++ context and runtime
 
 	for i := 0; i < pods; i++ {
-		ctx := C.initFromParams(C.CString(model), C.int(threads), C.int(context), C.int(predict), C.float(temp))
+		ctx := C.initFromParams(C.CString(model), C.int(threads), C.int(context), C.int(predict), C.float(temp), C.int32_t(seed))
 		if ctx == nil {
 			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", i, pods)
 			os.Exit(0)

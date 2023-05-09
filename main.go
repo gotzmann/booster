@@ -3,6 +3,13 @@ package main
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
 // TODO: Option to disable params.use_mmap
+// TODO: Replace [ END ] token with some UTF visual sign (end of the paragraph, etc.)
+// TODO: Read mirostat paper https://arxiv.org/pdf/2007.14966.pdf
+// TODO: Support instruct prompts for Vicuna and other
+// TODO: model = 13B/ggml-model-q4_0.bin + TopK = 40 + seed = 1683553932 => Why Golang is not so popular in Pakistan?
+// TODO: TopP and TopK as CLI parameters
+// TODO: Perplexity graph for different models https://github.com/ggerganov/llama.cpp/pull/1004
+// TODO: Read about quantization and perplexity experiments https://github.com/saharNooby/rwkv.cpp/issues/12
 
 // https://kofo.dev/build-tags-in-golang
 
@@ -82,6 +89,7 @@ const VERSION = "0.8.0"
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 	Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
+	Seed    uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
 	Server  bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
 	Host    string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
 	Port    string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
@@ -150,9 +158,17 @@ func main() {
 	//server.Model = nil // model
 	server.Params = params
 
-	opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/7B/ggml-model-q8_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin" // DEBUG
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin" // DEBUG
-	server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp)
+
+	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // DEBUG
+	opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin" // DEBUG
+	//opts.Model = "/Users/me/models/13B/llama-fp32.bin" // DEBUG
+
+	server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp, opts.Seed)
 
 	// --- load the model and vocab
 
