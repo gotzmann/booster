@@ -69,8 +69,8 @@ struct gpt_params {
 
     float   temp              = 0.80; // FIXME 0.80f; // 1.0 = disabled
 
-    int32_t top_k             = 16; // FIXME 40;    // <= 0 to use vocab size
-    float   top_p             = 0.9; // FIXME 0.95f; // 1.0 = disabled
+    int32_t top_k             = 20; // FIXME 40;    // <= 0 to use vocab size
+    float   top_p             = 0.95; // FIXME 0.95f; // 1.0 = disabled
 
     float   tfs_z             = 1.00; //1.0; // 1.0 = disabled
     float   typical_p         = 1.00; //1.0; // 1.0 = disabled

@@ -163,8 +163,8 @@ func main() {
 	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin" // DEBUG
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin" // DEBUG
 
-	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // DEBUG
-	opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin" // DEBUG
+	opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin" // DEBUG
 	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin" // DEBUG
 	//opts.Model = "/Users/me/models/13B/llama-fp32.bin" // DEBUG
 
