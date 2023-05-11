@@ -8,8 +8,12 @@ package main
 // TODO: Support instruct prompts for Vicuna and other
 // TODO: model = 13B/ggml-model-q4_0.bin + TopK = 40 + seed = 1683553932 => Why Golang is not so popular in Pakistan?
 // TODO: TopP and TopK as CLI parameters
-// TODO: Perplexity graph for different models https://github.com/ggerganov/llama.cpp/pull/1004
-// TODO: Read about quantization and perplexity experiments https://github.com/saharNooby/rwkv.cpp/issues/12
+// Perplexity graph for different models https://github.com/ggerganov/llama.cpp/pull/1004
+// Yet another graph, LLaMA 7B, 30B, 65B | 4Q | F16  https://github.com/ggerganov/llama.cpp/pull/835
+// Read about quantization and perplexity experiments https://github.com/saharNooby/rwkv.cpp/issues/12
+// wiki-raw datasets https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/
+// Perplexity for all models https://github.com/ggerganov/llama.cpp/discussions/406
+// GPTQ vs RTN Perplexity https://github.com/qwopqwop200/GPTQ-for-LLaMa
 
 // https://kofo.dev/build-tags-in-golang
 
@@ -158,15 +162,28 @@ func main() {
 	//server.Model = nil // model
 	server.Params = params
 
+	// -- 7B
+
 	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
 	//opts.Model = "/Users/me/models/7B/ggml-model-q8_0.bin" // DEBUG
 	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin" // DEBUG
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin" // DEBUG
 
+	// -- 13B
+
 	opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // DEBUG
 	//opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin" // DEBUG
 	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin" // DEBUG
 	//opts.Model = "/Users/me/models/13B/llama-fp32.bin" // DEBUG
+
+	//opts.Model = "/Users/me/models/13B/ggml-vic13b-q4_0.bin" // DEBUG
+
+	// -- 30B
+
+	//opts.Model = "/Users/me/models/30B/ggml-model-q4_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/30B/ggml-model-q8_0.bin" // DEBUG
+	//opts.Model = "/Users/me/models/30B/ggml-model-f16.bin" // DEBUG
+	//opts.Model = "/Users/me/models/30B/llama-fp32.bin" // DEBUG
 
 	server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp, opts.Seed)
 
@@ -249,7 +266,12 @@ func main() {
 			Colorize("\n[magenta]============== jobs ==============")
 			for _, job := range server.Jobs {
 				//Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, job.Output)
-				Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, C.GoString(C.status(C.CString(job.ID))))
+				Colorize("\n[light_magenta]%s | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s",
+					job.ID,
+					job.Status,
+					job.TokenCount,
+					job.TokenEval,
+					C.GoString(C.status(C.CString(job.ID))))
 			}
 
 			time.Sleep(1 * time.Second)

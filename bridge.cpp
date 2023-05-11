@@ -1,6 +1,7 @@
 // Various helper functions and utilities
 
 #include "llama.h"
+#include "ggml.h"
 //#include "examples/common.h"
 
 #include <string>
@@ -24,6 +25,9 @@
 // https://github.com/kshk123/hashMap
 
 std::unordered_map<std::string, std::string> jobs;
+
+// Map of vectors storing token evaluation timings [ in milliseconds ]
+std::unordered_map<std::string, int64_t> timings;
 
 // Suspend stdout / stderr messaging
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
@@ -60,38 +64,47 @@ struct gpt_params {
     int32_t n_predict     = 512;   // new tokens to predict
     int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
     int32_t n_ctx         = 1024; // context size
-    int32_t n_batch       = 128; // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch       = 1024; // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
 
     // --- sampling parameters
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
-    float   temp              = 0.80; // FIXME 0.80f; // 1.0 = disabled
+    float   temp              = 0.8; // FIXME 0.80f; // 1.0 = disabled
 
-    int32_t top_k             = 20; // FIXME 40;    // <= 0 to use vocab size
-    float   top_p             = 0.95; // FIXME 0.95f; // 1.0 = disabled
+    int32_t top_k             = 20;   // FIXME 40; // <= 0 to use vocab size
+    float   top_p             = 0.92; // FIXME 0.95f; // 1.0 = disabled
 
     float   tfs_z             = 1.00; //1.0; // 1.0 = disabled
     float   typical_p         = 1.00; //1.0; // 1.0 = disabled
 
-    float   repeat_penalty    = 5.0; // FIXME 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = 128; // -1; // 64; // FIXME // last n tokens to penalize (0 = disable penalty, -1 = context size)
+    float   repeat_penalty    = 1.1; // FIXME 1.10f; // 1.0 = disabled
+    int32_t repeat_last_n     = -1; // 128; // -1; // 64; // FIXME // last n tokens to penalize (0 = disable penalty, -1 = context size)
 
     float   frequency_penalty = 0.0; // 0.0 = disabled
     float   presence_penalty  = 0.0; // 0.0 = disabled
 
     int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 1.0; // FIXME 5.0 // target entropy
+    float   mirostat_tau      = 0.1; // FIXME 5.0 // target entropy
     float   mirostat_eta      = 0.1; // FIXME 0.1 //learning rate
 
     // --- Some (might be wrong) observations
 
+    // Temp is used both for mirostat and TopK-TopP sampling, but it better to keep lower temp for mirostat
+
+    // Mirostat is more chatty and fluid, looks like real human being. At the same time is jumps wild between topics
+    // It favors bigger models and becomes crazy on smaller ones like 7B
     // Mirostat v2 looks better than v1
     // Results with tau = 5 norm, better with lower values down to 1.0 and wild bad up to 9.0
     // Not sure how eta plays here
 
-    // TopK over 40 (up to 100) might produce crazy irrelevant results. But usually it safe to reduce for lower 10
+    // TopK over 40 (up to 100) might produce crazy irrelevant results. But usually it safe to lower about 10-20
+    // Seems like TopP sweet spot is arount 0.95
+    // Not sure about Temp, but any value around 0.5 .. 0.8 is good enough (lower == more steady output, higher = more creative)
+
+    // RepeatPenalty is good around 1.1 and bad around 1.0 (switched off). 
+    // Not sure why bad values above 1.1 are shuffling and muffling the output completely (with mirostat at least)
 
     // ---
 
@@ -191,7 +204,10 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
 }
 
 // TODO: Better naming
-void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::string & text) {
+// Process prompt and compute output, return total number of tokens processed
+int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std::string & text) {
+
+    llama_reset_timings(ctx);
 
     // TODO: Duplicate initialization code of [ llama_init_from_file ]
     // TODO: Use local copy of global params !!
@@ -237,6 +253,8 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
     std::vector<llama_token> embd;
 
     while (n_remain != 0 /*|| params.interactive*/) {
+
+        //const int64_t start_time = ggml_time_us();
 
         // predict
         if (embd.size() > 0) {
@@ -301,7 +319,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
                 }
                 if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params.n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
-                    return;
+                    return 0;
                 }
                 n_past += n_eval;
             }
@@ -320,12 +338,12 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
             const float   temp            = ::params.temp;
             const int32_t top_k           = ::params.top_k <= 0 ? llama_n_vocab(ctx) : ::params.top_k;
             const float   top_p           = ::params.top_p;
-            const float   tfs_z           = ::params.tfs_z;
-            const float   typical_p       = ::params.typical_p;
+            //const float   tfs_z           = ::params.tfs_z;
+            //const float   typical_p       = ::params.typical_p;
             const int32_t repeat_last_n   = ::params.repeat_last_n < 0 ? n_ctx : ::params.repeat_last_n;
             const float   repeat_penalty  = ::params.repeat_penalty;
-            const float   alpha_presence  = ::params.presence_penalty;
-            const float   alpha_frequency = ::params.frequency_penalty;
+            //const float   alpha_presence  = ::params.presence_penalty;
+            //const float   alpha_frequency = ::params.frequency_penalty;
             const int     mirostat        = ::params.mirostat;
             const float   mirostat_tau    = ::params.mirostat_tau;
             const float   mirostat_eta    = ::params.mirostat_eta;
@@ -363,6 +381,8 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
                 float nl_logit = logits[llama_token_nl()];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
                 
+                // For positive logits it divided by penalty, for negative multiplied
+                // https://github.com/huggingface/transformers/pull/2303/files
                 llama_sample_repetition_penalty(ctx, &candidates_p,
                     last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
                     last_n_repeat, repeat_penalty);
@@ -394,7 +414,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
                 ////} else {
                     if (mirostat == 1) {
                     
-                        printf("[MIROSTAT-V1]");
+                        //printf("[MIROSTAT-V1]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         const int mirostat_m = 100;
                         llama_sample_temperature(ctx, &candidates_p, temp);
@@ -402,7 +422,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
                     
                     } else if (mirostat == 2) {
                         
-                        printf("[MIROSTAT-V2]");
+                        //printf("[MIROSTAT-V2]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat_v2(ctx, &candidates_p, mirostat_tau, mirostat_eta, &mirostat_mu);
@@ -459,20 +479,17 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
 
         // display text
         ////if (input_echo) {
+            mutex.lock();
             for (auto id : embd) {
                 //printf(" [ %d ] ", id); // DEBUG
                 ////printf("%s", llama_token_to_str(ctx, id));
-
                 // FIXME: Experimental Code
-
                 //printf(" [ LOCK ] "); // DEBUG
                 //unique_lock<std::shared_mutex> lk(mutex);
-                mutex.lock();
                 jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
-                mutex.unlock();
                 //printf(" [ UNLOCK ] "); // DEBUG
-
             }
+            mutex.unlock();
             fflush(stdout);
         ////}
         // reset color to default if we there is no pending user input
@@ -588,7 +605,7 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
             ////} else {
                 // TODO: Some handler / special token for this case?
                 fprintf(stderr, " [END]\n");
-                ////break;
+                break;
             ////}
         }
 
@@ -598,12 +615,43 @@ void loopCPP(struct llama_context * ctx, const std::string & jobID, const std::s
         ////    is_interacting = true;
         ////}
     }
+
+    //const int64_t t_end_us = ggml_time_us();
+
+    const int32_t n_sample = std::max(1, llama_n_sample(ctx));
+    const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
+    const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
+
+    //fprintf(stderr, "%s:        load time = %8.2f ms\n", __func__, llama_t_load_us(ctx) / 1000.0);
+    //fprintf(stderr, "%s:      sample time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_sample_us(ctx), n_sample, 1e-3 * llama_t_sample_us(ctx) / n_sample);
+    //fprintf(stderr, "%s: prompt eval time = %8.2f ms / %5d tokens (%8.2f ms per token)\n", __func__, 1e-3 * llama_t_p_eval_us(ctx), n_p_eval, 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval);
+    //fprintf(stderr, "%s:        eval time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_eval_us(ctx),   n_eval,   1e-3 * llama_t_eval_us(ctx) / n_eval);
+    //fprintf(stderr, "%s:       total time = %8.2f ms\n", __func__, (t_end_us - llama_t_start_us(ctx))/1000.0);
+
+    // compute average time needed for processing one token
+    const int32_t avg_compute_time = 1e-3 * llama_t_sample_us(ctx) / n_sample + 
+                                     1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
+                                     1e-3 * llama_t_eval_us(ctx) / n_eval;
+
+    mutex.lock();
+    timings[jobID] = avg_compute_time;
+    mutex.unlock();
+
+    return n_p_eval + n_eval;
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-const char * statusCPP(const std::string & jobID) {
+char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
-    const char * res = jobs[jobID].c_str();
+    char * res = (char *) jobs[jobID].c_str();
+    mutex.unlock_shared();
+    return res;
+}
+
+// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+int64_t timingCPP(const std::string & jobID) {
+    mutex.lock_shared();
+    int64_t res = timings[jobID];
     mutex.unlock_shared();
     return res;
 }
@@ -639,19 +687,26 @@ void * initFromParams(char * modelName, int threads, int context, int predict, f
 ////    return &tokens;
 ////}
 
-void loop(void * ctx, char * jobID, char * prompt) {
+int64_t loop(void * ctx, char * jobID, char * prompt) {
     //fprintf(stderr, "\n=== loop ===");
 
     std::string id = jobID;
     std::string text = prompt;
-    loopCPP((struct llama_context *)ctx, id, text);
+    return loopCPP((struct llama_context *)ctx, id, text);
 }
 
 // return current result of processing
-const char * status(char * jobID) {
+char * status(char * jobID) {
     //fprintf(stderr, "\n=== status ===");
     std::string id = jobID;
     return statusCPP(id);
+}
+
+// return average token processing timing from context
+int64_t timing(char * jobID) {
+    //fprintf(stderr, "\n=== status ===");
+    std::string id = jobID;
+    return timingCPP(id);
 }
 
 }  // ------------------------------------------------------

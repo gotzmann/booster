@@ -167,7 +167,20 @@ extern "C" {
                              int   n_max_tokens,
                             bool   add_bos);
 
-    LLAMA_API void reset_logits(struct llama_context * ctx); // FIXME: Experimental
+    // -- Helpers for bridge.cpp                        
+
+    LLAMA_API void reset_logits(struct llama_context * ctx);
+    LLAMA_API int llama_n_sample(const struct llama_context * ctx);
+    LLAMA_API int llama_n_eval(const struct llama_context * ctx);
+    LLAMA_API int llama_n_p_eval(const struct llama_context * ctx);
+    LLAMA_API int llama_t_sample_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_load_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_start_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
+
+    // --
+
     LLAMA_API int llama_n_vocab(const struct llama_context * ctx);
     LLAMA_API int llama_n_ctx  (const struct llama_context * ctx);
     LLAMA_API int llama_n_embd (const struct llama_context * ctx);

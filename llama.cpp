@@ -2760,10 +2760,45 @@ int llama_tokenize(
     return res.size();
 }
 
-// FIXME: Experimental
+// -- Helpers for bridge.cpp
+
 void reset_logits(struct llama_context * ctx) {
     ctx->logits.reserve(llama_n_vocab(ctx) );
 }
+
+int llama_n_sample(const struct llama_context * ctx) {
+    return ctx->n_sample;
+}
+
+int llama_n_eval(const struct llama_context * ctx) {
+    return ctx->n_eval;
+}
+
+int llama_n_p_eval(const struct llama_context * ctx) {
+    return ctx->n_p_eval;
+}
+
+int llama_t_sample_us(const struct llama_context * ctx) {
+    return ctx->t_sample_us;
+}
+
+int llama_t_load_us(const struct llama_context * ctx) {
+    return ctx->t_load_us;
+}
+
+int llama_t_start_us(const struct llama_context * ctx) {
+    return ctx->t_start_us;
+}
+
+int llama_t_p_eval_us(const struct llama_context * ctx) {
+    return ctx->t_p_eval_us;
+}
+
+int llama_t_eval_us(const struct llama_context * ctx) {
+    return ctx->t_eval_us;
+}
+
+// --
 
 int llama_n_vocab(const struct llama_context * ctx) {
     return ctx->vocab.id_to_token.size();

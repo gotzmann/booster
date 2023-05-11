@@ -3,8 +3,9 @@ package server
 /*
 #include <stdint.h>
 void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed);
-void loop(void * ctx, char * jobID, char * prompt);
-const char * status(char * jobID);
+int64_t loop(void * ctx, char * jobID, char * prompt);
+char * status(char * jobID);
+int64_t timing(char * jobID);
 */
 import "C"
 
@@ -48,6 +49,8 @@ type Job struct {
 	CreatedAt  int64
 	StartedAt  int64
 	FinishedAt int64
+	TokenCount int64 // total tokens processed (icnluding prompt)
+	TokenEval  int64 // timing per token (prompt + output), ms
 }
 
 const (
@@ -170,12 +173,14 @@ func Do(jobID string, pod int) {
 
 	mu.Lock()
 	Jobs[jobID].StartedAt = time.Now().Unix()
+	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
+	// TODO: Play with prompt without leading space
 	prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
 	mu.Unlock()
 
 	if ServerMode == CPPMode { // --- use llama.cpp backend
 
-		C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
+		tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
@@ -184,6 +189,8 @@ func Do(jobID string, pod int) {
 		Jobs[jobID].FinishedAt = time.Now().Unix()
 		Jobs[jobID].Output = strings.Trim(result, "\n ")
 		Jobs[jobID].Status = "finished"
+		Jobs[jobID].TokenCount = int64(tokenCount)
+		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
 		IdlePods = append(IdlePods, pod) // return pod to the pool
 		mu.Unlock()
 
@@ -212,6 +219,7 @@ func Do(jobID string, pod int) {
 		consumedCount := uint32(0)           // number of tokens, already processed from the user prompt
 		remainedCount := Params.PredictCount // how many tokens we still need to generate to achieve predictCount
 		embd := make([]uint32, 0, Params.BatchSize)
+
 		evalPerformance := make([]int64, 0, Params.PredictCount)
 		samplePerformance := make([]int64, 0, Params.PredictCount)
 		fullPerformance := make([]int64, 0, Params.PredictCount)
