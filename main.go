@@ -65,7 +65,7 @@ package main
 /*
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
-#cgo LDFLAGS: -lstdc++ bridge.o ggml.o llama.o
+#cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
 void * initFromParams(char * modelName, int threads);
 void loop(void * ctx, char * jobID, char * prompt);
 const char * status(char * jobID);
@@ -79,6 +79,10 @@ import (
 	"sync"
 	"time"
 
+	//"github.com/golobby/config"
+	//"github.com/golobby/config/feeder"
+	config "github.com/golobby/config/v3"
+	"github.com/golobby/config/v3/pkg/feeder"
 	flags "github.com/jessevdk/go-flags"
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
@@ -110,7 +114,70 @@ type Options struct {
 	UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
 }
 
+type ModelConfig struct {
+	ID   string // short internal name of the model
+	Name string // public name for humans
+	Path string // path to binary file
+	Use  bool   // use the model in production?
+
+	Predict int
+	Context int
+
+	Modes []ModeConfig // different modes available to run (on the same model pod)
+}
+
+type ModeConfig struct {
+	ID   string // short internal name
+	Name string // public name for humans
+	Use  bool   // use in production?
+
+	Temp float32
+
+	TopK int
+	TopP float32
+
+	RepeatPenalty float32
+
+	Mirostat    int
+	MirostatTAU float32
+	MirostatETA float32
+}
+
+type ServerConfig struct {
+	ID      string // for using as map key and for logging
+	Host    string
+	Port    string
+	UseAVX  bool
+	UseNEON bool
+}
+
+type PodConfig struct {
+	ID      string // for using as map key and for logging
+	Model   string
+	Threads int
+	Count   int // how many instances of the pod/model to run
+}
+
+type Config struct {
+	Server ServerConfig
+	Models []ModelConfig
+	Pods   []PodConfig
+}
+
 func main() {
+
+	conf := Config{}
+	json := feeder.Json{Path: "config.json"}
+
+	err := config.New().AddFeeder(json).AddStruct(&conf).Feed()
+	//c, err := config.New()
+	//c.AddFeeder(json)
+	//c.AddStruct(&conf)
+	//err = c.Feed()
+	if err != nil {
+		Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file!\n\n")
+		os.Exit(0)
+	}
 
 	opts := parseOptions()
 
@@ -162,68 +229,48 @@ func main() {
 	//server.Model = nil // model
 	server.Params = params
 
+	// -- DEBUG
+
 	// -- 7B
 
-	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // DEBUG
-	//opts.Model = "/Users/me/models/7B/ggml-model-q8_0.bin" // DEBUG
-	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin" // DEBUG
-	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin" // DEBUG
+	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin"
+	//opts.Model = "/Users/me/models/7B/ggml-model-q8_0.bin"
+	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin"
+	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin"
+
+	// https://huggingface.co/eachadea/ggml-vicuna-7b-1.1
+	//opts.Model = "/Users/me/models/7B/ggml-vic7b-q4_0.bin"
+
+	// https://huggingface.co/eachadea/ggml-wizardlm-7b/tree/main
+	opts.Model = "/Users/me/models/7B/ggml-wizardlm-7b-q8_0.bin" // perfect with mirostat v2
 
 	// -- 13B
 
-	opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // DEBUG
-	//opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin" // DEBUG
-	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin" // DEBUG
-	//opts.Model = "/Users/me/models/13B/llama-fp32.bin" // DEBUG
+	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin"
+	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin"
+	//opts.Model = "/Users/me/models/13B/llama-fp32.bin"
 
-	//opts.Model = "/Users/me/models/13B/ggml-vic13b-q4_0.bin" // DEBUG
+	// https://huggingface.co/eachadea/ggml-vicuna-13b-1.1
+	//opts.Model = "/Users/me/models/13B/ggml-vic13b-q4_0.bin"
+
+	// https://huggingface.co/execveat/wizardLM-13b-ggml-4bit/tree/main
+	//opts.Model = "/Users/me/models/13B/wizardml-13b-q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/WizardML-Unc-13b-Q5_1.bin" // so so
+
+	// https://huggingface.co/TheBloke/wizard-vicuna-13B-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/wizard-vicuna-13B.ggml.q4_0.bin" // no way
 
 	// -- 30B
 
-	//opts.Model = "/Users/me/models/30B/ggml-model-q4_0.bin" // DEBUG
-	//opts.Model = "/Users/me/models/30B/ggml-model-q8_0.bin" // DEBUG
-	//opts.Model = "/Users/me/models/30B/ggml-model-f16.bin" // DEBUG
-	//opts.Model = "/Users/me/models/30B/llama-fp32.bin" // DEBUG
+	//opts.Model = "/Users/me/models/30B/ggml-model-q4_0.bin"
+	//opts.Model = "/Users/me/models/30B/ggml-model-q8_0.bin"
+	//opts.Model = "/Users/me/models/30B/ggml-model-f16.bin"
+	//opts.Model = "/Users/me/models/30B/llama-fp32.bin"
+
+	// https://huggingface.co/MetaIX/GPT4-X-Alpaca-30B-4bit/tree/main
 
 	server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp, opts.Seed)
-
-	// --- load the model and vocab
-
-	ids := [9]*C.char{}
-	ids[0] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc0")
-	ids[1] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc1")
-	ids[2] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc2")
-	ids[3] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc3")
-	ids[4] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc4")
-	ids[5] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc5")
-	ids[6] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6")
-	ids[7] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc7")
-	ids[8] = C.CString("5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc8")
-
-	/* --- Suppress C++ output - DOESNT WORK !
-
-	null, _ := os.Open(os.DevNull)
-	sout := os.Stdout
-	serr := os.Stderr
-	os.Stdout = null
-	os.Stderr = null
-	null.Close()
-	os.Stdout = sout
-	os.Stderr = serr */
-
-	//ctx1 := C.initFromParams(paramsModel)
-	//ctx2 := C.initFromParams(paramsModel)
-
-	var prompts [9]*C.char
-	prompts[0] = C.CString(" " + "Why Golang is so popular?")
-	prompts[1] = C.CString(" " + "Why the Earth is flat?")
-	prompts[2] = C.CString(" " + "Давным-давно, в одном далеком царстве, в тридесятом государстве")
-	prompts[3] = C.CString(" " + "Write a Python program which will parse the content of Wikipedia")
-	prompts[4] = C.CString(" " + "Please compute how much will be 2 + 2?")
-	prompts[5] = C.CString(" " + "Do you think the AI will dominate in the future?")
-	prompts[6] = C.CString(" " + "Волков бояться, в лес")
-	prompts[7] = C.CString(" " + "Compose a Golang program fetching a Wikipedia page")
-	prompts[8] = C.CString(" " + "Who was the father of 'Capital' book?")
 
 	// TODO: replace with ring-buffer
 	//std::vector<llama_token> last_n_tokens(n_ctx);
@@ -236,21 +283,6 @@ func main() {
 	// TODO: Control signals between main() and server
 	var wg sync.WaitGroup
 	wg.Add(1)
-
-	//wg3.Add(int(opts.Pods) + 1)
-	//time.Sleep(6 * time.Second)
-
-	//var counter int
-	//for pod := 0; pod < int(opts.Pods); pod++ {
-
-	//go func(pod int) {
-	//	for job := pod * 3; job < pod*3+3; job++ {
-	//time.Sleep(1 * time.Second)
-	//		C.loop(server.Contexts[pod], ids[job], prompts[job])
-	//	}
-	//	wg3.Done()
-	//}(pod)
-	//}
 
 	go func() {
 		iter := 0
@@ -291,13 +323,6 @@ func main() {
 	}
 
 	wg.Wait()
-	os.Exit(0)
-
-	//if err != nil {
-	//	Colorize("\n[magenta][ ERROR ][white] Failed to load model [light_magenta]\"%s\"\n\n", params.Model)
-	//	os.Exit(0)
-	//}
-
 }
 
 func parseOptions() *Options {

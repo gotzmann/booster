@@ -42,13 +42,18 @@ import (
 // TODO: Unix timestamp vs ISO for date and time
 
 type Job struct {
-	ID         string
-	Status     string
-	Prompt     string
-	Output     string
+	ID     string
+	Status string
+	Prompt string
+	Output string
+
 	CreatedAt  int64
 	StartedAt  int64
 	FinishedAt int64
+
+	Seed  int64  // TODO: Store seed
+	Model string // TODO: Store model name
+
 	TokenCount int64 // total tokens processed (icnluding prompt)
 	TokenEval  int64 // timing per token (prompt + output), ms
 }

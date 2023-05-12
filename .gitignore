@@ -4,8 +4,11 @@
 .idea
 .bin
 .pprof
+config.json
+config.yaml
 __debug_bin
 llamazoo
+vendor/
 tmp/
 
 # llama.cpp

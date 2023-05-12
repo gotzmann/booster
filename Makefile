@@ -1,4 +1,4 @@
-LLAMA_NO_ACCELERATE := true
+#LLAMA_NO_ACCELERATE := true
 
 # Define the default target now so that it is always the first target
 # default: main quantize quantize-stats perplexity embedding vdot 

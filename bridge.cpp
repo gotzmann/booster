@@ -71,7 +71,7 @@ struct gpt_params {
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
-    float   temp              = 0.8; // FIXME 0.80f; // 1.0 = disabled
+    float   temp              = 0.4; // FIXME 0.80f; // 1.0 = disabled
 
     int32_t top_k             = 20;   // FIXME 40; // <= 0 to use vocab size
     float   top_p             = 0.92; // FIXME 0.95f; // 1.0 = disabled
@@ -85,7 +85,7 @@ struct gpt_params {
     float   frequency_penalty = 0.0; // 0.0 = disabled
     float   presence_penalty  = 0.0; // 0.0 = disabled
 
-    int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    int     mirostat          = 2;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1; // FIXME 5.0 // target entropy
     float   mirostat_eta      = 0.1; // FIXME 0.1 //learning rate
 
@@ -629,9 +629,10 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
     //fprintf(stderr, "%s:        eval time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_eval_us(ctx),   n_eval,   1e-3 * llama_t_eval_us(ctx) / n_eval);
     //fprintf(stderr, "%s:       total time = %8.2f ms\n", __func__, (t_end_us - llama_t_start_us(ctx))/1000.0);
 
+    // TODO: Sum all timings
     // compute average time needed for processing one token
-    const int32_t avg_compute_time = 1e-3 * llama_t_sample_us(ctx) / n_sample + 
-                                     1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
+    const int32_t avg_compute_time = //1e-3 * llama_t_sample_us(ctx) / n_sample + 
+                                     //1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
                                      1e-3 * llama_t_eval_us(ctx) / n_eval;
 
     mutex.lock();
