@@ -76,18 +76,13 @@ type ModelConfig struct {
 	ID   string // short internal name of the model
 	Name string // public name for humans
 	Path string // path to binary file
-	Use  bool   // use the model in production?
+
+	Mode    string // prod, debug, ignore, etc
+	Pods    int    // how many pods start
+	Threads int    // how many threads allow per pod
 
 	Predict int
 	Context int
-
-	Modes []ModeConfig // different modes available to run (on the same model pod)
-}
-
-type ModeConfig struct {
-	ID   string // short internal name
-	Name string // public name for humans
-	Use  bool   // use in production?
 
 	Temp float32
 
@@ -101,42 +96,43 @@ type ModeConfig struct {
 	MirostatETA float32
 }
 
-type ServerConfig struct {
-	ID      string // for using as map key and for logging
-	Host    string
-	Port    string
-	UseAVX  bool
-	UseNEON bool
-}
-
-type PodConfig struct {
-	ID      string // for using as map key and for logging
-	Model   string
-	Threads int
-	Count   int // how many instances of the pod/model to run
-}
-
+// TODO: Logging setup
 type Config struct {
-	Server ServerConfig
-	Models []ModelConfig
-	Pods   []PodConfig
+	ID string
+
+	Host string
+	Port string
+
+	AVX  bool
+	NEON bool
+	CUDA bool
+
+	Default string
+	Models  []ModelConfig
 }
 
 func main() {
 
 	conf := Config{}
-	json := feeder.Json{Path: "config.json"}
 
-	err := config.New().AddFeeder(json).AddStruct(&conf).Feed()
-	//c, err := config.New()
-	//c.AddFeeder(json)
-	//c.AddStruct(&conf)
-	//err = c.Feed()
-	if err != nil {
-		Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file!\n\n")
-		os.Exit(0)
+	// --- read config from JSON or YAML if exist
+
+	var feed config.Feeder
+	if _, err := os.Stat("config.json"); err == nil {
+		feed = feeder.Json{Path: "config.json"}
+	} else if _, err := os.Stat("config.yaml"); err == nil {
+		feed = feeder.Yaml{Path: "config.yaml"}
 	}
 
+	if feed != nil {
+		err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
+		if err != nil {
+			Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file!\n\n")
+			os.Exit(0)
+		}
+	}
+
+	// TODO: Allow to overwrite some options from the command-line
 	opts := parseOptions()
 
 	if opts.Profile {
