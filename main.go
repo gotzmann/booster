@@ -20,47 +20,7 @@ package main
 // invalid flag in #cgo CFLAGS: -mfma -mf16c
 // argument unused during compilation: -mavx -mavx2  -msse3
 
-// CC="clang"
-// CXX="clang++"
-
-// /Library/Developer/CommandLineTools/usr/include/c++/v1/string.h
-// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1/string.h
-// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/string.h
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/simd/vector.h
-
-// #cgo CCV:  $(shell $(CC) --version | head -n 1)
-// #cgo CXXV: $(shell $(CXX) --version | head -n 1)
-
 // find / -name vector 2>/dev/null
-
-// #cgo CFLAGS:   -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c11
-// #cgo CXXFLAGS: -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c++11
-
-//#cgo CFLAGS:   -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/ -O3 -DNDEBUG -fPIC -pthread -std=c11
-//#cgo CXXFLAGS: -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/ -O3 -DNDEBUG -fPIC -pthread -std=c++11
-
-//#cgo CFLAGS:   -I. -I./examples -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c11
-//#cgo CXXFLAGS: -I. -I./examples -I/Library/Developer/CommandLineTools/usr/include/c++/v1/ -O3 -DNDEBUG -fPIC -pthread -std=c++11
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1
-
-//#cgo CPATH:    /Library/Developer/CommandLineTools/usr/include/c++/v1/
-
-//#cgo CFLAGS:   -I. -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c17
-//#cgo CXXFLAGS: -I. -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.1.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c++17
-
-//#cgo CFLAGS:   -I. -I./examples -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c11
-//#cgo CXXFLAGS: -I. -I./examples -I./examples -I/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/usr/include/c++/v1 -O3 -DNDEBUG -fPIC -pthread -std=c++11
-
-// #include "bridge.cpp"
-
-// -lc++ -lstdc++ ggml.o llama.o common.o
-// #include "bridge.h"
-// void loop(void * ctx, void * embd_inp);
-// void * tokenize(void * ctx, char * prompt);
-
-// TODO: c++11 VS c++17 ??
 
 /*
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
@@ -79,8 +39,6 @@ import (
 	"sync"
 	"time"
 
-	//"github.com/golobby/config"
-	//"github.com/golobby/config/feeder"
 	config "github.com/golobby/config/v3"
 	"github.com/golobby/config/v3/pkg/feeder"
 	flags "github.com/jessevdk/go-flags"
