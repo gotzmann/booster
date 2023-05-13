@@ -22,13 +22,15 @@ package main
 
 // find / -name vector 2>/dev/null
 
+// void * initFromParams(char * modelName, int threads);
+// void loop(void * ctx, char * jobID, char * prompt);
+// const char * status(char * jobID);
+
 /*
+const char * status(char * jobID);
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
 #cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
-void * initFromParams(char * modelName, int threads);
-void loop(void * ctx, char * jobID, char * prompt);
-const char * status(char * jobID);
 */
 import "C"
 
@@ -70,67 +72,10 @@ type Options struct {
 	Profile bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
 	UseAVX  bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
 	UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
-}
-
-type ModelConfig struct {
-	ID   string // short internal name of the model
-	Name string // public name for humans
-	Path string // path to binary file
-
-	Mode    string // prod, debug, ignore, etc
-	Pods    int    // how many pods start
-	Threads int    // how many threads allow per pod
-
-	Predict int
-	Context int
-
-	Temp float32
-
-	TopK int
-	TopP float32
-
-	RepeatPenalty float32
-
-	Mirostat    int
-	MirostatTAU float32
-	MirostatETA float32
-}
-
-// TODO: Logging setup
-type Config struct {
-	ID string
-
-	Host string
-	Port string
-
-	AVX  bool
-	NEON bool
-	CUDA bool
-
-	Default string
-	Models  []ModelConfig
+	Ignore  bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
 }
 
 func main() {
-
-	conf := Config{}
-
-	// --- read config from JSON or YAML if exist
-
-	var feed config.Feeder
-	if _, err := os.Stat("config.json"); err == nil {
-		feed = feeder.Json{Path: "config.json"}
-	} else if _, err := os.Stat("config.yaml"); err == nil {
-		feed = feeder.Yaml{Path: "config.yaml"}
-	}
-
-	if feed != nil {
-		err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
-		if err != nil {
-			Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file!\n\n")
-			os.Exit(0)
-		}
-	}
 
 	// TODO: Allow to overwrite some options from the command-line
 	opts := parseOptions()
@@ -143,9 +88,31 @@ func main() {
 		showLogo()
 	}
 
+	// --- read config from JSON or YAML
+
+	conf := server.Config{}
+	var feed config.Feeder
+
+	if !opts.Ignore {
+
+		if _, err := os.Stat("config.json"); err == nil {
+			feed = feeder.Json{Path: "config.json"}
+		} else if _, err := os.Stat("config.yaml"); err == nil {
+			feed = feeder.Yaml{Path: "config.yaml"}
+		}
+
+		if feed != nil {
+			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
+			if err != nil {
+				Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file!\n\n")
+				os.Exit(0)
+			}
+		}
+	}
+
 	// --- set model parameters from user settings and safe defaults
 
-	params := &llama.ModelParams{
+	server.Params = &llama.ModelParams{
 		Model: opts.Model,
 
 		MaxThreads: opts.Threads,
@@ -170,35 +137,22 @@ func main() {
 		MemoryFP16: true,
 	}
 
-	// https://eli.thegreenplace.net/2019/passing-callbacks-and-pointers-to-cgo/
-	// https://github.com/golang/go/wiki/cgo
-	// https://pkg.go.dev/cmd/cgo
-
-	// --- set up internal REST server
-
-	//server.MaxPods = opts.Pods
-	//server.Host = opts.Host
-	//server.Port = opts.Port
-	//server.Vocab = nil // vocab
-	//server.Model = nil // model
-	server.Params = params
-
 	// -- DEBUG
 
-	// -- 7B
+	// --- 7B ---
 
-	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin"
+	opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin"
 	//opts.Model = "/Users/me/models/7B/ggml-model-q8_0.bin"
 	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin"
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin"
 
 	// https://huggingface.co/eachadea/ggml-vicuna-7b-1.1
-	//opts.Model = "/Users/me/models/7B/ggml-vic7b-q4_0.bin"
+	//opts.Model = "/Users/me/models/7B/ggml-vic7b-q4_0.bin" // censored (with mirostat)
 
 	// https://huggingface.co/eachadea/ggml-wizardlm-7b/tree/main
-	opts.Model = "/Users/me/models/7B/ggml-wizardlm-7b-q8_0.bin" // perfect with mirostat v2
+	//opts.Model = "/Users/me/models/7B/ggml-wizardlm-7b-q8_0.bin" // perfect with mirostat v2 (censored with mirostat)
 
-	// -- 13B
+	// --- 13B ---
 
 	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin"
 	//opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin"
@@ -209,28 +163,29 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/ggml-vic13b-q4_0.bin"
 
 	// https://huggingface.co/execveat/wizardLM-13b-ggml-4bit/tree/main
-	//opts.Model = "/Users/me/models/13B/wizardml-13b-q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/WizardML-Unc-13b-Q5_1.bin" // so so
+	//opts.Model = "/Users/me/models/13B/wizardml-13b-q4_0.bin" // usable but no mirostat
+	//opts.Model = "/Users/me/models/13B/WizardML-Unc-13b-Q5_1.bin" // släktet - so so
 
 	// https://huggingface.co/TheBloke/wizard-vicuna-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/wizard-vicuna-13B.ggml.q4_0.bin" // no way
+	//opts.Model = "/Users/me/models/13B/wizard-vicuna-13B.ggml.q4_0.bin" // no way with topK, try more with mirostat
 
-	// -- 30B
+	// https://huggingface.co/TheBloke/Wizard-Vicuna-13B-Uncensored-GGML/tree/main
 
-	//opts.Model = "/Users/me/models/30B/ggml-model-q4_0.bin"
+	// --- 30B ---
+
+	//opts.Model = "/Users/me/models/30B/ggml-model-q4_0.bin" // so so ?
 	//opts.Model = "/Users/me/models/30B/ggml-model-q8_0.bin"
 	//opts.Model = "/Users/me/models/30B/ggml-model-f16.bin"
 	//opts.Model = "/Users/me/models/30B/llama-fp32.bin"
 
 	// https://huggingface.co/MetaIX/GPT4-X-Alpaca-30B-4bit/tree/main
+	//opts.Model = "/Users/me/models/30B/gpt4-x-alpaca-30b-ggml-q4_1.bin" // maybe with mirostat ?
 
-	server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp, opts.Seed)
-
-	// TODO: replace with ring-buffer
-	//std::vector<llama_token> last_n_tokens(n_ctx);
-	//std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
-
-	//std::vector<llama_token> embd;
+	if conf.ID != "" {
+		server.InitFromConfig(&conf)
+	} else {
+		server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp, opts.Seed)
+	}
 
 	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
 
@@ -244,14 +199,13 @@ func main() {
 
 			fmt.Printf("\n")
 
-			Colorize("\n[magenta]============== queue ==============")
-			for job := range server.Queue {
-				Colorize("\n[light_magenta]%s", job)
-			}
+			//Colorize("\n[magenta]============== queue ==============")
+			//for job := range server.Queue {
+			//	Colorize("\n[light_magenta]%s", job)
+			//}
 
 			Colorize("\n[magenta]============== jobs ==============")
 			for _, job := range server.Jobs {
-				//Colorize("\n[light_magenta]%s | [yellow]%s [light_blue]| %s", job.ID, job.Status, job.Output)
 				Colorize("\n[light_magenta]%s | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s",
 					job.ID,
 					job.Status,
@@ -260,7 +214,7 @@ func main() {
 					C.GoString(C.status(C.CString(job.ID))))
 			}
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(3 * time.Second)
 			iter++
 			if iter > 300 {
 				break

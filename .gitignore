@@ -31,6 +31,7 @@ build-debug/
 build-release/
 build-static/
 build-cublas/
+build-opencl/
 build-no-accel/
 build-sanitize-addr/
 build-sanitize-thread/
@@ -59,6 +60,7 @@ zig-cache/
 
 ppl-*.txt
 qnt-*.txt
+perf-*.txt
 
 examples/jeopardy/results.txt
 

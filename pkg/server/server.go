@@ -1,5 +1,9 @@
 package server
 
+// https://eli.thegreenplace.net/2019/passing-callbacks-and-pointers-to-cgo/
+// https://github.com/golang/go/wiki/cgo
+// https://pkg.go.dev/cmd/cgo
+
 /*
 #include <stdint.h>
 void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed);
@@ -40,6 +44,50 @@ import (
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
 // TODO: UUID vs string for job ID
 // TODO: Unix timestamp vs ISO for date and time
+
+type ModelConfig struct {
+	ID   string // short internal name of the model
+	Name string // public name for humans
+	Path string // path to binary file
+
+	Mode    string // prod, debug, ignore, etc
+	Pods    int    // how many pods start
+	Threads int    // how many threads allow per pod
+
+	Predict int
+	Context int
+
+	Temp float32
+
+	TopK int
+	TopP float32
+
+	RepeatPenalty float32
+
+	Mirostat    int
+	MirostatTAU float32
+	MirostatETA float32
+}
+
+// TODO: Logging setup
+type Config struct {
+	ID string
+
+	Host string
+	Port string
+
+	AVX  bool
+	NEON bool
+	CUDA bool
+
+	Default string
+	Models  []ModelConfig
+}
+
+type Pod struct {
+	Model   *ModelConfig   // model params
+	Context unsafe.Pointer // llama.cpp context
+}
 
 type Job struct {
 	ID     string
@@ -84,11 +132,14 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	IdlePods []int            // Indexes of idle pods
-	Contexts []unsafe.Pointer // Pointers to llama.cpp contexts
+	Pods     []*Pod
+	IdlePods []*Pod // Indexes of idle pods
+	//Contexts []unsafe.Pointer // Pointers to llama.cpp contexts
 )
 
 func init() {
+	Pods = make([]*Pod, 0)
+	IdlePods = make([]*Pod, 0)
 	Jobs = make(map[string]*Job)
 	Queue = make(map[string]struct{})
 }
@@ -103,8 +154,8 @@ func Init(host string, port string, pods int, threads int, model string, context
 	MaxPods = int64(pods)
 	RunningPods = 0
 	Params.CtxSize = uint32(context)
-	IdlePods = make([]int, pods)
-	Contexts = make([]unsafe.Pointer, pods)
+	//IdlePods = make([]int, pods)
+	//Contexts = make([]unsafe.Pointer, pods)
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -114,9 +165,78 @@ func Init(host string, port string, pods int, threads int, model string, context
 			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", i, pods)
 			os.Exit(0)
 		}
-		IdlePods[i] = i
-		Contexts[i] = ctx
+		pod := &Pod{
+			Context: ctx,
+			Model: &ModelConfig{
+				Path:    model,
+				Pods:    1,
+				Threads: threads,
+				Context: context,
+				Predict: predict,
+				Temp:    temp,
+				//Seed:    seed,
+			},
+		}
+		Pods = append(Pods, pod)
+		//IdlePods[i] = i
+		IdlePods = append(IdlePods, pod)
+		//Contexts[i] = ctx
 	}
+}
+
+// Init allocates contexts for independent pods
+// TODO: Allow to load and work with different models at the same time
+func InitFromConfig(conf *Config) {
+
+	ServerMode = CPPMode
+	Host = conf.Host
+	Port = conf.Port
+
+	for _, model := range conf.Models {
+		ctx := C.initFromParams(
+			C.CString(model.Path),
+			C.int(model.Threads),
+			C.int(model.Context),
+			C.int(model.Predict),
+			C.float(model.Temp),
+			C.int32_t( /*seed*/ -1))
+		if ctx == nil {
+			Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model %s\n\n", model.ID)
+			os.Exit(0)
+		}
+		pod := &Pod{
+			Context: ctx,
+			Model: &ModelConfig{
+				Path:    model.Path,
+				Pods:    1,
+				Threads: model.Threads,
+				Context: model.Context,
+				Predict: model.Predict,
+				Temp:    model.Temp,
+				//Seed:    seed,
+			},
+		}
+		Pods = append(Pods, pod)
+		IdlePods = append(IdlePods, pod)
+	}
+
+	//MaxPods = int64(pods)
+	RunningPods = 0
+	//Params.CtxSize = uint32(context)
+	//IdlePods = make([]int, pods)
+	//Contexts = make([]unsafe.Pointer, pods)
+
+	// --- Starting pods incorporating isolated C++ context and runtime
+
+	//for i := 0; i < pods; i++ {
+	//	ctx := C.initFromParams(C.CString(model), C.int(threads), C.int(context), C.int(predict), C.float(temp), C.int32_t(seed))
+	//	if ctx == nil {
+	//		Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", i, pods)
+	//		os.Exit(0)
+	//	}
+	//	IdlePods[i] = i
+	//	Contexts[i] = ctx
+	//}
 }
 
 // --- init and run Fiber server
@@ -168,7 +288,7 @@ func Engine() {
 
 // --- worker doing the "job" of transforming boring prompt into magic output
 
-func Do(jobID string, pod int) {
+func Do(jobID string, pod /*int*/ *Pod) {
 
 	defer atomic.AddInt64(&RunningPods, -1)
 	defer runtime.GC()
@@ -185,7 +305,8 @@ func Do(jobID string, pod int) {
 
 	if ServerMode == CPPMode { // --- use llama.cpp backend
 
-		tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
+		//tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
+		tokenCount := C.loop(pod.Context, C.CString(jobID), C.CString(prompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
