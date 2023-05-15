@@ -17,6 +17,8 @@ import (
 	"container/ring"
 	"fmt"
 	"os"
+	"os/user"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -52,7 +54,7 @@ type ModelConfig struct {
 
 	Mode    string // prod, debug, ignore, etc
 	Pods    int    // how many pods start
-	Threads int    // how many threads allow per pod
+	Threads int64  // how many threads allow per pod (int64 for atomic manipulations)
 
 	Prefix string // prompt prefix for instruct-type models
 	Suffix string // prompt suffix
@@ -74,10 +76,12 @@ type ModelConfig struct {
 
 // TODO: Logging setup
 type Config struct {
-	ID string
+	ID string // server key, should be unique within cluster
 
 	Host string
 	Port string
+
+	Threads int // max threads (within all active pods) allowed to do compute in parallel
 
 	AVX  bool
 	NEON bool
@@ -104,7 +108,7 @@ type Job struct {
 	FinishedAt int64
 
 	Seed  int64  // TODO: Store seed
-	Model string // TODO: Store model name
+	Model string // TODO: Store model ID, "" for default should be then replaced
 
 	TokenCount int64 // total tokens processed (icnluding prompt)
 	TokenEval  int64 // timing per token (prompt + output), ms
@@ -127,8 +131,13 @@ var (
 	Ctx    *llama.Context
 	Params *llama.ModelParams
 
-	MaxPods     int64
-	RunningPods int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
+	DefaultModel string // it's empty string "" for simple CLI mode and some unique key when working with configs
+
+	// NB! All vars below are int64 to be used as atomic counters
+	MaxThreads     int64 // used for PROD mode // TODO: detect hardware abilities automatically
+	RunningThreads int64
+	MaxPods        int64 // used for simple mode when all settings are set from CLI
+	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
 
 	mu sync.Mutex // guards any Jobs change
 
@@ -136,16 +145,17 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	Pods     []*Pod
-	IdlePods []*Pod // Indexes of idle pods
+	// All pods splitted on blocks by model ID keys
+	Pods     map[string][]*Pod
+	IdlePods map[string][]*Pod // Indexes of idle pods
 	//Contexts []unsafe.Pointer // Pointers to llama.cpp contexts
 )
 
 func init() {
-	Pods = make([]*Pod, 0)
-	IdlePods = make([]*Pod, 0)
-	Jobs = make(map[string]*Job)
-	Queue = make(map[string]struct{})
+	Pods = make(map[string][]*Pod, 64)      // 64 is just some commnon sense default
+	IdlePods = make(map[string][]*Pod, 64)  // same here
+	Jobs = make(map[string]*Job, 1024)      // 1024 is like some initial space to grow
+	Queue = make(map[string]struct{}, 1024) // same here
 }
 
 // Init allocates contexts for independent pods
@@ -174,16 +184,24 @@ func Init(host string, port string, pods int, threads int, model string, context
 			Model: &ModelConfig{
 				Path:    model,
 				Pods:    1,
-				Threads: threads,
+				Threads: int64(threads),
 				Context: context,
 				Predict: predict,
 				Temp:    temp,
 				//Seed:    seed,
 			},
 		}
-		Pods = append(Pods, pod)
+
+		// NB! We'll use empty string "" as key for default model
+		if Pods[""] == nil {
+			Pods[""] = make([]*Pod, pods)
+		}
+		Pods[""] = append(Pods[""], pod)
 		//IdlePods[i] = i
-		IdlePods = append(IdlePods, pod)
+		if IdlePods[""] == nil {
+			IdlePods[""] = make([]*Pod, pods)
+		}
+		IdlePods[""] = append(IdlePods[""], pod)
 		//Contexts[i] = ctx
 	}
 }
@@ -195,22 +213,39 @@ func InitFromConfig(conf *Config) {
 	ServerMode = CPPMode
 	Host = conf.Host
 	Port = conf.Port
+	MaxThreads = int64(conf.Threads)
+	DefaultModel = conf.Default
 
 	for _, model := range conf.Models {
+
+		// --- Allow user home dir resolve with tilde ~
+		// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
+
+		path := model.Path
+		if strings.HasPrefix(path, "~/") {
+			usr, _ := user.Current()
+			dir := usr.HomeDir
+			path = filepath.Join(dir, path[2:])
+		}
+
+		// TODO: catch panic from CGO if file not found
 		ctx := C.initFromParams(
-			C.CString(model.Path),
+			C.CString(path),
 			C.int(model.Threads),
 			C.int(model.Context),
 			C.int(model.Predict),
 			C.float(model.Temp),
 			C.int32_t( /*seed*/ -1))
+
 		if ctx == nil {
 			Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model %s\n\n", model.ID)
 			os.Exit(0)
 		}
+
 		pod := &Pod{
 			Context: ctx,
 			Model: &ModelConfig{
+				ID:      model.ID,
 				Path:    model.Path,
 				Pods:    1,
 				Threads: model.Threads,
@@ -220,12 +255,21 @@ func InitFromConfig(conf *Config) {
 				//Seed:    seed,
 			},
 		}
-		Pods = append(Pods, pod)
-		IdlePods = append(IdlePods, pod)
+		//Pods = append(Pods, pod)
+		//IdlePods = append(IdlePods, pod)
+
+		if Pods[model.ID] == nil {
+			Pods[model.ID] = make([]*Pod, model.Pods)
+			IdlePods[model.ID] = make([]*Pod, model.Pods)
+		}
+
+		Pods[model.ID] = append(Pods[model.ID], pod)
+		IdlePods[model.ID] = append(IdlePods[model.ID], pod)
 	}
 
 	//MaxPods = int64(pods)
-	RunningPods = 0
+	RunningPods = 0    // not needed
+	RunningThreads = 0 // not needed
 	//Params.CtxSize = uint32(context)
 	//IdlePods = make([]int, pods)
 	//Contexts = make([]unsafe.Pointer, pods)
@@ -266,22 +310,57 @@ func Engine() {
 
 	for {
 
+		// TODO: different levels of priority queues here
 		for jobID := range Queue {
 
+			// TODO: MaxThreads instead of MaxPods
 			// FIXME: Move to outer loop?
-			if RunningPods >= MaxPods {
+
+			// simple mode with settings from CLI
+			if MaxThreads == 0 && RunningPods >= MaxPods {
 				continue
 			}
 
+			// production mode with settings from config file
+			// TODO: >= MaxThreads + pod.Model.Threads
+			if MaxThreads > 0 && RunningThreads >= MaxThreads {
+				continue
+			}
+
+			// TODO: Better to store model name right there with JobID to avoid locking
 			mu.Lock()
-			Jobs[jobID].Status = "processing"
+			model := Jobs[jobID].Model
+			mu.Unlock()
+
+			if MaxThreads > 0 && len(IdlePods[model]) == 0 {
+				continue
+			}
+
+			// -- move job from waiting queue to processing and assign it pod from idle pool
+			// TODO: Use different mutexes for Jobs map, Pods map and maybe for atomic counters
+
+			mu.Lock()
 			delete(Queue, jobID)
+			Jobs[jobID].Status = "processing"
+			//if model == "" {
+			//	model = DefaultModel
+			//	Jobs[jobID].Model = model
+			//}
+			pod := IdlePods[model][len(IdlePods[model])-1]
+			if pod == nil {
+				// TODO: Something really wrong going here! We need to fix this ASAP
+				// TODO: Log this case!
+				mu.Unlock()
+				continue
+			}
+			IdlePods[model] = IdlePods[model][:len(IdlePods[model])-1]
 			mu.Unlock()
 
 			// FIXME: Check RunningPods one more time?
+			// TODO: Is it make sense to use atomic over just mutex here?
 			atomic.AddInt64(&RunningPods, 1)
-			pod := IdlePods[len(IdlePods)-1]
-			IdlePods = IdlePods[:len(IdlePods)-1]
+			atomic.AddInt64(&RunningThreads, pod.Model.Threads /*int64(Pods[model][len(IdlePods[model])-1].Model.Threads)*/) // TODO: looks too complex
+
 			go Do(jobID, pod)
 		}
 
@@ -295,6 +374,7 @@ func Engine() {
 func Do(jobID string, pod /*int*/ *Pod) {
 
 	defer atomic.AddInt64(&RunningPods, -1)
+	defer atomic.AddInt64(&RunningPods, -pod.Model.Threads /*int64(-Pods[model][len(IdlePods[model])-1].Model.Threads)*/) // TODO: Simplify
 	defer runtime.GC()
 
 	// TODO: Proper logging
@@ -304,7 +384,9 @@ func Do(jobID string, pod /*int*/ *Pod) {
 	Jobs[jobID].StartedAt = time.Now().Unix()
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
 	// TODO: Play with prompt without leading space
-	prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
+	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
+	// TODO: Allow setting prefix/suffix from CLI
+	prompt := " " + pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix // add a space to match LLaMA tokenizer behavior
 	mu.Unlock()
 
 	if ServerMode == CPPMode { // --- use llama.cpp backend
@@ -321,7 +403,7 @@ func Do(jobID string, pod /*int*/ *Pod) {
 		Jobs[jobID].Status = "finished"
 		Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
-		IdlePods = append(IdlePods, pod) // return pod to the pool
+		IdlePods[Jobs[jobID].Model] = append(IdlePods[Jobs[jobID].Model], pod) // return pod to the pool
 		mu.Unlock()
 
 	} else { // --- use llama.go framework
@@ -488,7 +570,7 @@ func Do(jobID string, pod /*int*/ *Pod) {
 
 // --- Place new job into queue
 
-func PlaceJob(jobID, prompt string) {
+func PlaceJob(jobID, model, session, prompt string) {
 
 	timing := time.Now().Unix()
 
@@ -496,6 +578,8 @@ func PlaceJob(jobID, prompt string) {
 
 	Jobs[jobID] = &Job{
 		ID:        jobID,
+		Model:     model,
+		Session:   session,
 		Prompt:    prompt,
 		Status:    "queued",
 		CreatedAt: timing,
@@ -516,8 +600,10 @@ func PlaceJob(jobID, prompt string) {
 func NewJob(ctx *fiber.Ctx) error {
 
 	payload := struct {
-		ID     string `json:"id"`
-		Prompt string `json:"prompt"`
+		ID      string `json:"id"`
+		Session string `json:"session"`
+		Model   string `json:"model"`
+		Prompt  string `json:"prompt"`
 	}{}
 
 	if err := ctx.BodyParser(&payload); err != nil {
@@ -527,36 +613,51 @@ func NewJob(ctx *fiber.Ctx) error {
 	if _, err := uuid.Parse(payload.ID); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Wrong UUID4 id for request!")
+			SendString("Wrong requerst id, please use UUIDv4 format!")
 	}
 
+	mu.Lock()
 	if _, ok := Jobs[payload.ID]; ok {
+		mu.Unlock()
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Duplicated ID for the same request?")
+			SendString("Request with the same id is already processing!")
 	}
+	mu.Unlock()
 
-	// TODO: Proper chack for max chars in request
-	if len(payload.Prompt) >= int(Params.CtxSize) {
+	// TODO: Tokenize and check for max tokens properly
+	if len(payload.Prompt) >= int(Params.CtxSize)*3 {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString(fmt.Sprintf("Prompt length %d is more than allowed %d chars!", len(payload.Prompt), Params.CtxSize))
+			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", Params.CtxSize))
 	}
 
-	// TODO: Tokenize and check for max tokens
+	if payload.Model != "" {
+		if _, ok := Pods[payload.Model]; !ok {
+			return ctx.
+				Status(fiber.StatusBadRequest).
+				SendString(fmt.Sprintf("Model with name '%s' is not found!", payload.Model))
+		}
+	} else {
+		payload.Model = DefaultModel
+	}
 
-	PlaceJob(payload.ID, payload.Prompt)
+	PlaceJob(payload.ID, payload.Model, payload.Session, payload.Prompt)
 
-	// TODO: Guard with mutex
+	// TODO: Guard with mutex Jobs[payload.ID] access
+	// TODO: Return [model] and [session] if not empty
 	return ctx.JSON(fiber.Map{
-		"id":      payload.ID,
-		"prompt":  payload.Prompt,
-		"created": Jobs[payload.ID].CreatedAt,
+		"id": payload.ID,
+		//"session": payload.Session,
+		//"model":   payload.Model,
+		"prompt": payload.Prompt,
+		//"created": Jobs[payload.ID].CreatedAt,
 		//"started":  Jobs[payload.ID].StartedAt,
 		//"finished": Jobs[payload.ID].FinishedAt,
 		//"model":    "model-xx", // TODO: Real model ID
 		//"source":   "api",      // TODO: Enum for sources
-		"status": Jobs[payload.ID].Status,
+		//"status": Jobs[payload.ID].Status,
+		"status": "queued",
 	})
 }
 

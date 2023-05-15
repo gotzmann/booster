@@ -52,7 +52,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.8.0"
+const VERSION = "0.9.0"
 
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -142,7 +142,7 @@ func main() {
 	// --- 7B ---
 
 	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // v2
-	opts.Model = "/Users/me/models/7B/llama-7b-ggml-v2-q8_0.bin" // v2
+	//opts.Model = "/Users/me/models/7B/llama-7b-ggml-v2-q8_0.bin" // v2
 	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin"
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin"
 
@@ -155,7 +155,7 @@ func main() {
 	// v2
 
 	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored
+	opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored
 	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_0.bin"
 	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_1.bin"
 	//opts.Model = "/Users/me/models/7B/wizardLM-7b-uncensored.ggml.q4_0.bin"
@@ -191,7 +191,7 @@ func main() {
 
 	// https://huggingface.co/TheBloke/Wizard-Vicuna-13B-Uncensored-GGML/tree/main
 	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // goood with mirostat! worse with topK! and use ###  prompt
-	opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q5_1.bin" // good with mirostat and topK too! use ###
+	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q5_1.bin" // good with mirostat and topK too! use ###
 
 	// --- 30B ---
 
@@ -234,6 +234,7 @@ func main() {
 
 	*/
 
+	// if config was read from file and thus has meaningful settings, go init from there. otherwise use CLI settings
 	if conf.ID != "" {
 		server.InitFromConfig(&conf)
 	} else {
@@ -259,8 +260,9 @@ func main() {
 
 			Colorize("\n[magenta]============== jobs ==============")
 			for _, job := range server.Jobs {
-				Colorize("\n[light_magenta]%s | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s",
+				Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s",
 					job.ID,
+					job.Model,
 					job.Status,
 					job.TokenCount,
 					job.TokenEval,
