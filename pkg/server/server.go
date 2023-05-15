@@ -54,8 +54,11 @@ type ModelConfig struct {
 	Pods    int    // how many pods start
 	Threads int    // how many threads allow per pod
 
-	Predict int
+	Prefix string // prompt prefix for instruct-type models
+	Suffix string // prompt suffix
+
 	Context int
+	Predict int
 
 	Temp float32
 
@@ -90,10 +93,11 @@ type Pod struct {
 }
 
 type Job struct {
-	ID     string
-	Status string
-	Prompt string
-	Output string
+	ID      string
+	Session string // ID of continuous user session in chat mode
+	Status  string
+	Prompt  string
+	Output  string
 
 	CreatedAt  int64
 	StartedAt  int64

@@ -141,8 +141,8 @@ func main() {
 
 	// --- 7B ---
 
-	opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin"
-	//opts.Model = "/Users/me/models/7B/ggml-model-q8_0.bin"
+	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // v2
+	opts.Model = "/Users/me/models/7B/llama-7b-ggml-v2-q8_0.bin" // v2
 	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin"
 	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin"
 
@@ -152,10 +152,21 @@ func main() {
 	// https://huggingface.co/eachadea/ggml-wizardlm-7b/tree/main
 	//opts.Model = "/Users/me/models/7B/ggml-wizardlm-7b-q8_0.bin" // perfect with mirostat v2 (censored with mirostat)
 
+	// v2
+
+	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored
+	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_0.bin"
+	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_1.bin"
+	//opts.Model = "/Users/me/models/7B/wizardLM-7b-uncensored.ggml.q4_0.bin"
+
+	// https://huggingface.co/TheBloke/koala-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/koala-7B.ggml.q4_0.bin" // v2 - bad?
+
 	// --- 13B ---
 
-	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/ggml-model-q8_0.bin"
+	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // v2
+	//opts.Model = "/Users/me/models/13B/llama-13b-ggml-v2-q8_0.bin" // v2
 	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin"
 	//opts.Model = "/Users/me/models/13B/llama-fp32.bin"
 
@@ -170,16 +181,58 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/wizard-vicuna-13B.ggml.q4_0.bin" // no way with topK, try more with mirostat
 
 	// https://huggingface.co/TheBloke/Wizard-Vicuna-13B-Uncensored-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // v2
+	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q8_0.bin"
+
+	// v2
+
+	// https://huggingface.co/TheBloke/gpt4-x-vicuna-13B-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/gpt4-x-vicuna-13B.ggml.q4_0.bin" // good, great with ### Instruction: { prompt } ### Response:
+
+	// https://huggingface.co/TheBloke/Wizard-Vicuna-13B-Uncensored-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // goood with mirostat! worse with topK! and use ###  prompt
+	opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q5_1.bin" // good with mirostat and topK too! use ###
 
 	// --- 30B ---
 
-	//opts.Model = "/Users/me/models/30B/ggml-model-q4_0.bin" // so so ?
+	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q4_0.bin" // v2 - bad
+	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q8_0.bin" // v2 - bad
 	//opts.Model = "/Users/me/models/30B/ggml-model-q8_0.bin"
 	//opts.Model = "/Users/me/models/30B/ggml-model-f16.bin"
 	//opts.Model = "/Users/me/models/30B/llama-fp32.bin"
 
 	// https://huggingface.co/MetaIX/GPT4-X-Alpaca-30B-4bit/tree/main
 	//opts.Model = "/Users/me/models/30B/gpt4-x-alpaca-30b-ggml-q4_1.bin" // maybe with mirostat ?
+
+	// -- v2
+
+	// https://huggingface.co/TheBloke/OpenAssistant-SFT-7-Llama-30B-GGML/tree/main
+	//opts.Model = "/Users/me/models/30B/OpenAssistant-SFT-7-Llama-30B.ggml.q4_0.bin" // broken?
+
+	/*
+
+		TODO: If there no file on path, CGO panics
+
+			libc++abi: terminating due to uncaught exception of type std::runtime_error: failed to open /Users/me/models/30B/llama-ggml-v2-q4_0.bin: No such file or directory
+		SIGABRT: abort
+		PC=0x19b340724 m=0 sigcode=0
+		signal arrived during cgo execution
+
+		goroutine 1 [syscall]:
+		runtime.cgocall(0x104d50d50, 0x14000147d58)
+			/opt/homebrew/Cellar/go/1.20.4/libexec/src/runtime/cgocall.go:157 +0x54 fp=0x14000147d20 sp=0x14000147ce0 pc=0x104935d74
+		github.com/gotzmann/llamazoo/pkg/server._Cfunc_initFromParams(0x6000031b0000, 0x6, 0x400, 0x100, 0x3f4ccccd, 0x6458fe8c)
+			_cgo_gotypes.go:89 +0x38 fp=0x14000147d50 sp=0x14000147d20 pc=0x104d4b688
+		github.com/gotzmann/llamazoo/pkg/server.Init({0x104d96b11?, 0x10526c2c0?}, {0x104d94af8?, 0x1051b8f08?}, 0x1, 0x6, {0x104daa382, 0x2b}, 0x400, 0x100, ...)
+			/Users/me/git/llamazoo/pkg/server/server.go:163 +0x180 fp=0x14000147df0 sp=0x14000147d50 pc=0x104d4bbf0
+		main.main()
+			/Users/me/git/llamazoo/main.go:189 +0x304 fp=0x14000147f70 sp=0x14000147df0 pc=0x104d4fa54
+		runtime.main()
+			/opt/homebrew/Cellar/go/1.20.4/libexec/src/runtime/proc.go:250 +0x248 fp=0x14000147fd0 sp=0x14000147f70 pc=0x10496a2c8
+		runtime.goexit()
+			/opt/homebrew/Cellar/go/1.20.4/libexec/src/runtime/asm_arm64.s:1172 +0x4 fp=0x14000147fd0 sp=0x14000147fd0 pc=0x10499cea4
+
+	*/
 
 	if conf.ID != "" {
 		server.InitFromConfig(&conf)
@@ -217,6 +270,7 @@ func main() {
 			time.Sleep(3 * time.Second)
 			iter++
 			if iter > 300 {
+				Colorize("\n[light_magenta][STOP][yellow] Time limit 300 * 3 seconds is over!")
 				break
 			}
 

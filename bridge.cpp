@@ -85,7 +85,7 @@ struct gpt_params {
     float   frequency_penalty = 0.0; // 0.0 = disabled
     float   presence_penalty  = 0.0; // 0.0 = disabled
 
-    int     mirostat          = 2;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1; // FIXME 5.0 // target entropy
     float   mirostat_eta      = 0.1; // FIXME 0.1 //learning rate
 
