@@ -228,6 +228,8 @@ func InitFromConfig(conf *Config) {
 			path = filepath.Join(dir, path[2:])
 		}
 
+		// FIXME: For pod = 0 .. N
+
 		// TODO: catch panic from CGO if file not found
 		ctx := C.initFromParams(
 			C.CString(path),
@@ -245,13 +247,23 @@ func InitFromConfig(conf *Config) {
 		pod := &Pod{
 			Context: ctx,
 			Model: &ModelConfig{
-				ID:      model.ID,
-				Path:    model.Path,
-				Pods:    1,
-				Threads: model.Threads,
-				Context: model.Context,
-				Predict: model.Predict,
-				Temp:    model.Temp,
+				ID:            model.ID,
+				Name:          model.Name,
+				Path:          model.Path,
+				Mode:          model.Mode,
+				Pods:          1,
+				Threads:       model.Threads,
+				Prefix:        model.Prefix,
+				Suffix:        model.Suffix,
+				Context:       model.Context,
+				Predict:       model.Predict,
+				Temp:          model.Temp,
+				TopK:          model.TopK,
+				TopP:          model.TopP,
+				RepeatPenalty: model.RepeatPenalty,
+				Mirostat:      model.Mirostat,
+				MirostatTAU:   model.MirostatTAU,
+				MirostatETA:   model.MirostatETA,
 				//Seed:    seed,
 			},
 		}
@@ -259,8 +271,11 @@ func InitFromConfig(conf *Config) {
 		//IdlePods = append(IdlePods, pod)
 
 		if Pods[model.ID] == nil {
-			Pods[model.ID] = make([]*Pod, model.Pods)
-			IdlePods[model.ID] = make([]*Pod, model.Pods)
+			Pods[model.ID] = make([]*Pod, 0, model.Pods)
+			IdlePods[model.ID] = make([]*Pod, 0, model.Pods)
+		} else {
+			Colorize("\n[magenta][ ERROR ][white] Model ID '%s' is not unique within config!\n\n", model.ID)
+			os.Exit(0)
 		}
 
 		Pods[model.ID] = append(Pods[model.ID], pod)
@@ -317,7 +332,7 @@ func Engine() {
 			// FIXME: Move to outer loop?
 
 			// simple mode with settings from CLI
-			if MaxThreads == 0 && RunningPods >= MaxPods {
+			if MaxPods > 0 && RunningPods >= MaxPods {
 				continue
 			}
 
@@ -351,6 +366,7 @@ func Engine() {
 				// TODO: Something really wrong going here! We need to fix this ASAP
 				// TODO: Log this case!
 				mu.Unlock()
+				Colorize("\n[magenta][ ERROR ][white] Failed to get idle pod for '%s' model!\n\n", model)
 				continue
 			}
 			IdlePods[model] = IdlePods[model][:len(IdlePods[model])-1]
@@ -359,7 +375,7 @@ func Engine() {
 			// FIXME: Check RunningPods one more time?
 			// TODO: Is it make sense to use atomic over just mutex here?
 			atomic.AddInt64(&RunningPods, 1)
-			atomic.AddInt64(&RunningThreads, pod.Model.Threads /*int64(Pods[model][len(IdlePods[model])-1].Model.Threads)*/) // TODO: looks too complex
+			atomic.AddInt64(&RunningThreads, pod.Model.Threads)
 
 			go Do(jobID, pod)
 		}
@@ -371,10 +387,10 @@ func Engine() {
 
 // --- worker doing the "job" of transforming boring prompt into magic output
 
-func Do(jobID string, pod /*int*/ *Pod) {
+func Do(jobID string, pod *Pod) {
 
 	defer atomic.AddInt64(&RunningPods, -1)
-	defer atomic.AddInt64(&RunningPods, -pod.Model.Threads /*int64(-Pods[model][len(IdlePods[model])-1].Model.Threads)*/) // TODO: Simplify
+	defer atomic.AddInt64(&RunningThreads, -pod.Model.Threads)
 	defer runtime.GC()
 
 	// TODO: Proper logging
@@ -386,6 +402,7 @@ func Do(jobID string, pod /*int*/ *Pod) {
 	// TODO: Play with prompt without leading space
 	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
 	// TODO: Allow setting prefix/suffix from CLI
+	// TODO: Implement translation for prompt elsewhere
 	prompt := " " + pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix // add a space to match LLaMA tokenizer behavior
 	mu.Unlock()
 
@@ -397,13 +414,14 @@ func Do(jobID string, pod /*int*/ *Pod) {
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
 
+		// TODO: Move some slow ops outside of critical section
 		mu.Lock()
 		Jobs[jobID].FinishedAt = time.Now().Unix()
 		Jobs[jobID].Output = strings.Trim(result, "\n ")
 		Jobs[jobID].Status = "finished"
 		Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
-		IdlePods[Jobs[jobID].Model] = append(IdlePods[Jobs[jobID].Model], pod) // return pod to the pool
+		IdlePods[pod.Model.ID] = append(IdlePods[pod.Model.ID], pod) // return pod to the pool
 		mu.Unlock()
 
 	} else { // --- use llama.go framework
@@ -530,6 +548,7 @@ func Do(jobID string, pod /*int*/ *Pod) {
 
 		mu.Lock()
 		Jobs[jobID].FinishedAt = time.Now().Unix()
+		// FIXME: Clean output from prefix/suffix for instruct models!
 		Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
 		Jobs[jobID].Status = "finished"
 		mu.Unlock()
