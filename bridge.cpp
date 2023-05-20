@@ -71,13 +71,13 @@ struct gpt_params {
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
-    float   temp              = 0.4; // FIXME 0.80f; // 1.0 = disabled
+    float   temp              = 0.5; // FIXME 0.80f; // 1.0 = disabled
 
     int32_t top_k             = 20;   // FIXME 40; // <= 0 to use vocab size
-    float   top_p             = 0.92; // FIXME 0.95f; // 1.0 = disabled
+    float   top_p             = 0.95; // FIXME 0.95f; // 1.0 = disabled
 
-    float   tfs_z             = 1.00; //1.0; // 1.0 = disabled
-    float   typical_p         = 1.00; //1.0; // 1.0 = disabled
+    float   tfs_z             = 1.0; //1.0; // 1.0 = disabled
+    float   typical_p         = 1.0; //1.0; // 1.0 = disabled
 
     float   repeat_penalty    = 1.1; // FIXME 1.10f; // 1.0 = disabled
     int32_t repeat_last_n     = -1; // 128; // -1; // 64; // FIXME // last n tokens to penalize (0 = disable penalty, -1 = context size)

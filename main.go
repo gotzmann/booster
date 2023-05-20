@@ -155,13 +155,16 @@ func main() {
 	// v2
 
 	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
-	opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored
+	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored | As an AI language model...
 	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_0.bin"
-	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_1.bin"
+	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_1.bin" //
 	//opts.Model = "/Users/me/models/7B/wizardLM-7b-uncensored.ggml.q4_0.bin"
 
 	// https://huggingface.co/TheBloke/koala-7B-GGML/tree/main
 	//opts.Model = "/Users/me/models/7B/koala-7B.ggml.q4_0.bin" // v2 - bad?
+
+	// https://huggingface.co/LLukas22/mpt-7b-ggml
+	opts.Model = "/Users/me/models/7B/mpt-7b-q4_0.bin"
 
 	// --- 13B ---
 
@@ -193,6 +196,19 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // goood with mirostat! worse with topK! and use ###  prompt
 	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q5_1.bin" // good with mirostat and topK too! use ###
 
+	// https://www.reddit.com/r/LocalLLaMA/comments/13igxvs/new_unfiltered_13b_openaccess_ai_collectives/
+	// https://huggingface.co/TheBloke/wizard-mega-13B-GGML/resolve/main/wizard-mega-13B.ggml.q4_0.bin
+	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggml.q4_0.bin" // gooood! with Russian too | instruct and chat
+	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggml.q5_1.bin"
+
+	// https://huggingface.co/TheBloke/WizardLM-13B-Uncensored-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/wizardLM-13B-Uncensored.ggml.q4_0.bin" // släktet | 100% instruct model | not so good with Russian?
+
+	// https://huggingface.co/TheBloke/Manticore-13B-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q4_0.bin" // use [ ### Instruction: ... ### Response: ] format without newlines
+	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q5_1.bin" // use [ ### Instruction: ... ### Assistant: ] without newlines will work too
+	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q8_0.bin"
+
 	// --- 30B ---
 
 	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q4_0.bin" // v2 - bad
@@ -207,7 +223,7 @@ func main() {
 	// -- v2
 
 	// https://huggingface.co/TheBloke/OpenAssistant-SFT-7-Llama-30B-GGML/tree/main
-	//opts.Model = "/Users/me/models/30B/OpenAssistant-SFT-7-Llama-30B.ggml.q4_0.bin" // broken?
+	//opts.Model = "/Users/me/models/30B/OpenAssistant-SFT-7-Llama-30B.ggml.q4_0.bin" // broken? not, bad bad
 
 	/*
 
