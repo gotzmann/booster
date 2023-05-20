@@ -139,7 +139,7 @@ func main() {
 
 	// -- DEBUG
 
-	// --- 7B ---
+	// ==== 7B ====
 
 	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // v2
 	//opts.Model = "/Users/me/models/7B/llama-7b-ggml-v2-q8_0.bin" // v2
@@ -152,7 +152,7 @@ func main() {
 	// https://huggingface.co/eachadea/ggml-wizardlm-7b/tree/main
 	//opts.Model = "/Users/me/models/7B/ggml-wizardlm-7b-q8_0.bin" // perfect with mirostat v2 (censored with mirostat)
 
-	// v2
+	// -- v2
 
 	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
 	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored | As an AI language model...
@@ -163,10 +163,12 @@ func main() {
 	// https://huggingface.co/TheBloke/koala-7B-GGML/tree/main
 	//opts.Model = "/Users/me/models/7B/koala-7B.ggml.q4_0.bin" // v2 - bad?
 
-	// https://huggingface.co/LLukas22/mpt-7b-ggml
-	opts.Model = "/Users/me/models/7B/mpt-7b-q4_0.bin"
+	// -- v3
 
-	// --- 13B ---
+	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/"
+
+	// ==== 13B ====
 
 	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // v2
 	//opts.Model = "/Users/me/models/13B/llama-13b-ggml-v2-q8_0.bin" // v2
@@ -187,7 +189,7 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // v2
 	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q8_0.bin"
 
-	// v2
+	// -- v2
 
 	// https://huggingface.co/TheBloke/gpt4-x-vicuna-13B-GGML/tree/main
 	//opts.Model = "/Users/me/models/13B/gpt4-x-vicuna-13B.ggml.q4_0.bin" // good, great with ### Instruction: { prompt } ### Response:
@@ -209,7 +211,12 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q5_1.bin" // use [ ### Instruction: ... ### Assistant: ] without newlines will work too
 	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q8_0.bin"
 
-	// --- 30B ---
+	// -- v3
+
+	// https://huggingface.co/TheBloke/wizard-mega-13B-GGML/tree/main
+	opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggmlv3.q4_0.bin"
+
+	// ==== 30B ====
 
 	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q4_0.bin" // v2 - bad
 	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q8_0.bin" // v2 - bad
