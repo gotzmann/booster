@@ -45,6 +45,7 @@ enum e_model {
     MODEL_65B,
 };
 
+
 static const size_t MB = 1024*1024;
 
 // computed for n_ctx == 2048
@@ -110,7 +111,7 @@ struct llama_hparams {
     enum llama_ftype ftype = LLAMA_FTYPE_MOSTLY_F16;
 
     bool operator!=(const llama_hparams & other) const {
-        return memcmp(this, &other, sizeof(llama_hparams));
+        return static_cast<bool>(memcmp(this, &other, sizeof(llama_hparams)));
     }
 };
 
@@ -406,6 +407,7 @@ enum llama_file_version {
     LLAMA_FILE_VERSION_GGMF_V1, // added version field and scores in vocab
     LLAMA_FILE_VERSION_GGJT_V1, // added padding
     LLAMA_FILE_VERSION_GGJT_V2, // changed quantization format
+    LLAMA_FILE_VERSION_GGJT_V3, // changed Q4 and Q8 quantization format
 };
 
 struct llama_file_loader {
@@ -438,6 +440,8 @@ struct llama_file_loader {
             file_version = LLAMA_FILE_VERSION_GGJT_V1;
         } else if (magic == 'ggjt' && version == 2) {
             file_version = LLAMA_FILE_VERSION_GGJT_V2;
+        } else if (magic == 'ggjt' && version == 3) {
+            file_version = LLAMA_FILE_VERSION_GGJT_V3;
         } else {
             throw format("unknown (magic, version) combination: %08x, %08x; is this really a GGML file?",
                          magic, version);
@@ -499,7 +503,7 @@ struct llama_file_loader {
 
             if (file_version >= LLAMA_FILE_VERSION_GGJT_V1) {
                 // skip to the next multiple of 32 bytes
-                file.seek(-file.tell() & 31, SEEK_CUR);
+                file.seek(-static_cast<ptrdiff_t>(file.tell()) & 31, SEEK_CUR);
             }
             shard.file_idx = file_idx;
             shard.file_off = file.tell();
@@ -574,7 +578,7 @@ struct llama_file_saver {
         file.write_u32(new_type);
         file.write_raw(tensor.ne.data(), sizeof(tensor.ne[0]) * tensor.ne.size());
         file.write_raw(tensor.name.data(), tensor.name.size());
-        file.seek(-file.tell() & 31, SEEK_CUR);
+        file.seek(-static_cast<ptrdiff_t>(file.tell()) & 31, SEEK_CUR);
         LLAMA_ASSERT(new_size == llama_calc_tensor_size(tensor.ne, new_type));
         file.write_raw(new_data, new_size);
     }
@@ -812,10 +816,9 @@ static bool kv_cache_init(
 struct llama_context_params llama_context_default_params() {
     struct llama_context_params result = {
         /*.n_ctx                       =*/ 512,
-        /*.n_parts                     =*/ -1,
         /*.gpu_layers                  =*/ 0,
         /*.seed                        =*/ -1,
-        /*.f16_kv                      =*/ false,
+        /*.f16_kv                      =*/ true,
         /*.logits_all                  =*/ false,
         /*.vocab_only                  =*/ false,
         /*.use_mmap                    =*/ true,
@@ -836,6 +839,21 @@ bool llama_mlock_supported() {
     return llama_mlock::SUPPORTED;
 }
 
+void llama_init_backend() {
+    ggml_time_init();
+
+    // needed to initialize f16 tables
+    {
+        struct ggml_init_params params = { 0, NULL, false };
+        struct ggml_context * ctx = ggml_init(params);
+        ggml_free(ctx);
+    }
+}
+
+int64_t llama_time_us() {
+    return ggml_time_us();
+}
+
 //
 // model loading
 //
@@ -845,7 +863,8 @@ static const char *llama_file_version_name(llama_file_version version) {
         case LLAMA_FILE_VERSION_GGML: return "'ggml' (old version with low tokenizer quality and no mmap support)";
         case LLAMA_FILE_VERSION_GGMF_V1: return "ggmf v1 (old version with no mmap support)";
         case LLAMA_FILE_VERSION_GGJT_V1: return "ggjt v1 (pre #1405)";
-        case LLAMA_FILE_VERSION_GGJT_V2: return "ggjt v2 (latest)";
+        case LLAMA_FILE_VERSION_GGJT_V2: return "ggjt v2 (pre #1508)";
+        case LLAMA_FILE_VERSION_GGJT_V3: return "ggjt v3 (latest)";
     }
 
     return "unknown";
@@ -925,11 +944,19 @@ static void llama_model_load_internal(
         fprintf(stderr, "%s: model size = %s\n",  __func__, llama_model_type_name(model.type));
     }
 
-    if (file_version != LLAMA_FILE_VERSION_GGJT_V2) {
+    if (file_version < LLAMA_FILE_VERSION_GGJT_V2) {
         if (hparams.ftype != LLAMA_FTYPE_ALL_F32     &&
             hparams.ftype != LLAMA_FTYPE_MOSTLY_F16  &&
             hparams.ftype != LLAMA_FTYPE_MOSTLY_Q8_0) {
-            throw format("this format is no longer supported (see https://github.com/ggerganov/llama.cpp/pull/1305)");
+            throw format("this format is no longer supported (see https://github.com/ggerganov/llama.cpp/pull/1405)");
+        }
+    }
+
+    if (file_version < LLAMA_FILE_VERSION_GGJT_V3) {
+        if (hparams.ftype == LLAMA_FTYPE_MOSTLY_Q4_0 ||
+            hparams.ftype == LLAMA_FTYPE_MOSTLY_Q4_1 ||
+            hparams.ftype == LLAMA_FTYPE_MOSTLY_Q8_0) {
+            throw format("this format is no longer supported (see https://github.com/ggerganov/llama.cpp/pull/1508)");
         }
     }
 
@@ -942,7 +969,7 @@ static void llama_model_load_internal(
     size_t ctx_size;
     size_t mmapped_size;
     ml->calc_sizes(&ctx_size, &mmapped_size);
-    fprintf(stderr, "%s: ggml ctx size = %6.2f KB\n", __func__, ctx_size/1024.0);
+    fprintf(stderr, "%s: ggml ctx size = %6.2f MB\n", __func__, ctx_size/1024.0/1024.0);
 
     // print memory requirements
     {
@@ -2607,8 +2634,8 @@ size_t llama_copy_state_data(struct llama_context * ctx, uint8_t * dst) {
 }
 
 // Sets the state reading from the specified source address
-size_t llama_set_state_data(struct llama_context * ctx, const uint8_t * src) {
-    const uint8_t * inp = src;
+size_t llama_set_state_data(struct llama_context * ctx, uint8_t * src) {
+    uint8_t * inp = src;
 
     // set rng
     {

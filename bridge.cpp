@@ -2,7 +2,7 @@
 
 #include "llama.h"
 #include "ggml.h"
-//#include "examples/common.h"
+//#include "bridge.h"
 
 #include <string>
 #include <vector>
@@ -164,7 +164,7 @@ struct llama_context * llama_init_from_gpt_params(const gpt_params & params) {
     auto lparams = llama_context_default_params();
 
     lparams.n_ctx      = params.n_ctx;
-    lparams.n_parts    = params.n_parts;
+    //lparams.n_parts    = params.n_parts;
     lparams.seed       = params.seed;
     lparams.f16_kv     = params.memory_f16;
     lparams.use_mmap   = params.use_mmap;

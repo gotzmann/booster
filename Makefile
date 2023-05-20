@@ -197,7 +197,7 @@ common.o: examples/common.cpp examples/common.h
 libllama.so: llama.o ggml.o $(OBJS)
 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
-bridge.o: bridge.cpp bridge.h
+bridge.o: bridge.cpp # bridge.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@	
 
 clean:

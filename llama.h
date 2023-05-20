@@ -19,7 +19,7 @@
 #    define LLAMA_API
 #endif
 
-#define LLAMA_FILE_VERSION           2
+#define LLAMA_FILE_VERSION           3
 #define LLAMA_FILE_MAGIC             'ggjt'
 #define LLAMA_FILE_MAGIC_UNVERSIONED 'ggml'
 #define LLAMA_SESSION_MAGIC          'ggsn'
@@ -40,9 +40,9 @@ extern "C" {
     typedef int llama_token;
 
     typedef struct llama_token_data {
-        llama_token id;  // token id
-        float logit; // log-odds of the token
-        float p;     // probability of the token
+        llama_token id; // token id
+        float logit;    // log-odds of the token
+        float p;        // probability of the token
     } llama_token_data;
 
     typedef struct llama_token_data_array {
@@ -54,10 +54,9 @@ extern "C" {
     typedef void (*llama_progress_callback)(float progress, void *ctx);
 
     struct llama_context_params {
-        int n_ctx;   // text context
-        int n_parts; // -1 for default
+        int n_ctx;        // text context
         int n_gpu_layers; // number of layers to store in VRAM
-        int seed;    // RNG seed, -1 for random
+        int seed;         // RNG seed, -1 for random
 
         bool f16_kv;     // use fp16 for KV cache
         bool logits_all; // the llama_eval() call computes all logits, not just the last one
@@ -74,22 +73,29 @@ extern "C" {
 
     // model file types
     enum llama_ftype {
-        LLAMA_FTYPE_ALL_F32     = 0,
-        LLAMA_FTYPE_MOSTLY_F16  = 1,  // except 1d tensors
-        LLAMA_FTYPE_MOSTLY_Q4_0 = 2,  // except 1d tensors
-        LLAMA_FTYPE_MOSTLY_Q4_1 = 3,  // except 1d tensors
+        LLAMA_FTYPE_ALL_F32              = 0,
+        LLAMA_FTYPE_MOSTLY_F16           = 1, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q4_0          = 2, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q4_1          = 3, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16 = 4, // tok_embeddings.weight and output.weight are F16
-        // LLAMA_FTYPE_MOSTLY_Q4_2 = 5,  // support has been removed
-        // LLAMA_FTYPE_MOSTLY_Q4_3 (6) support has been removed
-        LLAMA_FTYPE_MOSTLY_Q8_0 = 7,  // except 1d tensors
-        LLAMA_FTYPE_MOSTLY_Q5_0 = 8,  // except 1d tensors
-        LLAMA_FTYPE_MOSTLY_Q5_1 = 9,  // except 1d tensors
+        // LLAMA_FTYPE_MOSTLY_Q4_2       = 5, // support has been removed
+        // LLAMA_FTYPE_MOSTLY_Q4_3       = 6, // support has been removed
+        LLAMA_FTYPE_MOSTLY_Q8_0          = 7, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q5_0          = 8, // except 1d tensors
+        LLAMA_FTYPE_MOSTLY_Q5_1          = 9, // except 1d tensors
     };
 
     LLAMA_API struct llama_context_params llama_context_default_params();
 
     LLAMA_API bool llama_mmap_supported();
     LLAMA_API bool llama_mlock_supported();
+
+    // TODO: not great API - very likely to change
+    // Initialize the llama + ggml backend
+    // Call once at the start of the program
+    LLAMA_API void llama_init_backend();
+
+    LLAMA_API int64_t llama_time_us();
 
     // Various functions for loading a ggml llama model.
     // Allocate (almost) all memory needed for the model.
@@ -139,7 +145,7 @@ extern "C" {
 
     // Set the state reading from the specified address
     // Returns the number of bytes read
-    LLAMA_API size_t llama_set_state_data(struct llama_context * ctx, const uint8_t * src);
+    LLAMA_API size_t llama_set_state_data(struct llama_context * ctx, uint8_t * src);
 
     // Save/load session file
     LLAMA_API bool llama_load_session_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out);
@@ -167,20 +173,6 @@ extern "C" {
                      llama_token * tokens,
                              int   n_max_tokens,
                             bool   add_bos);
-
-    // -- Helpers for bridge.cpp                        
-
-    LLAMA_API void reset_logits(struct llama_context * ctx);
-    LLAMA_API int llama_n_sample(const struct llama_context * ctx);
-    LLAMA_API int llama_n_eval(const struct llama_context * ctx);
-    LLAMA_API int llama_n_p_eval(const struct llama_context * ctx);
-    LLAMA_API int llama_t_sample_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_load_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_start_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
-
-    // --
 
     LLAMA_API int llama_n_vocab(const struct llama_context * ctx);
     LLAMA_API int llama_n_ctx  (const struct llama_context * ctx);
@@ -256,6 +248,20 @@ extern "C" {
 
     // Print system information
     LLAMA_API const char * llama_print_system_info(void);
+
+    // -- Helpers for bridge.cpp                        
+
+    LLAMA_API void reset_logits(struct llama_context * ctx);
+    LLAMA_API int llama_n_sample(const struct llama_context * ctx);
+    LLAMA_API int llama_n_eval(const struct llama_context * ctx);
+    LLAMA_API int llama_n_p_eval(const struct llama_context * ctx);
+    LLAMA_API int llama_t_sample_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_load_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_start_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
+
+    // --
 
 #ifdef __cplusplus
 }
