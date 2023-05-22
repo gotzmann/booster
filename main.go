@@ -141,11 +141,6 @@ func main() {
 
 	// ==== 7B ====
 
-	//opts.Model = "/Users/me/models/7B/ggml-model-q4_0.bin" // v2
-	//opts.Model = "/Users/me/models/7B/llama-7b-ggml-v2-q8_0.bin" // v2
-	//opts.Model = "/Users/me/models/7B/ggml-model-f16.bin"
-	//opts.Model = "/Users/me/models/7B/llama-7b-fp32.bin"
-
 	// https://huggingface.co/eachadea/ggml-vicuna-7b-1.1
 	//opts.Model = "/Users/me/models/7B/ggml-vic7b-q4_0.bin" // censored (with mirostat)
 
@@ -165,15 +160,22 @@ func main() {
 
 	// -- v3
 
+	//opts.Model = "/Users/me/models/7B/llama-7b-ggml-v3-q4_0.bin"
+
 	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/"
+	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin" // GOOD not GREAT! TopK for logic
+	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q5_0.bin" // 50% slower than 4bit, no quality boost at all
+
+	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin"
+
+	// https://huggingface.co/TheBloke/Wizard-Vicuna-7B-Uncensored-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/Wizard-Vicuna-7B-Uncensored.ggmlv3.q4_0.bin"
+
+	// https://huggingface.co/TheBloke/WizardLM-7B-uncensored-GGML/tree/main
+	opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin"
 
 	// ==== 13B ====
-
-	//opts.Model = "/Users/me/models/13B/ggml-model-q4_0.bin" // v2
-	//opts.Model = "/Users/me/models/13B/llama-13b-ggml-v2-q8_0.bin" // v2
-	//opts.Model = "/Users/me/models/13B/ggml-model-f16.bin"
-	//opts.Model = "/Users/me/models/13B/llama-fp32.bin"
 
 	// https://huggingface.co/eachadea/ggml-vicuna-13b-1.1
 	//opts.Model = "/Users/me/models/13B/ggml-vic13b-q4_0.bin"
@@ -213,16 +215,21 @@ func main() {
 
 	// -- v3
 
+	//opts.Model = "/Users/me/models/13B/llama-13b-ggml-v3-q4_0.bin"
+
 	// https://huggingface.co/TheBloke/wizard-mega-13B-GGML/tree/main
-	opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggmlv3.q5_1.bin"
+
+	// https://huggingface.co/TheBloke/Manticore-13B-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv3.q4_0.bin" // Very Good! See comparison GDocs
+	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv3.q5_0.bin"
+
+	// https://huggingface.co/jondurbin/airoboros-13b
+	// https://huggingface.co/latimar/airoboros-13b-ggml/tree/main
+	opts.Model = "/Users/me/models/13B/airoboros-13B.q4_0.bin"
 
 	// ==== 30B ====
-
-	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q4_0.bin" // v2 - bad
-	//opts.Model = "/Users/me/models/30B/llama-30b-ggml-v2-q8_0.bin" // v2 - bad
-	//opts.Model = "/Users/me/models/30B/ggml-model-q8_0.bin"
-	//opts.Model = "/Users/me/models/30B/ggml-model-f16.bin"
-	//opts.Model = "/Users/me/models/30B/llama-fp32.bin"
 
 	// https://huggingface.co/MetaIX/GPT4-X-Alpaca-30B-4bit/tree/main
 	//opts.Model = "/Users/me/models/30B/gpt4-x-alpaca-30b-ggml-q4_1.bin" // maybe with mirostat ?

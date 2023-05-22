@@ -71,10 +71,10 @@ struct gpt_params {
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
-    float   temp              = 0.5; // FIXME 0.80f; // 1.0 = disabled
+    float   temp              = 0.4; // FIXME 0.80f; // 1.0 = disabled
 
-    int32_t top_k             = 20;   // FIXME 40; // <= 0 to use vocab size
-    float   top_p             = 0.95; // FIXME 0.95f; // 1.0 = disabled
+    int32_t top_k             = 8;   // FIXME 40; // <= 0 to use vocab size
+    float   top_p             = 0.92; // FIXME 0.95f; // 1.0 = disabled
 
     float   tfs_z             = 1.0; //1.0; // 1.0 = disabled
     float   typical_p         = 1.0; //1.0; // 1.0 = disabled
@@ -85,7 +85,7 @@ struct gpt_params {
     float   frequency_penalty = 0.0; // 0.0 = disabled
     float   presence_penalty  = 0.0; // 0.0 = disabled
 
-    int     mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    int     mirostat          = 2;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1; // FIXME 5.0 // target entropy
     float   mirostat_eta      = 0.1; // FIXME 0.1 //learning rate
 

@@ -644,12 +644,13 @@ func NewJob(ctx *fiber.Ctx) error {
 	}
 	mu.Unlock()
 
+	// FIXME: Return check!
 	// TODO: Tokenize and check for max tokens properly
-	if len(payload.Prompt) >= int(Params.CtxSize)*3 {
-		return ctx.
-			Status(fiber.StatusBadRequest).
-			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", Params.CtxSize))
-	}
+	//	if len(payload.Prompt) >= int(Params.CtxSize)*3 {
+	//		return ctx.
+	//			Status(fiber.StatusBadRequest).
+	//			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", Params.CtxSize))
+	//	}
 
 	if payload.Model != "" {
 		if _, ok := Pods[payload.Model]; !ok {
@@ -669,7 +670,7 @@ func NewJob(ctx *fiber.Ctx) error {
 		"id": payload.ID,
 		//"session": payload.Session,
 		//"model":   payload.Model,
-		"prompt": payload.Prompt,
+		//"prompt": payload.Prompt,
 		//"created": Jobs[payload.ID].CreatedAt,
 		//"started":  Jobs[payload.ID].StartedAt,
 		//"finished": Jobs[payload.ID].FinishedAt,
