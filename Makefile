@@ -125,6 +125,10 @@ ifdef LLAMA_OPENBLAS
 		LDFLAGS += -lopenblas
 	endif
 endif
+ifdef LLAMA_BLIS
+	CFLAGS += -DGGML_USE_OPENBLAS -I/usr/local/include/blis -I/usr/include/blis
+	LDFLAGS += -lblis -L/usr/local/lib
+endif
 ifdef LLAMA_CUBLAS
 	CFLAGS    += -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
 	CXXFLAGS  += -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
@@ -137,6 +141,7 @@ ggml-cuda.o: ggml-cuda.cu ggml-cuda.h
 endif
 ifdef LLAMA_CLBLAST
 	CFLAGS  += -DGGML_USE_CLBLAST
+	CXXFLAGS  += -DGGML_USE_CLBLAST
     # Mac provides OpenCL as a framework
     ifeq ($(UNAME_S),Darwin)
         LDFLAGS += -lclblast -framework OpenCL
@@ -144,8 +149,8 @@ ifdef LLAMA_CLBLAST
         LDFLAGS += -lclblast -lOpenCL
     endif
 	OBJS    += ggml-opencl.o
-ggml-opencl.o: ggml-opencl.c ggml-opencl.h
-	$(CC) $(CFLAGS) -c $< -o $@
+ggml-opencl.o: ggml-opencl.cpp ggml-opencl.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 endif
 ifneq ($(filter aarch64%,$(UNAME_M)),)
 	# Apple M1, M2, etc.
@@ -251,6 +256,6 @@ benchmark-matmult: examples/benchmark/benchmark-matmult.cpp build-info.h ggml.o 
 vdot: pocs/vdot/vdot.cpp ggml.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-.PHONY: tests
+.PHONY: tests clean
 tests:
 	bash ./tests/run-tests.sh

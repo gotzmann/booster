@@ -160,7 +160,7 @@ func init() {
 
 // Init allocates contexts for independent pods
 // TODO: Allow to load and work with different models at the same time
-func Init(host string, port string, pods int, threads int, model string, context int, predict int, temp float32, seed uint32) {
+func Init(host, port string, pods, threads int, model, prefix, suffix string, context, predict int, temp float32, seed uint32) {
 
 	ServerMode = CPPMode
 	Host = host
@@ -183,6 +183,8 @@ func Init(host string, port string, pods int, threads int, model string, context
 			Context: ctx,
 			Model: &ModelConfig{
 				Path:    model,
+				Prefix:  prefix,
+				Suffix:  suffix,
 				Pods:    1,
 				Threads: int64(threads),
 				Context: context,

@@ -57,6 +57,8 @@ const VERSION = "0.9.3"
 type Options struct {
 	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 	Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
+	Prefix  string  `long:"prefix" description:"Prompt prefix if needed, like \"### Instruction:\""`
+	Suffix  string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
 	Seed    uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
 	Server  bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
 	Host    string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
@@ -166,14 +168,25 @@ func main() {
 	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin" // GOOD not GREAT! TopK for logic
 	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q5_0.bin" // 50% slower than 4bit, no quality boost at all
 
-	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin"
+	// https://huggingface.co/TheBloke/WizardLM-7B-uncensored-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/WizardLM-7B-uncensored.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/7B/WizardLM-7B-uncensored.ggmlv3.q5_0.bin"
 
 	// https://huggingface.co/TheBloke/Wizard-Vicuna-7B-Uncensored-GGML/tree/main
 	//opts.Model = "/Users/me/models/7B/Wizard-Vicuna-7B-Uncensored.ggmlv3.q4_0.bin"
 
-	// https://huggingface.co/TheBloke/WizardLM-7B-uncensored-GGML/tree/main
-	opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin"
+	// https://huggingface.co/jondurbin/airoboros-7b-ggml-q4_0/tree/main
+	//opts.Model = "/Users/me/models/7B/airoboros-7b-ggml-q4_0.bin"
+
+	// https://huggingface.co/TheBloke/guanaco-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/guanaco-7B.ggmlv3.q4_0.bin" // 50/50
+	//opts.Model = "/Users/me/models/7B/guanaco-7B.ggmlv3.q4_1.bin" // 50/50
+
+	// https://huggingface.co/TheBloke/Project-Baize-v2-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/baize-v2-7b.ggmlv3.q4_0.bin" // NO WAY! Dialog generation only and crazy loops
+
+	// https://huggingface.co/TheBloke/Samantha-7B-GGML/tree/main
+	//opts.Model = "/Users/me/models/7B/Samantha-7B.ggmlv3.q4_0.bin"
 
 	// ==== 13B ====
 
@@ -227,7 +240,29 @@ func main() {
 
 	// https://huggingface.co/jondurbin/airoboros-13b
 	// https://huggingface.co/latimar/airoboros-13b-ggml/tree/main
-	opts.Model = "/Users/me/models/13B/airoboros-13B.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/airoboros-13B.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/airoboros-13B.q4_1.bin"
+
+	// https://huggingface.co/latimar/airoboros-13b-ggml/tree/main
+	//opts.Model = "/Users/me/models/13B/airoboros-13B.q5_1.bin"
+
+	// https://huggingface.co/TheBloke/manticore-13b-chat-pyg-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_1.bin"
+	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_0.bin"
+	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_1.bin"
+	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q8_0.bin"
+
+	// https://huggingface.co/TheBloke/guanaco-13B-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/guanaco-13B.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/guanaco-13B.ggmlv3.q5_0.bin"
+
+	// https://huggingface.co/TheBloke/wizardLM-13B-1.0-GGML/tree/main
+	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q4_1.bin"
+	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q5_0.bin"
+	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q5_1.bin"
+	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q8_0.bin"
 
 	// ==== 30B ====
 
@@ -238,6 +273,22 @@ func main() {
 
 	// https://huggingface.co/TheBloke/OpenAssistant-SFT-7-Llama-30B-GGML/tree/main
 	//opts.Model = "/Users/me/models/30B/OpenAssistant-SFT-7-Llama-30B.ggml.q4_0.bin" // broken? not, bad bad
+
+	// -- v3
+
+	//opts.Model = "/Users/me/models/30B/WizardLM-30B-Uncensored.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/30B/WizardLM-30B-Uncensored.ggmlv3.q4_0.bin"
+
+	// https://huggingface.co/TheBloke/Wizard-Vicuna-30B-Uncensored-GGML/tree/main
+	//opts.Model = "/Users/me/models/30B/Wizard-Vicuna-30B-Uncensored.ggmlv3.q4_0.bin"
+
+	//opts.Model = "/Users/me/models/30B/guanaco-33B.ggmlv3.q4_0.bin" // Too wild for instruct mode
+
+	// https://huggingface.co/TheBloke/samantha-33B-GGML/tree/main
+	//opts.Model = "/Users/me/models/30B/samantha-33B.ggmlv3.q4_0.bin"
+
+	// https://huggingface.co/TheBloke/hippogriff-30b-chat-GGML/tree/main
+	opts.Model = "/Users/me/models/30B/hippogriff-30b.ggmlv3.q4_0.bin"
 
 	/*
 
@@ -268,7 +319,18 @@ func main() {
 	if conf.ID != "" {
 		server.InitFromConfig(&conf)
 	} else {
-		server.Init(opts.Host, opts.Port, opts.Pods, opts.Threads, opts.Model, int(opts.Context), int(opts.Predict), opts.Temp, opts.Seed)
+		server.Init(
+			opts.Host,
+			opts.Port,
+			opts.Pods,
+			opts.Threads,
+			opts.Model,
+			opts.Prefix,
+			opts.Suffix,
+			int(opts.Context),
+			int(opts.Predict),
+			opts.Temp,
+			opts.Seed)
 	}
 
 	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
@@ -301,8 +363,8 @@ func main() {
 
 			time.Sleep(3 * time.Second)
 			iter++
-			if iter > 300 {
-				Colorize("\n[light_magenta][STOP][yellow] Time limit 300 * 3 seconds is over!")
+			if iter > 600 {
+				Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
 				break
 			}
 

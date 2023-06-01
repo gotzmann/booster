@@ -605,7 +605,7 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
             ////    is_interacting = true;
             ////} else {
                 // TODO: Some handler / special token for this case?
-                fprintf(stderr, " [END]\n");
+                //fprintf(stderr, " [END]\n");
                 break;
             ////}
         }
