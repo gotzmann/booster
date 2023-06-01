@@ -1,8 +1,14 @@
-#LLAMA_NO_ACCELERATE := true
-
 # Define the default target now so that it is always the first target
-# default: main quantize quantize-stats perplexity embedding vdot 
-default: llamazoo
+BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot
+
+ifdef LLAMA_BUILD_SERVER
+	BUILD_TARGETS += server
+endif
+
+#default: $(BUILD_TARGETS)
+
+#LLAMA_NO_ACCELERATE := true
+default: llamazoo 
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -41,7 +47,11 @@ CFLAGS   = -I.              -O3 -std=c17   -fPIC
 CXXFLAGS = -I. -I./examples -O3 -std=c++17 -fPIC
 LDFLAGS  =
 
-ifndef LLAMA_DEBUG
+ifdef LLAMA_DEBUG
+	CFLAGS   += -O0 -g
+	CXXFLAGS += -O0 -g
+	LDFLAGS  += -g
+else
 	CFLAGS   += -DNDEBUG
 	CXXFLAGS += -DNDEBUG
 endif
@@ -136,9 +146,19 @@ ifdef LLAMA_CUBLAS
 	OBJS      += ggml-cuda.o
 	NVCC      = nvcc
 	NVCCFLAGS = --forward-unknown-to-host-compiler -arch=native
+ifdef LLAMA_CUDA_DMMV_X
+	NVCCFLAGS += -DGGML_CUDA_DMMV_X=$(LLAMA_CUDA_DMMV_X)
+else
+	NVCCFLAGS += -DGGML_CUDA_DMMV_X=32
+endif # LLAMA_CUDA_DMMV_X
+ifdef LLAMA_CUDA_DMMV_Y
+	NVCCFLAGS += -DGGML_CUDA_DMMV_Y=$(LLAMA_CUDA_DMMV_Y)
+else
+	NVCCFLAGS += -DGGML_CUDA_DMMV_Y=1
+endif # LLAMA_CUDA_DMMV_Y	
 ggml-cuda.o: ggml-cuda.cu ggml-cuda.h
 	$(NVCC) $(NVCCFLAGS) $(CXXFLAGS) -Wno-pedantic -c $< -o $@
-endif
+endif # LLAMA_CUBLAS
 ifdef LLAMA_CLBLAST
 	CFLAGS  += -DGGML_USE_CLBLAST
 	CXXFLAGS  += -DGGML_USE_CLBLAST
@@ -206,7 +226,7 @@ bridge.o: bridge.cpp # bridge.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@	
 
 clean:
-	rm -vf *.o main quantize quantize-stats perplexity embedding benchmark-matmult save-load-state build-info.h
+	rm -vf *.o main quantize quantize-stats perplexity embedding benchmark-matmult save-load-state server vdot build-info.h
 	rm -f *.a llamazoo
 
 #
@@ -233,6 +253,9 @@ embedding: examples/embedding/embedding.cpp build-info.h ggml.o llama.o common.o
 
 save-load-state: examples/save-load-state/save-load-state.cpp build-info.h ggml.o llama.o common.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+
+server: examples/server/server.cpp examples/server/httplib.h examples/server/json.hpp build-info.h ggml.o llama.o common.o $(OBJS)
+	$(CXX) $(CXXFLAGS) -Iexamples/server $(filter-out %.h,$(filter-out %.hpp,$^)) -o $@ $(LDFLAGS)	
 
 build-info.h: $(wildcard .git/index) scripts/build-info.sh
 	@sh scripts/build-info.sh > $@.tmp
