@@ -2,7 +2,7 @@
 
 #include "llama.h"
 #include "ggml.h"
-//#include "bridge.h"
+#include "bridge.h"
 
 #include <string>
 #include <vector>
