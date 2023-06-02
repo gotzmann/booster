@@ -48,7 +48,6 @@ import (
 	"github.com/mitchellh/colorstring"
 	"github.com/pkg/profile"
 
-	"github.com/gotzmann/llamazoo/pkg/llama"
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
@@ -64,7 +63,7 @@ type Options struct {
 	Host    string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
 	Port    string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Pods    int     `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
-	Threads int     `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
+	Threads int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
 	Context uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
 	Predict uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
 	Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.50 by default ]"`
@@ -78,6 +77,15 @@ type Options struct {
 }
 
 func main() {
+
+	// Last resort in case of panic while running
+	//defer func() {
+	//	reason := recover()
+	//	if reason != nil {
+	//		Colorize("\n[magenta][ ERROR ][white] %s\n\n", reason)
+	//		os.Exit(0)
+	//	}
+	//}()
 
 	// TODO: Allow to overwrite some options from the command-line
 	opts := parseOptions()
@@ -106,38 +114,38 @@ func main() {
 		if feed != nil {
 			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
 			if err != nil {
-				Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file!\n\n")
+				Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file! %s\n\n", err.Error())
 				os.Exit(0)
 			}
 		}
 	}
+	/*
+		// --- set model parameters from user settings and safe defaults
 
-	// --- set model parameters from user settings and safe defaults
+		server.Params = &llama.ModelParams{
+			Model: opts.Model,
 
-	server.Params = &llama.ModelParams{
-		Model: opts.Model,
+			MaxThreads: opts.Threads,
 
-		MaxThreads: opts.Threads,
+			UseAVX:  opts.UseAVX,
+			UseNEON: opts.UseNEON,
 
-		UseAVX:  opts.UseAVX,
-		UseNEON: opts.UseNEON,
+			Interactive: opts.Chat,
 
-		Interactive: opts.Chat,
+			CtxSize:      opts.Context,
+			Seed:         -1,
+			PredictCount: opts.Predict,
+			RepeatLastN:  opts.Context, // TODO: Research on best value
+			PartsCount:   -1,
+			BatchSize:    opts.Context, // TODO: What's the better size?
 
-		CtxSize:      opts.Context,
-		Seed:         -1,
-		PredictCount: opts.Predict,
-		RepeatLastN:  opts.Context, // TODO: Research on best value
-		PartsCount:   -1,
-		BatchSize:    opts.Context, // TODO: What's the better size?
+			TopK:          40,
+			TopP:          0.95,
+			Temp:          opts.Temp,
+			RepeatPenalty: 1.10,
 
-		TopK:          40,
-		TopP:          0.95,
-		Temp:          opts.Temp,
-		RepeatPenalty: 1.10,
-
-		MemoryFP16: true,
-	}
+			MemoryFP16: true,
+		} */
 
 	// -- DEBUG
 
@@ -409,7 +417,7 @@ func parseOptions() *Options {
 	// TODO Optimize default settings for CPUs with P and E cores like M1 Pro = 8 performant and 2 energy cores
 
 	if opts.Threads == 0 {
-		opts.Threads = runtime.NumCPU()
+		opts.Threads = int64(runtime.NumCPU())
 	}
 
 	if opts.Host == "" {

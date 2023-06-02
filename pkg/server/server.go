@@ -47,20 +47,22 @@ import (
 // TODO: UUID vs string for job ID
 // TODO: Unix timestamp vs ISO for date and time
 
-type ModelConfig struct {
+type Model struct {
 	ID   string // short internal name of the model
 	Name string // public name for humans
 	Path string // path to binary file
 
-	Mode    string // prod, debug, ignore, etc
-	Pods    int    // how many pods start
-	Threads int64  // how many threads allow per pod (int64 for atomic manipulations)
+	Context unsafe.Pointer // *llama.Context
+
+	//Mode    string // prod, debug, ignore, etc
+	//Pods    int    // how many pods start
+	//Threads int64  // how many threads allow per pod (int64 for atomic manipulations)
 
 	Prefix string // prompt prefix for instruct-type models
 	Suffix string // prompt suffix
 
-	Context int
-	Predict int
+	ContextSize int
+	Predict     int
 
 	Temp float32
 
@@ -81,19 +83,23 @@ type Config struct {
 	Host string
 	Port string
 
-	Threads int // max threads (within all active pods) allowed to do compute in parallel
-
 	AVX  bool
 	NEON bool
 	CUDA bool
 
-	Default string
-	Models  []ModelConfig
+	Pods    int     // pods count
+	Threads []int64 // threads count for each pod
+
+	Models []Model
+
+	Default string // default model ID
 }
 
 type Pod struct {
-	Model   *ModelConfig   // model params
-	Context unsafe.Pointer // llama.cpp context
+	isBusy  bool   // do pod instance doing some job?
+	Threads int64  // how many threads in use
+	Model   *Model // model params
+	//Context unsafe.Pointer // llama.cpp context
 }
 
 type Job struct {
@@ -125,19 +131,23 @@ var (
 	Host string
 	Port string
 
-	Vocab *ml.Vocab
-	Model *llama.Model
-
-	Ctx    *llama.Context
-	Params *llama.ModelParams
+	// Data for running one model from CLI without pods instantiating
+	vocab  *ml.Vocab
+	model  *llama.Model
+	ctx    *llama.Context
+	params *llama.ModelParams
 
 	DefaultModel string // it's empty string "" for simple CLI mode and some unique key when working with configs
 
 	// NB! All vars below are int64 to be used as atomic counters
 	MaxThreads     int64 // used for PROD mode // TODO: detect hardware abilities automatically
 	RunningThreads int64
-	MaxPods        int64 // used for simple mode when all settings are set from CLI
-	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
+	//MaxPods        int64 // used for simple mode when all settings are set from CLI
+	RunningPods int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
+
+	//Mode    string // prod, debug, ignore, etc
+	//Pods    int    // how many pods start
+	//Threads []int  // how many threads allow per pod (int64 for atomic manipulations)
 
 	mu sync.Mutex // guards any Jobs change
 
@@ -145,66 +155,141 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	// All pods splitted on blocks by model ID keys
-	Pods     map[string][]*Pod
-	IdlePods map[string][]*Pod // Indexes of idle pods
+	//Pods     map[string][]*Pod // All pods splitted on blocks by model ID keys
+	//IdlePods map[string][]*Pod // Indexes of idle pods
 	//Contexts []unsafe.Pointer // Pointers to llama.cpp contexts
+
+	Pods   []*Pod              // There N pods with some threads within as described in config
+	Models map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
 )
 
 func init() {
-	Pods = make(map[string][]*Pod, 64)      // 64 is just some commnon sense default
-	IdlePods = make(map[string][]*Pod, 64)  // same here
+	//Pods = make(map[string][]*Pod, 64)      // 64 is just some commnon sense default
+	//Models = make(map[string][]*llama.Model, 64) // 64 is just some commnon sense default
+	//IdlePods = make(map[string][]*Pod, 64)  // same here
 	Jobs = make(map[string]*Job, 1024)      // 1024 is like some initial space to grow
 	Queue = make(map[string]struct{}, 1024) // same here
+
+	// FIXME: ASAP Check those are set from within Init()
+	// --- set model parameters from user settings and safe defaults
+	params = &llama.ModelParams{
+		//Model: opts.Model,
+
+		//MaxThreads: opts.Threads,
+
+		//UseAVX:  opts.UseAVX,
+		//UseNEON: opts.UseNEON,
+
+		//Interactive: opts.Chat,
+
+		//CtxSize:      opts.Context,
+		Seed: -1,
+		//PredictCount: opts.Predict,
+		//RepeatLastN:  opts.Context, // TODO: Research on best value
+		PartsCount: -1,
+		//BatchSize:    opts.Context, // TODO: What's the better size?
+
+		TopK: 40,
+		TopP: 0.95,
+		//Temp:          opts.Temp,
+		RepeatPenalty: 1.10,
+
+		MemoryFP16: true,
+	}
 }
 
 // Init allocates contexts for independent pods
 // TODO: Allow to load and work with different models at the same time
-func Init(host, port string, pods, threads int, model, prefix, suffix string, context, predict int, temp float32, seed uint32) {
+func Init(host, port string, pods int, threads int64, model, prefix, suffix string, context, predict int, temp float32, seed uint32) {
 
 	ServerMode = CPPMode
 	Host = host
 	Port = port
-	MaxPods = int64(pods)
+	//MaxPods = int64(pods)
 	RunningPods = 0
-	Params.CtxSize = uint32(context)
+	params.CtxSize = uint32(context)
 	//IdlePods = make([]int, pods)
 	//Contexts = make([]unsafe.Pointer, pods)
+	Pods = make([]*Pod, pods)
+	Models = make(map[string][]*Model)
+
+	// model from CLI will have empty name by default
+	if _, ok := Models[""]; !ok {
+		Models[""] = make([]*Model, pods)
+	}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
-	for i := 0; i < pods; i++ {
-		ctx := C.initFromParams(C.CString(model), C.int(threads), C.int(context), C.int(predict), C.float(temp), C.int32_t(seed))
-		if ctx == nil {
-			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", i, pods)
-			os.Exit(0)
-		}
-		pod := &Pod{
-			Context: ctx,
-			Model: &ModelConfig{
-				Path:    model,
-				Prefix:  prefix,
-				Suffix:  suffix,
-				Pods:    1,
-				Threads: int64(threads),
-				Context: context,
-				Predict: predict,
-				Temp:    temp,
-				//Seed:    seed,
-			},
+	for pod := 0; pod < pods; pod++ {
+
+		MaxThreads += threads
+		Pods[pod] = &Pod{
+			Threads: threads,
 		}
 
-		// NB! We'll use empty string "" as key for default model
-		if Pods[""] == nil {
-			Pods[""] = make([]*Pod, pods)
+		// Check if file exists to prevent CGO panic
+		if _, err := os.Stat(model); err != nil {
+			Colorize("\n[magenta][ ERROR ][white] Model file not found: %s\n\n", model)
+			os.Exit(0)
 		}
-		Pods[""] = append(Pods[""], pod)
-		//IdlePods[i] = i
-		if IdlePods[""] == nil {
-			IdlePods[""] = make([]*Pod, pods)
+
+		ctx := C.initFromParams(
+			C.CString(model),
+			C.int(threads),
+			C.int(context),
+			C.int(predict),
+			C.float(temp),
+			C.int32_t(seed))
+
+		if ctx == nil {
+			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", pod, pods)
+			os.Exit(0)
 		}
-		IdlePods[""] = append(IdlePods[""], pod)
-		//Contexts[i] = ctx
+
+		Models[""][pod] = &Model{
+			Path:        model,
+			Context:     ctx,
+			Prefix:      prefix,
+			Suffix:      suffix,
+			ContextSize: context,
+			Predict:     predict,
+			Temp:        temp,
+			//Seed:    seed,
+
+			// TODO: Allow to set more parameters from CLI
+			//TopK:          model.TopK,
+			//TopP:          model.TopP,
+			//RepeatPenalty: model.RepeatPenalty,
+			//Mirostat:      model.Mirostat,
+			//MirostatTAU:   model.MirostatTAU,
+			//MirostatETA:   model.MirostatETA,
+		}
+
+		/*pod := &Pod{
+			Context: ctx,
+			Model: &Model{
+				Path:   model,
+				Prefix: prefix,
+				Suffix: suffix,
+				//Pods:    1,
+				//Threads: int64(threads),
+				ContextSize: context,
+				Predict:     predict,
+				Temp:        temp,
+				//Seed:    seed,
+			},
+		}*/
+
+		/*
+			// NB! We'll use empty string "" as key for default model
+			if Pods[""] == nil {
+				Pods[""] = make([]*Pod, pods)
+			}
+			Pods[""] = append(Pods[""], pod)
+			if IdlePods[""] == nil {
+				IdlePods[""] = make([]*Pod, pods)
+			}
+			IdlePods[""] = append(IdlePods[""], pod) */
 	}
 }
 
@@ -212,52 +297,88 @@ func Init(host, port string, pods, threads int, model, prefix, suffix string, co
 // TODO: Allow to load and work with different models at the same time
 func InitFromConfig(conf *Config) {
 
+	// -- some validations TODO: move to better place
+
+	if len(conf.Threads) > conf.Pods {
+		conf.Pods = len(conf.Threads)
+	}
+
+	defaultModelFound := false
+	for _, model := range conf.Models {
+		if conf.Default == model.ID {
+			defaultModelFound = true
+		}
+	}
+
+	if !defaultModelFound {
+		Colorize("\n[magenta][ ERROR ][white] Default model not found: %s\n\n", conf.Default)
+		os.Exit(0)
+	}
+
+	// -- init golbal settings
+
 	ServerMode = CPPMode
 	Host = conf.Host
 	Port = conf.Port
-	MaxThreads = int64(conf.Threads)
+	//MaxThreads = int64(conf.Threads)
 	DefaultModel = conf.Default
+	Pods = make([]*Pod, conf.Pods)
+	Models = make(map[string][]*Model)
 
-	for _, model := range conf.Models {
+	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
-		// --- Allow user home dir resolve with tilde ~
-		// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
+	for pod, threads := range conf.Threads {
 
-		path := model.Path
-		if strings.HasPrefix(path, "~/") {
-			usr, _ := user.Current()
-			dir := usr.HomeDir
-			path = filepath.Join(dir, path[2:])
+		MaxThreads += threads
+		Pods[pod] = &Pod{
+			Threads: threads,
 		}
 
-		// FIXME: For pod = 0 .. N
+		for _, model := range conf.Models {
 
-		// TODO: catch panic from CGO if file not found
-		ctx := C.initFromParams(
-			C.CString(path),
-			C.int(model.Threads),
-			C.int(model.Context),
-			C.int(model.Predict),
-			C.float(model.Temp),
-			C.int32_t( /*seed*/ -1))
+			// --- Allow user home dir resolve with tilde ~
+			// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
 
-		if ctx == nil {
-			Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model %s\n\n", model.ID)
-			os.Exit(0)
-		}
+			path := model.Path
+			if strings.HasPrefix(path, "~/") {
+				usr, _ := user.Current()
+				dir := usr.HomeDir
+				path = filepath.Join(dir, path[2:])
+			}
 
-		pod := &Pod{
-			Context: ctx,
-			Model: &ModelConfig{
+			// Check if file exists to prevent CGO panic
+			if _, err := os.Stat(path); err != nil {
+				Colorize("\n[magenta][ ERROR ][white] Model file not found: %s\n\n", path)
+				os.Exit(0)
+			}
+
+			// TODO: catch panic from CGO if file not found
+			ctx := C.initFromParams(
+				C.CString(path),
+				C.int(threads),
+				C.int(model.ContextSize),
+				C.int(model.Predict),
+				C.float(model.Temp),
+				C.int32_t( /*seed*/ -1))
+
+			if ctx == nil {
+				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model %s\n\n", model.ID)
+				os.Exit(0)
+			}
+
+			// Each model might be running an all pods, thus need to have N*M contexts available
+			if _, ok := Models[model.ID]; !ok {
+				Models[model.ID] = make([]*Model, conf.Pods)
+			}
+
+			Models[model.ID][pod] = &Model{
 				ID:            model.ID,
 				Name:          model.Name,
 				Path:          model.Path,
-				Mode:          model.Mode,
-				Pods:          1,
-				Threads:       model.Threads,
+				Context:       ctx,
 				Prefix:        model.Prefix,
 				Suffix:        model.Suffix,
-				Context:       model.Context,
+				ContextSize:   model.ContextSize,
 				Predict:       model.Predict,
 				Temp:          model.Temp,
 				TopK:          model.TopK,
@@ -267,27 +388,53 @@ func InitFromConfig(conf *Config) {
 				MirostatTAU:   model.MirostatTAU,
 				MirostatETA:   model.MirostatETA,
 				//Seed:    seed,
-			},
-		}
-		//Pods = append(Pods, pod)
-		//IdlePods = append(IdlePods, pod)
+			}
 
-		if Pods[model.ID] == nil {
-			Pods[model.ID] = make([]*Pod, 0, model.Pods)
-			IdlePods[model.ID] = make([]*Pod, 0, model.Pods)
-		} else {
-			Colorize("\n[magenta][ ERROR ][white] Model ID '%s' is not unique within config!\n\n", model.ID)
-			os.Exit(0)
-		}
+			//pod := &Pod{
+			//Context: ctx,
+			//Threads: threads,
+			/*
+				Model: &ModelConfig{
+					ID:   model.ID,
+					Name: model.Name,
+					Path: model.Path,
+					//Mode:          model.Mode,
+					//Pods:          1,
+					//Threads:       model.Threads,
+					Prefix:        model.Prefix,
+					Suffix:        model.Suffix,
+					Context:       model.Context,
+					Predict:       model.Predict,
+					Temp:          model.Temp,
+					TopK:          model.TopK,
+					TopP:          model.TopP,
+					RepeatPenalty: model.RepeatPenalty,
+					Mirostat:      model.Mirostat,
+					MirostatTAU:   model.MirostatTAU,
+					MirostatETA:   model.MirostatETA,
+					//Seed:    seed,
+				},*/
+			//}
+			//Pods = append(Pods, pod)
+			//IdlePods = append(IdlePods, pod)
 
-		Pods[model.ID] = append(Pods[model.ID], pod)
-		IdlePods[model.ID] = append(IdlePods[model.ID], pod)
+			//if Pods[model.ID] == nil {
+			//	Pods[model.ID] = make([]*Pod, 0, model.Pods)
+			//	IdlePods[model.ID] = make([]*Pod, 0, model.Pods)
+			//} else {
+			//	Colorize("\n[magenta][ ERROR ][white] Model ID '%s' is not unique within config!\n\n", model.ID)
+			//	os.Exit(0)
+			//}
+
+			//Pods[model.ID] = append(Pods[model.ID], pod)
+			//IdlePods[model.ID] = append(IdlePods[model.ID], pod)
+		}
 	}
 
 	//MaxPods = int64(pods)
 	RunningPods = 0    // not needed
 	RunningThreads = 0 // not needed
-	//Params.CtxSize = uint32(context)
+	//params.CtxSize = uint32(context)
 	//IdlePods = make([]int, pods)
 	//Contexts = make([]unsafe.Pointer, pods)
 
@@ -334,9 +481,9 @@ func Engine() {
 			// FIXME: Move to outer loop?
 
 			// simple mode with settings from CLI
-			if MaxPods > 0 && RunningPods >= MaxPods {
-				continue
-			}
+			//if MaxPods > 0 && RunningPods >= MaxPods {
+			//	continue
+			//}
 
 			// production mode with settings from config file
 			// TODO: >= MaxThreads + pod.Model.Threads
@@ -349,9 +496,9 @@ func Engine() {
 			model := Jobs[jobID].Model
 			mu.Unlock()
 
-			if MaxThreads > 0 && len(IdlePods[model]) == 0 {
-				continue
-			}
+			/////if MaxThreads > 0 && len(IdlePods[model]) == 0 {
+			/////	continue
+			/////}
 
 			// -- move job from waiting queue to processing and assign it pod from idle pool
 			// TODO: Use different mutexes for Jobs map, Pods map and maybe for atomic counters
@@ -363,21 +510,38 @@ func Engine() {
 			//	model = DefaultModel
 			//	Jobs[jobID].Model = model
 			//}
-			pod := IdlePods[model][len(IdlePods[model])-1]
+
+			// TODO: replace len(Pods) for defined value
+			var pod *Pod
+			for i := 0; i < len(Pods); i++ {
+				if Pods[i].isBusy {
+					continue
+				}
+				pod = Pods[i]
+				//pod = Pods[i]
+				pod.isBusy = true
+				// -- "load" the model into pod
+				pod.Model = Models[model][i]
+				//pod.Context = unsafe.Pointer(Models[model][i].Context) // TODO: Get rid of Context within Pod?
+				break
+			}
+
+			/////pod := IdlePods[model][len(IdlePods[model])-1]
 			if pod == nil {
-				// TODO: Something really wrong going here! We need to fix this ASAP
+				// FIXME: Something really wrong going here! We need to fix this ASAP
 				// TODO: Log this case!
 				mu.Unlock()
 				Colorize("\n[magenta][ ERROR ][white] Failed to get idle pod for '%s' model!\n\n", model)
 				continue
 			}
-			IdlePods[model] = IdlePods[model][:len(IdlePods[model])-1]
+
+			/////IdlePods[model] = IdlePods[model][:len(IdlePods[model])-1]
 			mu.Unlock()
 
 			// FIXME: Check RunningPods one more time?
 			// TODO: Is it make sense to use atomic over just mutex here?
 			atomic.AddInt64(&RunningPods, 1)
-			atomic.AddInt64(&RunningThreads, pod.Model.Threads)
+			atomic.AddInt64(&RunningThreads, pod.Threads)
 
 			go Do(jobID, pod)
 		}
@@ -391,9 +555,10 @@ func Engine() {
 
 func Do(jobID string, pod *Pod) {
 
+	// TODO: still need mutext for subtract both counters at the SAME time
 	defer atomic.AddInt64(&RunningPods, -1)
-	defer atomic.AddInt64(&RunningThreads, -pod.Model.Threads)
-	defer runtime.GC()
+	defer atomic.AddInt64(&RunningThreads, -pod.Threads)
+	defer runtime.GC() // TODO: GC or not GC?
 
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
@@ -411,7 +576,7 @@ func Do(jobID string, pod *Pod) {
 	if ServerMode == CPPMode { // --- use llama.cpp backend
 
 		//tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
-		tokenCount := C.loop(pod.Context, C.CString(jobID), C.CString(prompt))
+		tokenCount := C.loop(pod.Model.Context, C.CString(jobID), C.CString(prompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
@@ -423,16 +588,16 @@ func Do(jobID string, pod *Pod) {
 		Jobs[jobID].Status = "finished"
 		Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
-		IdlePods[pod.Model.ID] = append(IdlePods[pod.Model.ID], pod) // return pod to the pool
+		/////IdlePods[pod.Model.ID] = append(IdlePods[pod.Model.ID], pod) // return pod to the pool
 		mu.Unlock()
 
 	} else { // --- use llama.go framework
 
 		// tokenize the prompt
-		embdPrompt := ml.Tokenize(Vocab, prompt, true)
+		embdPrompt := ml.Tokenize(vocab, prompt, true)
 
 		// ring buffer for last N tokens
-		lastNTokens := ring.New(int(Params.CtxSize))
+		lastNTokens := ring.New(int(params.CtxSize))
 
 		// method to append a token to the ring buffer
 		appendToken := func(token uint32) {
@@ -441,7 +606,7 @@ func Do(jobID string, pod *Pod) {
 		}
 
 		// zeroing the ring buffer
-		for i := 0; i < int(Params.CtxSize); i++ {
+		for i := 0; i < int(params.CtxSize); i++ {
 			appendToken(0)
 		}
 
@@ -449,15 +614,15 @@ func Do(jobID string, pod *Pod) {
 		tokenCounter := 0
 		pastCount := uint32(0)
 		consumedCount := uint32(0)           // number of tokens, already processed from the user prompt
-		remainedCount := Params.PredictCount // how many tokens we still need to generate to achieve predictCount
-		embd := make([]uint32, 0, Params.BatchSize)
+		remainedCount := params.PredictCount // how many tokens we still need to generate to achieve predictCount
+		embd := make([]uint32, 0, params.BatchSize)
 
-		evalPerformance := make([]int64, 0, Params.PredictCount)
-		samplePerformance := make([]int64, 0, Params.PredictCount)
-		fullPerformance := make([]int64, 0, Params.PredictCount)
+		evalPerformance := make([]int64, 0, params.PredictCount)
+		samplePerformance := make([]int64, 0, params.PredictCount)
+		fullPerformance := make([]int64, 0, params.PredictCount)
 
 		// new context opens sync channel and starts workers for tensor compute
-		ctx := llama.NewContext(Model, Params)
+		ctx := llama.NewContext(model, params)
 
 		for remainedCount > 0 {
 
@@ -471,9 +636,9 @@ func Do(jobID string, pod *Pod) {
 				// - take the n_keep first tokens from the original prompt (via n_past)
 				// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
 
-				if pastCount+uint32(len(embd)) > Params.CtxSize {
-					leftCount := pastCount - Params.KeepCount
-					pastCount = Params.KeepCount
+				if pastCount+uint32(len(embd)) > params.CtxSize {
+					leftCount := pastCount - params.KeepCount
+					pastCount = params.KeepCount
 
 					// insert n_left/2 tokens at the start of embd from last_n_tokens
 					// embd = append(lastNTokens[:leftCount/2], embd...)
@@ -481,7 +646,7 @@ func Do(jobID string, pod *Pod) {
 				}
 
 				evalStart := time.Now().UnixNano()
-				if err := llama.Eval(ctx, Vocab, Model, embd, pastCount, Params); err != nil {
+				if err := llama.Eval(ctx, vocab, model, embd, pastCount, params); err != nil {
 					// TODO: Finish job properly with [failed] status
 				}
 				evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
@@ -493,7 +658,7 @@ func Do(jobID string, pod *Pod) {
 
 			if int(consumedCount) < len(embdPrompt) {
 
-				for len(embdPrompt) > int(consumedCount) && len(embd) < int(Params.BatchSize) {
+				for len(embdPrompt) > int(consumedCount) && len(embd) < int(params.BatchSize) {
 
 					embd = append(embd, embdPrompt[consumedCount])
 					appendToken(embdPrompt[consumedCount])
@@ -502,21 +667,21 @@ func Do(jobID string, pod *Pod) {
 
 			} else {
 
-				//if Params.IgnoreEOS {
+				//if params.IgnoreEOS {
 				//	Ctx.Logits[ml.TOKEN_EOS] = 0
 				//}
 
 				sampleStart := time.Now().UnixNano()
 				id := llama.SampleTopPTopK( /*ctx,*/ ctx.Logits,
-					lastNTokens, Params.RepeatLastN,
-					Params.TopK, Params.TopP,
-					Params.Temp, Params.RepeatPenalty)
+					lastNTokens, params.RepeatLastN,
+					params.TopK, params.TopP,
+					params.Temp, params.RepeatPenalty)
 				samplePerformance = append(samplePerformance, time.Now().UnixNano()-sampleStart)
 
 				appendToken(id)
 
 				// replace end of text token with newline token when in interactive mode
-				//if id == ml.TOKEN_EOS && Params.Interactive && !Params.Instruct {
+				//if id == ml.TOKEN_EOS && params.Interactive && !params.Instruct {
 				//	id = ml.NewLineToken
 				//}
 
@@ -537,7 +702,7 @@ func Do(jobID string, pod *Pod) {
 			for _, id := range embd {
 
 				tokenCounter++
-				token := ml.Token2Str(Vocab, id) // TODO: Simplify
+				token := ml.Token2Str(vocab, id) // TODO: Simplify
 
 				mu.Lock()
 				Jobs[jobID].Output += token
@@ -648,18 +813,19 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	// FIXME: Return check!
 	// TODO: Tokenize and check for max tokens properly
-	//	if len(payload.Prompt) >= int(Params.CtxSize)*3 {
+	//	if len(payload.Prompt) >= int(params.CtxSize)*3 {
 	//		return ctx.
 	//			Status(fiber.StatusBadRequest).
-	//			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", Params.CtxSize))
+	//			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", params.CtxSize))
 	//	}
 
 	if payload.Model != "" {
-		if _, ok := Pods[payload.Model]; !ok {
-			return ctx.
-				Status(fiber.StatusBadRequest).
-				SendString(fmt.Sprintf("Model with name '%s' is not found!", payload.Model))
-		}
+		// FIXME: Refactor ASAP
+		/////if _, ok := Pods[payload.Model]; !ok {
+		/////	return ctx.
+		/////		Status(fiber.StatusBadRequest).
+		/////		SendString(fmt.Sprintf("Model with name '%s' is not found!", payload.Model))
+		/////}
 	} else {
 		payload.Model = DefaultModel
 	}
