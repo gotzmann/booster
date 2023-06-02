@@ -184,7 +184,7 @@ func main() {
 	//opts.Model = "/Users/me/models/7B/Wizard-Vicuna-7B-Uncensored.ggmlv3.q4_0.bin"
 
 	// https://huggingface.co/jondurbin/airoboros-7b-ggml-q4_0/tree/main
-	opts.Model = "/Users/me/models/7B/airoboros-7b-ggml-q4_0.bin"
+	//opts.Model = "/Users/me/models/7B/airoboros-7b-ggml-q4_0.bin"
 
 	// https://huggingface.co/TheBloke/guanaco-7B-GGML/tree/main
 	//opts.Model = "/Users/me/models/7B/guanaco-7B.ggmlv3.q4_0.bin" // 50/50
@@ -255,7 +255,7 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/airoboros-13B.q5_1.bin"
 
 	// https://huggingface.co/TheBloke/manticore-13b-chat-pyg-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_0.bin"
+	opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_0.bin"
 	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_1.bin"
 	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_0.bin"
 	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_1.bin"

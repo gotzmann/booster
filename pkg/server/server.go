@@ -910,13 +910,13 @@ func GetJob(ctx *fiber.Ctx) error {
 	// TODO: Guard with mutex
 	return ctx.JSON(fiber.Map{
 		"id":       id,
+		"status":   Jobs[id].Status,
 		"prompt":   Jobs[id].Prompt,
 		"output":   Jobs[id].Output,
 		"created":  Jobs[id].CreatedAt,
 		"started":  Jobs[id].StartedAt,
 		"finished": Jobs[id].FinishedAt,
-		"model":    "model-xx", // TODO: Real model ID
-		"status":   Jobs[id].Status,
+		//"model":    "model-xx", // TODO: Real model ID
 	})
 }
 
