@@ -807,6 +807,7 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	// normalize prompt
 	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
+	payload.Model = strings.Trim(payload.Model, "\n ")
 
 	if err := ctx.BodyParser(&payload); err != nil {
 		// TODO: Proper error handling
@@ -819,12 +820,21 @@ func NewJob(ctx *fiber.Ctx) error {
 	}
 
 	mu.Lock()
+
 	if _, ok := Jobs[payload.ID]; ok {
 		mu.Unlock()
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			SendString("Request with the same id is already processing!")
 	}
+
+	if _, ok := Models[payload.Model]; !ok {
+		mu.Unlock()
+		return ctx.
+			Status(fiber.StatusBadRequest).
+			SendString("Wrong model name!")
+	}
+
 	mu.Unlock()
 
 	// FIXME: Return check!
