@@ -26,11 +26,13 @@ package main
 // void loop(void * ctx, char * jobID, char * prompt);
 // const char * status(char * jobID);
 
+// #cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
+
 /*
 const char * status(char * jobID);
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
-#cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
+#cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++
 */
 import "C"
 
