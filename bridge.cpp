@@ -69,7 +69,9 @@ struct gpt_params {
 
     // --- sampling parameters
 
-    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
+    int     mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    float   mirostat_tau      = 0.1; // 5.0 // target entropy
+    float   mirostat_eta      = 0.1; // 0.1 //learning rate
 
     float   temp              = 0.4; // 0.80f; // 1.0 = disabled
     int32_t top_k             = 8;   // 40; // <= 0 to use vocab size
@@ -83,9 +85,7 @@ struct gpt_params {
     float   tfs_z             = 1.0; // 1.0 = disabled
     float   typical_p         = 1.0; // 1.0 = disabled
 
-    int     mirostat          = 0;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 0.1; // 5.0 // target entropy
-    float   mirostat_eta      = 0.1; // 0.1 //learning rate
+    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
     // --- Some (might be wrong) observations
 
