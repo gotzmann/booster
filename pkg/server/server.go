@@ -35,6 +35,8 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/ml"
 )
 
+// TODO: Check the host:port is free before starting listening
+
 // TODO: Helicopter View - how to work with balancers and multi-pod architectures?
 // TODO: Rate Limiter based on end-user IP address
 // TODO: Guard access with API Tokens
@@ -584,11 +586,22 @@ func Do(jobID string, pod *Pod) {
 		// TODO: Move some slow ops outside of critical section
 		mu.Lock()
 		Jobs[jobID].FinishedAt = time.Now().Unix()
-		Jobs[jobID].Output = strings.Trim(result, "\n ")
 		Jobs[jobID].Status = "finished"
 		Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
+
+		// -- remove suffix and prefix from the output
+		// TODO: Better processing here
+
+		result = strings.Trim(result, "\n ")
+		prompt = strings.Trim(prompt, "\n ") // TODO: Extra step - not needed, just dont use leading space
+		if strings.HasPrefix(result, prompt) {
+			result = result[len(prompt):]
+		}
+		Jobs[jobID].Output = strings.Trim(result, "\n ")
+
 		/////IdlePods[pod.Model.ID] = append(IdlePods[pod.Model.ID], pod) // return pod to the pool
+		pod.isBusy = false
 		mu.Unlock()
 
 	} else { // --- use llama.go framework
@@ -791,6 +804,9 @@ func NewJob(ctx *fiber.Ctx) error {
 		Model   string `json:"model"`
 		Prompt  string `json:"prompt"`
 	}{}
+
+	// normalize prompt
+	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
 
 	if err := ctx.BodyParser(&payload); err != nil {
 		// TODO: Proper error handling

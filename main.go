@@ -184,7 +184,7 @@ func main() {
 	//opts.Model = "/Users/me/models/7B/Wizard-Vicuna-7B-Uncensored.ggmlv3.q4_0.bin"
 
 	// https://huggingface.co/jondurbin/airoboros-7b-ggml-q4_0/tree/main
-	//opts.Model = "/Users/me/models/7B/airoboros-7b-ggml-q4_0.bin"
+	opts.Model = "/Users/me/models/7B/airoboros-7b-ggml-q4_0.bin"
 
 	// https://huggingface.co/TheBloke/guanaco-7B-GGML/tree/main
 	//opts.Model = "/Users/me/models/7B/guanaco-7B.ggmlv3.q4_0.bin" // 50/50
@@ -296,7 +296,7 @@ func main() {
 	//opts.Model = "/Users/me/models/30B/samantha-33B.ggmlv3.q4_0.bin"
 
 	// https://huggingface.co/TheBloke/hippogriff-30b-chat-GGML/tree/main
-	opts.Model = "/Users/me/models/30B/hippogriff-30b.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/30B/hippogriff-30b.ggmlv3.q4_0.bin"
 
 	/*
 
@@ -358,21 +358,30 @@ func main() {
 			//	Colorize("\n[light_magenta]%s", job)
 			//}
 
-			Colorize("\n[magenta]============== jobs ==============")
+			Colorize("\n[magenta]============== JOBS ==============\n")
+
 			for _, job := range server.Jobs {
-				Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s",
+
+				var output string
+				//if job.Status == "finished" {
+				//	output = server.Jobs[job.ID].Output
+				//} else {
+				output = C.GoString(C.status(C.CString(job.ID)))
+				//}
+
+				Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s\n",
 					job.ID,
 					job.Model,
 					job.Status,
 					job.TokenCount,
 					job.TokenEval,
-					C.GoString(C.status(C.CString(job.ID))))
+					output)
 			}
 
-			time.Sleep(3 * time.Second)
+			time.Sleep(5 * time.Second)
 			iter++
 			if iter > 600 {
-				Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
+				Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 5 seconds is over!")
 				break
 			}
 
