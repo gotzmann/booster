@@ -617,7 +617,7 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
 
     //const int64_t t_end_us = ggml_time_us();
 
-    const int32_t n_sample = std::max(1, llama_n_sample(ctx));
+    //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
     const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
     const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
 
@@ -641,9 +641,10 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-char * statusCPP(const std::string & jobID) {
+const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
-    char * res = (char *) jobs[jobID].c_str();
+    //char * res = (char *) jobs[jobID].c_str();
+    const char * res = jobs[jobID].c_str();
     mutex.unlock_shared();
     return res;
 }
@@ -696,7 +697,7 @@ int64_t loop(void * ctx, char * jobID, char * prompt) {
 }
 
 // return current result of processing
-char * status(char * jobID) {
+const char * status(char * jobID) {
     //fprintf(stderr, "\n=== status ===");
     std::string id = jobID;
     return statusCPP(id);

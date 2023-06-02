@@ -1,9 +1,11 @@
 #ifndef BRIDGE_H
 #define BRIDGE_H
 
+#include <stdint.h>
+
 extern "C" { // ------------------------------------------------------
 
-char * status(char * jobID);
+const char * status(char * jobID);
 int64_t timing(char * jobID);
 
 }  // ------------------------------------------------------

@@ -29,13 +29,12 @@ package main
 // #cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
 
 /*
-#include <stdint.h>
-#include <bridge.h>
-//const char * status(char * jobID);
+const char * status(char * jobID);
 //int64_t timing(char * jobID);
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
-#cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++
+#cgo linux LDFLAGS: bridge.o ggml.o llama.o -lstdc++
+#cgo darwin LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
 */
 import "C"
 
