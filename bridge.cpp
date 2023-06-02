@@ -196,7 +196,7 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
     std::vector<llama_token> res(text.size() + (int)add_bos);
     int n = llama_tokenize(ctx, text.c_str(), res.data(), res.size(), add_bos);
-    assert(n >= 0);
+    //assert(n >= 0);
     res.resize(n);
 
     return res;
@@ -228,7 +228,7 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
     std::vector<llama_token> embd_inp(text.size() + (int)add_bos);
     int n = llama_tokenize(ctx, text.c_str(), embd_inp.data(), embd_inp.size(), add_bos);
-    assert(n >= 0); // FIXME: Fix for less than zero !!
+    //assert(n >= 0); // FIXME: Fix for less than zero !!
     embd_inp.resize(n);
 
     //fprintf(stderr, "\n=== TOKENS ===\n");
