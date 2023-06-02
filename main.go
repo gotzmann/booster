@@ -33,7 +33,7 @@ const char * status(char * jobID);
 //int64_t timing(char * jobID);
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
-#cgo linux LDFLAGS: bridge.o ggml.o llama.o -lstdc++
+#cgo linux LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -lm
 #cgo darwin LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
 */
 import "C"
