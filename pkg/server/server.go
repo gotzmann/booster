@@ -8,7 +8,7 @@ package server
 #include <stdint.h>
 void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed);
 int64_t loop(void * ctx, char * jobID, char * prompt);
-char * status(char * jobID);
+const char * status(char * jobID);
 int64_t timing(char * jobID);
 */
 import "C"
