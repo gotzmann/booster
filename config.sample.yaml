@@ -1,0 +1,84 @@
+# --- server settings
+
+id: "mac-m1-pro"
+host: localhost
+port: 8080
+mode: prod
+pods: 3
+threads: [ 8, 6, 2 ]
+avx: false
+neon: true
+cuda: false
+default: airoboros-7b
+
+# --- models
+
+models:
+
+  # --- Airoboros 7B
+
+  - 
+    id: airoboros-7b
+    name: Airoboros 7B
+    path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
+    prefix: "USER:"
+    suffix: "ASSISTANT:"
+    contextsize: 1024
+    predict: 512
+    temp: 0.80
+    topk: 40
+    topp: 0.92
+    repeatpenalty: 1.10
+    mirostat: 0
+    mirostattau: 0
+    mirostateta: 0
+
+  -
+    id: airoboros-7b-creative
+    name: Airoboros 7B Creative
+    path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
+    prefix: "USER:"
+    suffix: "ASSISTANT:"
+    contextsize: 1024
+    predict: 512
+    temp: 0.40
+    topk: 0
+    topp: 0
+    repeatpenalty: 1.10
+    mirostat: 2
+    mirostattau: 1
+    mirostateta: 0.1       
+
+  # --- WizardLM 7B
+
+  -
+    id: wizard-7b
+    name: WizardLM 7B
+    path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
+    prefix: "### Instruction:"
+    suffix: "### Response:"
+    contextsize: 1024
+    predict: 512
+    temp: 0.80
+    topk: 40
+    topp: 0.92
+    repeatpenalty: 1.10
+    mirostat: 0
+    mirostattau: 0
+    mirostateta: 0
+
+    -
+    id: wizard-7b-strict
+    name: WizardLM 7B Strict
+    path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
+    prefix: "### Instruction:"
+    suffix: "### Response:"
+    contextsize: 1024
+    predict: 512
+    temp: 0.40
+    topk: 8
+    topp: 0.92
+    repeatpenalty: 1.10
+    mirostat: 0
+    mirostattau: 0
+    mirostateta: 0

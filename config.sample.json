@@ -1,0 +1,82 @@
+{
+    
+    "id": "mac-m1-pro",
+    "host": "localhost",
+    "port": "8080",
+    "mode": "prod",
+    "pods": 3,
+    "threads": [ 8, 6, 2 ],
+    "avx": false,
+    "neon": true,
+    "cuda": false,
+    "default": "airoboros-7b",
+
+    "models": [
+
+        {
+            "id": "airoboros-7b",
+            "name": "Airoboros 7B",
+            "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
+            "prefix": "USER:",
+            "suffix": "ASSISTANT:",
+            "contextSize": 1024,
+            "predict": 512,
+            "temp": 0.80,
+            "topK": 40,
+            "topP": 0.92,
+            "repeatPenalty": 1.10,
+            "mirostat": 0,
+            "mirostatTAU": 0,
+            "mirostatETA": 0
+        },
+        {
+            "id": "airoboros-7b-creative",
+            "name": "Airoboros 7B Creative",
+            "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
+            "prefix": "USER:",
+            "suffix": "ASSISTANT:",
+            "contextSize": 1024,
+            "predict": 512,
+            "temp": 0.40,
+            "topK": 0,
+            "topP": 0,
+            "repeatPenalty": 1.10,
+            "mirostat": 2,
+            "mirostatTAU": 1,
+            "mirostatETA": 0.1
+        },
+
+        {
+            "id": "wizard-7b",
+            "name": "WizardLM 7B",
+            "path": "~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin",
+            "prefix": "### Instruction:",
+            "suffix": "### Response:",
+            "contextSize": 1024,
+            "predict": 512,
+            "temp": 0.80,
+            "topK": 40,
+            "topP": 0.92,
+            "repeatPenalty": 1.10,
+            "mirostat": 0,
+            "mirostatTAU": 0,
+            "mirostatETA": 0
+        },
+        {
+            "id": "wizard-7b-strict",
+            "name": "WizardLM 7B Strict",
+            "path": "~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin",
+            "prefix": "### Instruction:",
+            "suffix": "### Response:",
+            "contextSize": 1024,
+            "predict": 512,
+            "temp": 0.40,
+            "topK": 8,
+            "topP": 0.92,
+            "repeatPenalty": 1.10,
+            "mirostat": 0,
+            "mirostatTAU": 0,
+            "mirostatETA": 0
+        }
+    ]
+}
