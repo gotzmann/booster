@@ -19,7 +19,8 @@ Description=LLaMAZoo
 PIDFile=/var/run/llamazoo.pid
 WorkingDirectory=/home/git/llamazoo
 ExecStart=/home/git/llamazoo/llamazoo --server >/dev/null 2>&1 &
-ExecStop=/home/git/llamazoo/llamazoo --server stop >/dev/null 2>&1 &
+# Send a termination signal to the service. SIGTERM (15) is the default:
+ExecStop=systemctl kill llamazoo >/dev/null 2>&1 &
 
 [Install]
 
