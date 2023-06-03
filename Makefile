@@ -265,8 +265,8 @@ build-info.h: $(wildcard .git/index) scripts/build-info.sh
 		rm $@.tmp; \
 	fi
 
-llamazoo: main.go bridge.o ggml.o llama.o $(OBJS)
-	CGO_CFLAGS_ALLOW='-mf.*' go build main.go
+llamazoo: llamazoo.go bridge.o ggml.o llama.o $(OBJS)
+	CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
 
 #
 # Tests
