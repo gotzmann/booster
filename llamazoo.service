@@ -1,11 +1,13 @@
 # LLaMAZoo as Daemon
 
-# -- place script to /etc/systemd/system, then execute commands
+# -- 1] place script to /etc/systemd/system, then execute commands
 
 # sudo systemctl daemon-reload
 # sudo systemctl enable llamazoo
 
-# -- use these commands for service control
+# -- 2] check /var/log/syslog for errors
+
+# -- 3] use these commands for service control
 
 # sudo systemctl start llamazoo
 # sudo systemctl stop llamazoo
