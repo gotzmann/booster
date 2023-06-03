@@ -133,6 +133,8 @@ var (
 	Host string
 	Port string
 
+	GoShutdown bool // signal the service should go graceful shutdown
+
 	// Data for running one model from CLI without pods instantiating
 	vocab  *ml.Vocab
 	model  *llama.Model
@@ -391,66 +393,11 @@ func InitFromConfig(conf *Config) {
 				MirostatETA:   model.MirostatETA,
 				//Seed:    seed,
 			}
-
-			//pod := &Pod{
-			//Context: ctx,
-			//Threads: threads,
-			/*
-				Model: &ModelConfig{
-					ID:   model.ID,
-					Name: model.Name,
-					Path: model.Path,
-					//Mode:          model.Mode,
-					//Pods:          1,
-					//Threads:       model.Threads,
-					Prefix:        model.Prefix,
-					Suffix:        model.Suffix,
-					Context:       model.Context,
-					Predict:       model.Predict,
-					Temp:          model.Temp,
-					TopK:          model.TopK,
-					TopP:          model.TopP,
-					RepeatPenalty: model.RepeatPenalty,
-					Mirostat:      model.Mirostat,
-					MirostatTAU:   model.MirostatTAU,
-					MirostatETA:   model.MirostatETA,
-					//Seed:    seed,
-				},*/
-			//}
-			//Pods = append(Pods, pod)
-			//IdlePods = append(IdlePods, pod)
-
-			//if Pods[model.ID] == nil {
-			//	Pods[model.ID] = make([]*Pod, 0, model.Pods)
-			//	IdlePods[model.ID] = make([]*Pod, 0, model.Pods)
-			//} else {
-			//	Colorize("\n[magenta][ ERROR ][white] Model ID '%s' is not unique within config!\n\n", model.ID)
-			//	os.Exit(0)
-			//}
-
-			//Pods[model.ID] = append(Pods[model.ID], pod)
-			//IdlePods[model.ID] = append(IdlePods[model.ID], pod)
 		}
 	}
 
-	//MaxPods = int64(pods)
 	RunningPods = 0    // not needed
 	RunningThreads = 0 // not needed
-	//params.CtxSize = uint32(context)
-	//IdlePods = make([]int, pods)
-	//Contexts = make([]unsafe.Pointer, pods)
-
-	// --- Starting pods incorporating isolated C++ context and runtime
-
-	//for i := 0; i < pods; i++ {
-	//	ctx := C.initFromParams(C.CString(model), C.int(threads), C.int(context), C.int(predict), C.float(temp), C.int32_t(seed))
-	//	if ctx == nil {
-	//		Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", i, pods)
-	//		os.Exit(0)
-	//	}
-	//	IdlePods[i] = i
-	//	Contexts[i] = ctx
-	//}
 }
 
 // --- init and run Fiber server
@@ -465,14 +412,14 @@ func Run() {
 	app.Get("/jobs/status/:id", GetStatus)
 	app.Get("/jobs/:id", GetJob)
 
-	go Engine()
+	go Engine(app)
 
 	app.Listen(Host + ":" + Port)
 }
 
 // --- our evergreen Engine looking for job queue and starting up to MaxPods workers
 
-func Engine() {
+func Engine(app *fiber.App) {
 
 	for {
 
@@ -548,8 +495,13 @@ func Engine() {
 			go Do(jobID, pod)
 		}
 
+		if GoShutdown && len(Queue) == 0 && RunningThreads == 0 {
+			app.Shutdown()
+			break
+		}
+
 		// TODO: Sync over channels
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -797,6 +749,12 @@ func PlaceJob(jobID, model, session, prompt string) {
 //	}
 
 func NewJob(ctx *fiber.Ctx) error {
+
+	if GoShutdown {
+		return ctx.
+			Status(fiber.StatusServiceUnavailable).
+			SendString("Service shutting down...")
+	}
 
 	payload := struct {
 		ID      string `json:"id"`

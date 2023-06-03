@@ -41,8 +41,10 @@ import "C"
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 
 	config "github.com/golobby/config/v3"
@@ -82,14 +84,39 @@ type Options struct {
 
 func main() {
 
-	// Last resort in case of panic while running
-	//defer func() {
-	//	reason := recover()
-	//	if reason != nil {
-	//		Colorize("\n[magenta][ ERROR ][white] %s\n\n", reason)
-	//		os.Exit(0)
-	//	}
-	//}()
+	// --- Allow graceful shutdown via OS signals
+	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	//ctx := context.Background()
+	//ctx, cancel := context.WithCancel(ctx)
+
+	// Listen for OS signals in background
+	go func() {
+		select {
+		case <-signalChan:
+			server.GoShutdown = true
+			//cancel()
+			Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
+			//case <-ctx.Done():
+			//	Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
+		}
+	}()
+
+	// Do all we need in case of graceful shutdown or unexpected panic
+	defer func() {
+		signal.Stop(signalChan)
+		reason := recover()
+		if reason != nil {
+			Colorize("\n[magenta][ ERROR ][white] %s\n\n", reason)
+			os.Exit(0)
+		}
+		Colorize("\n[magenta][ STOP ][white] LLaMAZoo stopped. Ciao!\n\n")
+	}()
+
+	// --- parse command line options
 
 	// TODO: Allow to overwrite some options from the command-line
 	opts := parseOptions()
@@ -98,6 +125,7 @@ func main() {
 		defer profile.Start(profile.ProfilePath(".")).Stop()
 	}
 
+	// TODO: Silent mode for YAML / JSON configs
 	if !opts.Silent {
 		showLogo()
 	}
@@ -355,13 +383,6 @@ func main() {
 		iter := 0
 		for {
 
-			fmt.Printf("\n")
-
-			//Colorize("\n[magenta]============== queue ==============")
-			//for job := range server.Queue {
-			//	Colorize("\n[light_magenta]%s", job)
-			//}
-
 			Colorize("\n[magenta]============== JOBS ==============\n")
 
 			for _, job := range server.Jobs {
@@ -380,6 +401,10 @@ func main() {
 					job.TokenCount,
 					job.TokenEval,
 					output)
+			}
+
+			if server.GoShutdown && len(server.Queue) == 0 && server.RunningThreads == 0 {
+				break
 			}
 
 			time.Sleep(5 * time.Second)

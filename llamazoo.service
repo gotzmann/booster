@@ -1,0 +1,27 @@
+# LLaMAZoo as Daemon
+
+# -- place script to /etc/systemd/system, then execute commands
+
+# sudo systemctl daemon-reload
+# sudo systemctl enable llamazoo
+
+# -- use these commands for service control
+
+# sudo systemctl start llamazoo
+# sudo systemctl stop llamazoo
+
+[Unit]
+
+Description=LLaMAZoo
+
+[Service]
+
+PIDFile=/var/run/llamazoo.pid
+WorkingDirectory=/home/git/llamazoo
+ExecStart=/home/git/llamazoo/llamazoo --server >/dev/null 2>&1 &
+ExecStop=/home/git/llamazoo/llamazoo --server stop >/dev/null 2>&1 &
+
+[Install]
+
+WantedBy=multi-user.target
+Alias=llamazoo
