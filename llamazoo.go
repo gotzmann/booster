@@ -43,7 +43,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"sync"
 	"syscall"
 	"time"
 
@@ -84,6 +83,8 @@ type Options struct {
 
 func main() {
 
+	conf := server.Config{}
+
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
 
@@ -99,7 +100,12 @@ func main() {
 		case <-signalChan:
 			server.GoShutdown = true
 			//cancel()
-			Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
+			pending := len(server.Queue)
+			if pending > 0 {
+				pending += conf.Pods
+			}
+			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
+			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
 			//case <-ctx.Done():
 			//	Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
 		}
@@ -110,10 +116,10 @@ func main() {
 		signal.Stop(signalChan)
 		reason := recover()
 		if reason != nil {
-			Colorize("\n[magenta][ ERROR ][white] %s\n\n", reason)
+			Colorize("\n[light_magenta][ ERROR ][white] %s\n\n", reason)
 			os.Exit(0)
 		}
-		Colorize("\n[magenta][ STOP ][white] LLaMAZoo stopped. Ciao!\n\n")
+		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo stopped. Ciao!\n\n")
 	}()
 
 	// --- parse command line options
@@ -132,9 +138,7 @@ func main() {
 
 	// --- read config from JSON or YAML
 
-	conf := server.Config{}
 	var feed config.Feeder
-
 	if !opts.Ignore {
 
 		if _, err := os.Stat("config.json"); err == nil {
@@ -375,56 +379,59 @@ func main() {
 
 	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
 
-	// TODO: Control signals between main() and server
-	var wg sync.WaitGroup
-	wg.Add(1)
+	//var wg sync.WaitGroup
+	//wg.Add(1)
 
-	go func() {
-		iter := 0
-		for {
+	// --- Debug output of results and stop after 1 hour in case of running withous --server flag
+	if !opts.Server {
+		go func() {
+			iter := 0
+			for {
 
-			Colorize("\n[magenta]============== JOBS ==============\n")
+				Colorize("\n[magenta]============== JOBS ==============\n")
 
-			for _, job := range server.Jobs {
+				for _, job := range server.Jobs {
 
-				var output string
-				//if job.Status == "finished" {
-				//	output = server.Jobs[job.ID].Output
-				//} else {
-				output = C.GoString(C.status(C.CString(job.ID)))
-				//}
+					var output string
+					//if job.Status == "finished" {
+					//	output = server.Jobs[job.ID].Output
+					//} else {
+					output = C.GoString(C.status(C.CString(job.ID)))
+					//}
 
-				Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s\n",
-					job.ID,
-					job.Model,
-					job.Status,
-					job.TokenCount,
-					job.TokenEval,
-					output)
+					Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s\n",
+						job.ID,
+						job.Model,
+						job.Status,
+						job.TokenCount,
+						job.TokenEval,
+						output)
+				}
+
+				if server.GoShutdown && len(server.Queue) == 0 && server.RunningThreads == 0 {
+					break
+				}
+
+				time.Sleep(3 * time.Second)
+				iter++
+				if iter > 600 {
+					Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
+					break
+				}
+
 			}
-
-			if server.GoShutdown && len(server.Queue) == 0 && server.RunningThreads == 0 {
-				break
-			}
-
-			time.Sleep(5 * time.Second)
-			iter++
-			if iter > 600 {
-				Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 5 seconds is over!")
-				break
-			}
-
-		}
-		wg.Done()
-	}()
-
-	go server.Run()
-
-	if !opts.Silent && opts.Server {
-		Colorize("\n[light_magenta][ INIT ][light_blue] REST server ready on [light_magenta]%s:%s", opts.Host, opts.Port)
+			//wg.Done()
+		}()
 	}
 
-	wg.Wait()
+	if !opts.Silent && opts.Server {
+		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
+	}
+
+	/*go*/
+	server.Run()
+
+	//wg.Wait()
 }
 
 func parseOptions() *Options {
