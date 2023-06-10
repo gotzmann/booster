@@ -1,3 +1,7 @@
+LLAMA_METAL := true
+#LLAMA_NO_ACCELERATE := true
+default: llamazoo 
+
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot
 
@@ -6,9 +10,6 @@ ifdef LLAMA_BUILD_SERVER
 endif
 
 #default: $(BUILD_TARGETS)
-
-#LLAMA_NO_ACCELERATE := true
-default: llamazoo 
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -260,7 +261,7 @@ common.o: examples/common.cpp examples/common.h
 libllama.so: llama.o ggml.o $(OBJS)
 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
-bridge.o: bridge.cpp # bridge.h
+bridge.o: bridge.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@	
 
 clean:
@@ -303,7 +304,7 @@ build-info.h: $(wildcard .git/index) scripts/build-info.sh
 		rm $@.tmp; \
 	fi
 
-llamazoo: llamazoo.go bridge.o ggml.o llama.o k_quants.o $(OBJS)
+llamazoo: llamazoo.go bridge.o ggml.o llama.o k_quants.o ggml-metal.o $(OBJS)
 	CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
 
 #

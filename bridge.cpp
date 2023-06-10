@@ -2,7 +2,7 @@
 
 #include "llama.h"
 #include "ggml.h"
-#include "bridge.h"
+//#include "bridge.h"
 
 #include <string>
 #include <vector>
@@ -52,11 +52,6 @@ void show() {
 //    freopen(TTY_DEVICE, "w", stderr);
 }
 
-//
-// CLI argument parsing
-//
-////int32_t get_num_physical_cores();
-
 struct gpt_params {
 
     int32_t seed          = -1;   // RNG seed
@@ -75,7 +70,7 @@ struct gpt_params {
 
     int     mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1; // 5.0 // target entropy
-    float   mirostat_eta      = 0.1; // 0.1 //learning rate
+    float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
     float   temp              = 0.4; // 0.80f; // 1.0 = disabled
     int32_t top_k             = 8;   // 40; // <= 0 to use vocab size
@@ -84,6 +79,8 @@ struct gpt_params {
     float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled
     int32_t repeat_last_n     = -1;  // 64; // last n tokens to penalize (0 = disable penalty, -1 = context size)
 
+    // TODO: Expreriment with those parameters and allow to set them from CLI and configs
+
     float   frequency_penalty = 0.0; // 0.0 = disabled
     float   presence_penalty  = 0.0; // 0.0 = disabled
     float   tfs_z             = 1.0; // 1.0 = disabled
@@ -91,7 +88,7 @@ struct gpt_params {
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
-    // --- Some (might be wrong) observations
+    // --- Some (possibly be wrong) observations
 
     // Temp is used both for mirostat and TopK-TopP sampling, but it better to keep lower temp for mirostat
 
@@ -139,53 +136,39 @@ struct gpt_params {
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
 
-// --- Global params for all pods
+// --- Global params for all pods. Do anyone needs more that total 8 pods per machine?
 
-gpt_params params;
+gpt_params params[8];
 
-////bool gpt_params_parse(int argc, char ** argv, gpt_params & params);
-
-////void gpt_print_usage(int argc, char ** argv, const gpt_params & params);
-
-////std::string gpt_random_prompt(std::mt19937 & rng);
-
-//
-// Vocab utils
-//
-
-////std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool add_bos);
-
-//
-// Model utils
-//
-
-//struct llama_context * llama_init_from_gpt_params(const gpt_params & params);
-
-struct llama_context * llama_init_from_gpt_params(const gpt_params & params) {
+struct llama_context * init_context(int idx /*const gpt_params & params*/) {
 
     auto lparams = llama_context_default_params();
 
-    lparams.n_ctx      = params.n_ctx;
-    //lparams.n_parts    = params.n_parts;
-    lparams.seed       = params.seed;
-    lparams.f16_kv     = params.memory_f16;
-    lparams.use_mmap   = params.use_mmap;
-    lparams.use_mlock  = params.use_mlock;
-    lparams.logits_all = params.perplexity;
-    lparams.embedding  = params.embedding;
+    // NB! [lparams] is of type llama_context_params and have no all parameters from bigger gpt_params
+    //     [params]  is of type gpt_params and has n_threads parameter
 
-    llama_context * lctx = llama_init_from_file(params.model.c_str(), lparams);
+    lparams.n_ctx        = params[idx].n_ctx;
+    lparams.n_batch      = params[idx].n_ctx; // TODO: Is it right to have batch the same size as context?
+    lparams.seed         = params[idx].seed;
+    //lparams.f16_kv     = params.memory_f16;
+    //lparams.use_mmap   = params.use_mmap;
+    //lparams.use_mlock  = params.use_mlock;
+    //lparams.logits_all = params.perplexity;
+    //lparams.embedding  = params.embedding;
+    lparams.n_gpu_layers = params[idx].n_gpu_layers; // FIXME ASAP: DEBUG & EXPERIMENTAL !!!
+
+    llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
     if (lctx == NULL) {
-        fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params.model.c_str());
+        fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params[idx].model.c_str());
         return NULL;
     }
 
-    if (!params.lora_adapter.empty()) {
+    if (!params[idx].lora_adapter.empty()) {
         int err = llama_apply_lora_from_file(lctx,
-                                             params.lora_adapter.c_str(),
-                                             params.lora_base.empty() ? NULL : params.lora_base.c_str(),
-                                             params.n_threads);
+                                             params[idx].lora_adapter.c_str(),
+                                             params[idx].lora_base.empty() ? NULL : params[idx].lora_base.c_str(),
+                                             params[idx].n_threads);
         if (err != 0) {
             fprintf(stderr, "%s: error: failed to apply lora adapter\n", __func__);
             return NULL;
@@ -208,7 +191,8 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
 
 // TODO: Better naming
 // Process prompt and compute output, return total number of tokens processed
-int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std::string & text) {
+// idx - index of pod / context / params to do processing within
+int64_t loopCPP(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & text) {
 
     llama_reset_timings(ctx);
 
@@ -216,15 +200,15 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
     // TODO: Use local copy of global params !!
 
     //printf("\n\n=== seed = %d", ::params.seed);
-    if (::params.seed <= 0) {
-        ::params.seed = time(NULL);
+    if (::params[idx].seed <= 0) {
+        ::params[idx].seed = time(NULL);
     }
 
     // --- Restoring ctx buffers
     // FIXME: Free buffers after use
 
     //ctx->rng = std::mt19937(params.seed);
-    llama_set_rng_seed(ctx, ::params.seed);
+    llama_set_rng_seed(ctx, ::params[idx].seed);
     //reset_logits(ctx); // FIXME: Experimental, reset logits for the vocab size
     //std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
@@ -249,7 +233,7 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
     //const int n_ctx = llama_n_ctx(ctx);
 
     int n_past             = 0;
-    int n_remain           = ::params.n_predict;
+    int n_remain           = ::params[idx].n_predict;
     int n_consumed         = 0;
     ////int n_session_consumed = 0;
 
@@ -268,11 +252,11 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
             // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
             if (n_past + (int) embd.size() > n_ctx) {
 
-                const int n_left = n_past - ::params.n_keep;
+                const int n_left = n_past - ::params[idx].n_keep;
 
                 ////n_past = ::params.n_keep;
                 // always keep the first token - BOS
-                n_past = std::max(1, params.n_keep);
+                n_past = std::max(1, params[idx].n_keep);
 
                 // insert n_left/2 tokens at the start of embd from last_n_tokens
                 embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
@@ -314,13 +298,13 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
 
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
-            for (int i = 0; i < (int) embd.size(); i += ::params.n_batch) {
+            for (int i = 0; i < (int) embd.size(); i += ::params[idx].n_batch) {
 
                 int n_eval = (int) embd.size() - i;
-                if (n_eval > ::params.n_batch) {
-                    n_eval = ::params.n_batch;
+                if (n_eval > ::params[idx].n_batch) {
+                    n_eval = ::params[idx].n_batch;
                 }
-                if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params.n_threads)) {
+                if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
                     return 0;
                 }
@@ -338,19 +322,19 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
             // out of user input, sample next token
-            const float   temp            = ::params.temp;
-            const int32_t top_k           = ::params.top_k <= 0 ? llama_n_vocab(ctx) : ::params.top_k;
-            const float   top_p           = ::params.top_p;
+            const float   temp            = ::params[idx].temp;
+            const int32_t top_k           = ::params[idx].top_k <= 0 ? llama_n_vocab(ctx) : ::params[idx].top_k;
+            const float   top_p           = ::params[idx].top_p;
             //const float   tfs_z           = ::params.tfs_z;
             //const float   typical_p       = ::params.typical_p;
-            const int32_t repeat_last_n   = ::params.repeat_last_n < 0 ? n_ctx : ::params.repeat_last_n;
-            const float   repeat_penalty  = ::params.repeat_penalty;
+            const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
+            const float   repeat_penalty  = ::params[idx].repeat_penalty;
             //const float   alpha_presence  = ::params.presence_penalty;
             //const float   alpha_frequency = ::params.frequency_penalty;
-            const int     mirostat        = ::params.mirostat;
-            const float   mirostat_tau    = ::params.mirostat_tau;
-            const float   mirostat_eta    = ::params.mirostat_eta;
-            const bool    penalize_nl     = ::params.penalize_nl;
+            const int     mirostat        = ::params[idx].mirostat;
+            const float   mirostat_tau    = ::params[idx].mirostat_tau;
+            const float   mirostat_eta    = ::params[idx].mirostat_eta;
+            const bool    penalize_nl     = ::params[idx].penalize_nl;
 
             // optionally save the session on first sample (for faster prompt loading next time)
             ////if (!path_session.empty() && need_to_save_session) {
@@ -474,7 +458,7 @@ int64_t loopCPP(struct llama_context * ctx, const std::string & jobID, const std
                 last_n_tokens.erase(last_n_tokens.begin());
                 last_n_tokens.push_back(embd_inp[n_consumed]);
                 ++n_consumed;
-                if ((int) embd.size() >= ::params.n_batch) {
+                if ((int) embd.size() >= ::params[idx].n_batch) {
                     break;
                 }
             }
@@ -663,24 +647,47 @@ int64_t timingCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed) {
+void * initContext(
+    int idx, 
+    char * modelName, 
+    int threads, int gpuLayers, 
+    int context, int predict,
+    int mirostat, float mirostat_tau, float mirostat_eta,
+    float temp, int top_k, float top_p, 
+    float repeat_penalty, int repeat_last_n,
+    int32_t seed) {
 
-    //fprintf(stderr, "\n\n=== initFromParams ===");
+    //fprintf(stderr, "\n\n=== initContext | default params[%d].temp = %f ===", idx, ::params[idx].temp);
+    //fprintf(stderr, "\n=== initContext | default params[%d].model = %s ===", idx, ::params[idx].model.c_str());
     
-    //gpt_params params;
-    //fprintf(stderr, "\ndefaultModel = %s", params.model.c_str());
-    ::params.model = modelName;
-    ::params.n_threads = threads;
-    ::params.n_ctx = context;
-    ::params.n_predict = predict;
-    //::params.n_batch = predict; // TODO: Not sure about better value
-    ::params.temp = temp;
-    ::params.seed = seed;
+    ::params[idx].model          = modelName;
+    ::params[idx].n_threads      = threads;
+    ::params[idx].n_gpu_layers   = gpuLayers;
+
+    ::params[idx].n_ctx          = context;
+    ::params[idx].n_predict      = predict;
+
+    ::params[idx].mirostat       = mirostat;
+    ::params[idx].mirostat_tau   = mirostat_tau; 
+    ::params[idx].mirostat_eta   = mirostat_eta;
+
+    ::params[idx].temp           = temp;
+    ::params[idx].top_k          = top_k;
+    ::params[idx].top_p          = top_p;
+
+    ::params[idx].repeat_penalty = repeat_penalty;
+    ::params[idx].repeat_last_n  = repeat_last_n;
+    
+    ::params[idx].seed           = seed;
     
     // FIXME: Hide and Show init messages
     ////hide();
-    auto res =  llama_init_from_gpt_params(::params);
+    auto res =  init_context(idx);
     ////show();
+
+    //fprintf(stderr, "\n=== initContext | new params[%d].temp = %f ===", idx, ::params[idx].temp);
+    //fprintf(stderr, "\n=== initContext | default TopK = %d ===", ::params[idx].top_k);
+    //fprintf(stderr, "\n=== initContext | new params[%d].model = %s ===", idx, ::params[idx].model.c_str());
 
     return res;
 }
@@ -692,12 +699,12 @@ void * initFromParams(char * modelName, int threads, int context, int predict, f
 ////    return &tokens;
 ////}
 
-int64_t loop(void * ctx, char * jobID, char * prompt) {
+int64_t loop(int idx, void * ctx, char * jobID, char * prompt) {
     //fprintf(stderr, "\n=== loop ===");
 
     std::string id = jobID;
     std::string text = prompt;
-    return loopCPP((struct llama_context *)ctx, id, text);
+    return loopCPP(idx, (struct llama_context *)ctx, id, text);
 }
 
 // return current result of processing

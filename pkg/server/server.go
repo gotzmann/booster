@@ -6,8 +6,16 @@ package server
 
 /*
 #include <stdint.h>
-void * initFromParams(char * modelName, int threads, int context, int predict, float temp, int32_t seed);
-int64_t loop(void * ctx, char * jobID, char * prompt);
+void * initContext(
+	int idx,
+	char * modelName,
+	int threads, int gpuLayers,
+	int context, int predict,
+	int mirostat, float mirostat_tau, float mirostat_eta,
+	float temp, int topK, float topP,
+	float repeat_penalty, int repeat_last_n,
+	int32_t seed);
+int64_t loop(int idx, void * ctx, char * jobID, char * prompt);
 const char * status(char * jobID);
 int64_t timing(char * jobID);
 */
@@ -56,26 +64,22 @@ type Model struct {
 
 	Context unsafe.Pointer // *llama.Context
 
-	//Mode    string // prod, debug, ignore, etc
-	//Pods    int    // how many pods start
-	//Threads int64  // how many threads allow per pod (int64 for atomic manipulations)
-
 	Prefix string // prompt prefix for instruct-type models
 	Suffix string // prompt suffix
 
 	ContextSize int
 	Predict     int
 
-	Temp float32
+	Mirostat    int
+	MirostatTAU float32
+	MirostatETA float32
 
+	Temp float32
 	TopK int
 	TopP float32
 
 	RepeatPenalty float32
-
-	Mirostat    int
-	MirostatTAU float32
-	MirostatETA float32
+	RepeatLastN   int
 }
 
 // TODO: Logging setup
@@ -89,18 +93,21 @@ type Config struct {
 	NEON bool
 	CUDA bool
 
-	Pods    int     // pods count
-	Threads []int64 // threads count for each pod
+	Pods      int     // pods count
+	Threads   []int64 // threads count for each pod
+	GPULayers []int   // how many layers offload to Apple GPU?
 
 	Models []Model
 
-	Default string // default model ID
+	DefaultModel string // default model ID
 }
 
 type Pod struct {
-	isBusy  bool   // do pod instance doing some job?
-	Threads int64  // how many threads in use
-	Model   *Model // model params
+	idx       int    // pod index
+	isBusy    bool   // do pod instance doing some job?
+	Threads   int64  // how many threads in use
+	GPULayers int64  // how many layers offload to Apple GPU?
+	Model     *Model // model params
 	//Context unsafe.Pointer // llama.cpp context
 }
 
@@ -204,7 +211,15 @@ func init() {
 
 // Init allocates contexts for independent pods
 // TODO: Allow to load and work with different models at the same time
-func Init(host, port string, pods int, threads int64, model, prefix, suffix string, context, predict int, temp float32, seed uint32) {
+func Init(
+	host, port string,
+	pods int, threads, gpuLayers int64,
+	model, prefix, suffix string,
+	context, predict int,
+	mirostat int, mirostatTAU float32, mirostatETA float32,
+	temp float32, topK int, topP float32,
+	repeatPenalty float32, repeatLastN int,
+	seed uint32) {
 
 	ServerMode = CPPMode
 	Host = host
@@ -228,6 +243,7 @@ func Init(host, port string, pods int, threads int64, model, prefix, suffix stri
 
 		MaxThreads += threads
 		Pods[pod] = &Pod{
+			idx:     pod,
 			Threads: threads,
 		}
 
@@ -237,12 +253,14 @@ func Init(host, port string, pods int, threads int64, model, prefix, suffix stri
 			os.Exit(0)
 		}
 
-		ctx := C.initFromParams(
+		ctx := C.initContext(
+			C.int(pod),
 			C.CString(model),
-			C.int(threads),
-			C.int(context),
-			C.int(predict),
-			C.float(temp),
+			C.int(threads), C.int(gpuLayers),
+			C.int(context), C.int(predict),
+			C.int(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
+			C.float(temp), C.int(topK), C.float(topP),
+			C.float(repeatPenalty), C.int(repeatLastN),
 			C.int32_t(seed))
 
 		if ctx == nil {
@@ -303,19 +321,25 @@ func InitFromConfig(conf *Config) {
 
 	// -- some validations TODO: move to better place
 
-	if len(conf.Threads) > conf.Pods {
-		conf.Pods = len(conf.Threads)
+	if conf.Pods != len(conf.Threads) {
+		Colorize("\n[magenta][ ERROR ][white] Please fix config! Treads array should have numbers for each pod of total %d\n\n", conf.Pods)
+		os.Exit(0)
+	}
+
+	for conf.Pods != len(conf.GPULayers) {
+		Colorize("\n[magenta][ ERROR ][white] Please fix config! Set number of GPU layers for each pod of total %d\n\n", conf.Pods)
+		os.Exit(0)
 	}
 
 	defaultModelFound := false
 	for _, model := range conf.Models {
-		if conf.Default == model.ID {
+		if conf.DefaultModel == model.ID {
 			defaultModelFound = true
 		}
 	}
 
 	if !defaultModelFound {
-		Colorize("\n[magenta][ ERROR ][white] Default model not found: %s\n\n", conf.Default)
+		Colorize("\n[magenta][ ERROR ][white] Default model not found: %s\n\n", conf.DefaultModel)
 		os.Exit(0)
 	}
 
@@ -325,7 +349,7 @@ func InitFromConfig(conf *Config) {
 	Host = conf.Host
 	Port = conf.Port
 	//MaxThreads = int64(conf.Threads)
-	DefaultModel = conf.Default
+	DefaultModel = conf.DefaultModel
 	Pods = make([]*Pod, conf.Pods)
 	Models = make(map[string][]*Model)
 
@@ -335,6 +359,7 @@ func InitFromConfig(conf *Config) {
 
 		MaxThreads += threads
 		Pods[pod] = &Pod{
+			idx:     pod,
 			Threads: threads,
 		}
 
@@ -357,13 +382,15 @@ func InitFromConfig(conf *Config) {
 			}
 
 			// TODO: catch panic from CGO if file not found
-			ctx := C.initFromParams(
+			ctx := C.initContext(
+				C.int(pod),
 				C.CString(path),
-				C.int(threads),
-				C.int(model.ContextSize),
-				C.int(model.Predict),
-				C.float(model.Temp),
-				C.int32_t( /*seed*/ -1))
+				C.int(threads), C.int(conf.GPULayers[pod]),
+				C.int(model.ContextSize), C.int(model.Predict),
+				C.int(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
+				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
+				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
+				C.int32_t(-1))
 
 			if ctx == nil {
 				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model %s\n\n", model.ID)
@@ -376,22 +403,26 @@ func InitFromConfig(conf *Config) {
 			}
 
 			Models[model.ID][pod] = &Model{
-				ID:            model.ID,
-				Name:          model.Name,
-				Path:          model.Path,
-				Context:       ctx,
-				Prefix:        model.Prefix,
-				Suffix:        model.Suffix,
-				ContextSize:   model.ContextSize,
-				Predict:       model.Predict,
-				Temp:          model.Temp,
-				TopK:          model.TopK,
-				TopP:          model.TopP,
+				ID:      model.ID,
+				Name:    model.Name,
+				Path:    model.Path,
+				Context: ctx,
+
+				Prefix: model.Prefix,
+				Suffix: model.Suffix,
+
+				ContextSize: model.ContextSize,
+				Predict:     model.Predict,
+
+				Mirostat:    model.Mirostat,
+				MirostatTAU: model.MirostatTAU,
+				MirostatETA: model.MirostatETA,
+
+				Temp: model.Temp,
+				TopK: model.TopK,
+				TopP: model.TopP,
+
 				RepeatPenalty: model.RepeatPenalty,
-				Mirostat:      model.Mirostat,
-				MirostatTAU:   model.MirostatTAU,
-				MirostatETA:   model.MirostatETA,
-				//Seed:    seed,
 			}
 		}
 	}
@@ -530,7 +561,7 @@ func Do(jobID string, pod *Pod) {
 	if ServerMode == CPPMode { // --- use llama.cpp backend
 
 		//tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
-		tokenCount := C.loop(pod.Model.Context, C.CString(jobID), C.CString(prompt))
+		tokenCount := C.loop(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(prompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))

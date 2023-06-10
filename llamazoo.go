@@ -27,13 +27,14 @@ package main
 // const char * status(char * jobID);
 
 // #cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
+// cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 
 /*
 const char * status(char * jobID);
-#cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
-#cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
+#cgo CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG
+#cgo CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL
 #cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o -lstdc++ -lm
-#cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o -lstdc++ -framework Accelerate
+#cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 */
 import "C"
 
@@ -55,30 +56,38 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.9.8"
+const VERSION = "0.9.9"
 
 type Options struct {
-	Prompt  string  `long:"prompt" description:"Text prompt from user to feed the model input"`
-	Model   string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
-	Prefix  string  `long:"prefix" description:"Prompt prefix if needed, like \"### Instruction:\""`
-	Suffix  string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
-	Seed    uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
-	Server  bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
-	Debug   bool    `long:"debug" description:"Stream debug info to console while processing requests"`
-	Host    string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
-	Port    string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
-	Pods    int     `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
-	Threads int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
-	Context uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
-	Predict uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
-	Temp    float32 `long:"temp" description:"Model temperature hyper parameter [ 0.50 by default ]"`
-	Silent  bool    `long:"silent" description:"Hide welcome logo and other output [ shown by default ]"`
-	Chat    bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
-	Dir     string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
-	Profile bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
-	UseAVX  bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
-	UseNEON bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
-	Ignore  bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
+	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
+	Model         string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
+	Prefix        string  `long:"prefix" description:"Prompt prefix if needed, like \"### Instruction:\""`
+	Suffix        string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
+	Seed          uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
+	Server        bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
+	Debug         bool    `long:"debug" description:"Stream debug info to console while processing requests"`
+	Host          string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
+	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
+	Pods          int     `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
+	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
+	Context       uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
+	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
+	Mirostat      int     `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
+	MirostatTAU   float32 `long:"mirostat-tau" description:"Mirostat TAU value [ 0.10 by default ]"`
+	MirostatETA   float32 `long:"mirostat-eta" description:"Mirostat ETA value [ 0.10 by default ]"`
+	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.40 by default ]"`
+	TopK          int     `long:"top-k" description:"TopK parameter for the model [ 8 by default ]"`
+	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.80 by default ]"`
+	RepeatPenalty float32 `long:"repeat-penalty" description:"RepeatPenalty [ 1.10 by default ]"`
+	RepeatLastN   int     `long:"repeat-last-n" description:"RepeatLastN [ -1 by default ]"`
+	Silent        bool    `long:"silent" description:"Hide welcome logo and other output [ shown by default ]"`
+	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
+	Dir           string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
+	Profile       bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
+	GPULayers     int64   `long:"gpu-layers" description:"Use Apple GPU inference, offload NN layers"`
+	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
+	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
+	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
 }
 
 func main() {
@@ -93,23 +102,6 @@ func main() {
 
 	//ctx := context.Background()
 	//ctx, cancel := context.WithCancel(ctx)
-
-	// Listen for OS signals in background
-	go func() {
-		select {
-		case <-signalChan:
-			server.GoShutdown = true
-			//cancel()
-			pending := len(server.Queue)
-			if pending > 0 {
-				pending += conf.Pods
-			}
-			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
-			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
-			//case <-ctx.Done():
-			//	Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
-		}
-	}()
 
 	// Do all we need in case of graceful shutdown or unexpected panic
 	defer func() {
@@ -136,6 +128,31 @@ func main() {
 		showLogo()
 	}
 
+	// Listen for OS signals in background
+	go func() {
+		select {
+		case <-signalChan:
+
+			// -- break execution immediate when DEBUG
+			if opts.Debug {
+				Colorize("\n[light_magenta][ STOP ][light_blue] Immediate shutdown...\n\n")
+				os.Exit(0)
+			}
+
+			// -- wait while job will be done otherwise
+			server.GoShutdown = true
+			//cancel()
+			pending := len(server.Queue)
+			if pending > 0 {
+				pending += conf.Pods
+			}
+			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
+			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
+			//case <-ctx.Done():
+			//	Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
+		}
+	}()
+
 	// --- read config from JSON or YAML
 
 	var feed config.Feeder
@@ -155,33 +172,6 @@ func main() {
 			}
 		}
 	}
-	/*
-		// --- set model parameters from user settings and safe defaults
-
-		server.Params = &llama.ModelParams{
-			Model: opts.Model,
-
-			MaxThreads: opts.Threads,
-
-			UseAVX:  opts.UseAVX,
-			UseNEON: opts.UseNEON,
-
-			Interactive: opts.Chat,
-
-			CtxSize:      opts.Context,
-			Seed:         -1,
-			PredictCount: opts.Predict,
-			RepeatLastN:  opts.Context, // TODO: Research on best value
-			PartsCount:   -1,
-			BatchSize:    opts.Context, // TODO: What's the better size?
-
-			TopK:          40,
-			TopP:          0.95,
-			Temp:          opts.Temp,
-			RepeatPenalty: 1.10,
-
-			MemoryFP16: true,
-		} */
 
 	// -- DEBUG
 
@@ -291,7 +281,7 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/airoboros-13B.q5_1.bin"
 
 	// https://huggingface.co/TheBloke/manticore-13b-chat-pyg-GGML/tree/main
-	opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_0.bin"
 	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_1.bin"
 	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_0.bin"
 	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_1.bin"
@@ -334,46 +324,19 @@ func main() {
 	// https://huggingface.co/TheBloke/hippogriff-30b-chat-GGML/tree/main
 	//opts.Model = "/Users/me/models/30B/hippogriff-30b.ggmlv3.q4_0.bin"
 
-	/*
-
-		TODO: If there no file on path, CGO panics
-
-			libc++abi: terminating due to uncaught exception of type std::runtime_error: failed to open /Users/me/models/30B/llama-ggml-v2-q4_0.bin: No such file or directory
-		SIGABRT: abort
-		PC=0x19b340724 m=0 sigcode=0
-		signal arrived during cgo execution
-
-		goroutine 1 [syscall]:
-		runtime.cgocall(0x104d50d50, 0x14000147d58)
-			/opt/homebrew/Cellar/go/1.20.4/libexec/src/runtime/cgocall.go:157 +0x54 fp=0x14000147d20 sp=0x14000147ce0 pc=0x104935d74
-		github.com/gotzmann/llamazoo/pkg/server._Cfunc_initFromParams(0x6000031b0000, 0x6, 0x400, 0x100, 0x3f4ccccd, 0x6458fe8c)
-			_cgo_gotypes.go:89 +0x38 fp=0x14000147d50 sp=0x14000147d20 pc=0x104d4b688
-		github.com/gotzmann/llamazoo/pkg/server.Init({0x104d96b11?, 0x10526c2c0?}, {0x104d94af8?, 0x1051b8f08?}, 0x1, 0x6, {0x104daa382, 0x2b}, 0x400, 0x100, ...)
-			/Users/me/git/llamazoo/pkg/server/server.go:163 +0x180 fp=0x14000147df0 sp=0x14000147d50 pc=0x104d4bbf0
-		main.main()
-			/Users/me/git/llamazoo/main.go:189 +0x304 fp=0x14000147f70 sp=0x14000147df0 pc=0x104d4fa54
-		runtime.main()
-			/opt/homebrew/Cellar/go/1.20.4/libexec/src/runtime/proc.go:250 +0x248 fp=0x14000147fd0 sp=0x14000147f70 pc=0x10496a2c8
-		runtime.goexit()
-			/opt/homebrew/Cellar/go/1.20.4/libexec/src/runtime/asm_arm64.s:1172 +0x4 fp=0x14000147fd0 sp=0x14000147fd0 pc=0x10499cea4
-
-	*/
-
 	// if config was read from file and thus has meaningful settings, go init from there. otherwise use CLI settings
 	if conf.ID != "" {
 		server.InitFromConfig(&conf)
 	} else {
 		server.Init(
-			opts.Host,
-			opts.Port,
-			opts.Pods,
-			opts.Threads,
+			opts.Host, opts.Port,
+			opts.Pods, opts.Threads, opts.GPULayers,
 			opts.Model,
-			opts.Prefix,
-			opts.Suffix,
-			int(opts.Context),
-			int(opts.Predict),
-			opts.Temp,
+			opts.Prefix, opts.Suffix,
+			int(opts.Context), int(opts.Predict),
+			opts.Mirostat, opts.MirostatTAU, opts.MirostatETA,
+			opts.Temp, opts.TopK, opts.TopP,
+			opts.RepeatPenalty, opts.RepeatLastN,
 			opts.Seed)
 	}
 
@@ -481,8 +444,36 @@ func parseOptions() *Options {
 		opts.Predict = 512
 	}
 
+	if opts.Mirostat == 0 {
+		opts.Mirostat = 0
+	}
+
+	if opts.MirostatTAU == 0 {
+		opts.MirostatTAU = 0.1
+	}
+
+	if opts.MirostatETA == 0 {
+		opts.MirostatETA = 0.1
+	}
+
 	if opts.Temp == 0 {
-		opts.Temp = 0.80
+		opts.Temp = 0.40
+	}
+
+	if opts.TopK == 0 {
+		opts.TopK = 8
+	}
+
+	if opts.TopP == 0 {
+		opts.TopP = 0.80
+	}
+
+	if opts.RepeatPenalty == 0 {
+		opts.RepeatPenalty = 1.10
+	}
+
+	if opts.RepeatLastN == 0 {
+		opts.RepeatLastN = -1
 	}
 
 	return &opts
