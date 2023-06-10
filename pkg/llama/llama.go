@@ -45,6 +45,10 @@ type ModelParams struct {
 	CtxSize      uint32 // context size
 	BatchSize    uint32 // batch size for prompt processing
 	KeepCount    uint32
+	GPULayers    uint32 // number of layers to store in VRAM
+	mainGPU      uint32 // the GPU that is used for scratch and small tensors
+
+	// tensorSplit[LLAMA_MAX_DEVICES] float32 {0}; // how split tensors should be distributed across GPUs
 
 	// --- sampling parameters
 

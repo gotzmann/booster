@@ -30,11 +30,10 @@ package main
 
 /*
 const char * status(char * jobID);
-//int64_t timing(char * jobID);
 #cgo CFLAGS:   -I. -O3 -DNDEBUG -fPIC -pthread -std=c17
 #cgo CXXFLAGS: -I. -O3 -DNDEBUG -fPIC -pthread -std=c++17
-#cgo linux LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -lm
-#cgo darwin LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
+#cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o -lstdc++ -lm
+#cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o -lstdc++ -framework Accelerate
 */
 import "C"
 
@@ -65,6 +64,7 @@ type Options struct {
 	Suffix  string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
 	Seed    uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
 	Server  bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
+	Debug   bool    `long:"debug" description:"Stream debug info to console while processing requests"`
 	Host    string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
 	Port    string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Pods    int     `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
@@ -383,7 +383,7 @@ func main() {
 	//wg.Add(1)
 
 	// --- Debug output of results and stop after 1 hour in case of running withous --server flag
-	if !opts.Server {
+	if opts.Debug {
 		go func() {
 			iter := 0
 			for {

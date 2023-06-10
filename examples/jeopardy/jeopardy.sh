@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-MODEL=~/models/13B/ggml-vic13b-q4_0.bin
+MODEL=./models/ggml-vicuna-13b-1.1-q4_0.bin
 MODEL_NAME=Vicuna
 
 # exec options
