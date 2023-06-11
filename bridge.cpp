@@ -57,7 +57,7 @@ struct gpt_params {
     int32_t seed          = -1;   // RNG seed
     int32_t n_threads     = 1;    // get_num_physical_cores();
     int32_t n_predict     = -1;   // new tokens to predict
-    int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
+    //int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
     int32_t n_ctx         = 1024; // context size
     int32_t n_batch       = 1024; // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
@@ -68,7 +68,7 @@ struct gpt_params {
 
     // --- sampling parameters
 
-    int     mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    int     mirostat          = 0;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1; // 5.0 // target entropy
     float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
@@ -155,7 +155,7 @@ struct llama_context * init_context(int idx /*const gpt_params & params*/) {
     //lparams.use_mlock  = params.use_mlock;
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
-    lparams.n_gpu_layers = params[idx].n_gpu_layers; // FIXME ASAP: DEBUG & EXPERIMENTAL !!!
+    lparams.n_gpu_layers = params[idx].n_gpu_layers; // TODO: multiGPU selection
 
     llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
@@ -164,6 +164,7 @@ struct llama_context * init_context(int idx /*const gpt_params & params*/) {
         return NULL;
     }
 
+    // TODO: Experiment with LORAs
     if (!params[idx].lora_adapter.empty()) {
         int err = llama_apply_lora_from_file(lctx,
                                              params[idx].lora_adapter.c_str(),
@@ -185,7 +186,6 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
     int n = llama_tokenize(ctx, text.c_str(), res.data(), res.size(), add_bos);
     //assert(n >= 0);
     res.resize(n);
-
     return res;
 }
 
@@ -321,19 +321,24 @@ int64_t loopCPP(int idx, struct llama_context * ctx, const std::string & jobID, 
 
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
-            // out of user input, sample next token
-            const float   temp            = ::params[idx].temp;
-            const int32_t top_k           = ::params[idx].top_k <= 0 ? llama_n_vocab(ctx) : ::params[idx].top_k;
-            const float   top_p           = ::params[idx].top_p;
-            //const float   tfs_z           = ::params.tfs_z;
-            //const float   typical_p       = ::params.typical_p;
-            const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
-            const float   repeat_penalty  = ::params[idx].repeat_penalty;
-            //const float   alpha_presence  = ::params.presence_penalty;
-            //const float   alpha_frequency = ::params.frequency_penalty;
+            // --- out of user input, sample next token
+
             const int     mirostat        = ::params[idx].mirostat;
             const float   mirostat_tau    = ::params[idx].mirostat_tau;
             const float   mirostat_eta    = ::params[idx].mirostat_eta;
+
+            const float   temp            = ::params[idx].temp;
+            const int32_t top_k           = ::params[idx].top_k <= 0 ? llama_n_vocab(ctx) : ::params[idx].top_k;
+            const float   top_p           = ::params[idx].top_p;
+
+            const float   repeat_penalty  = ::params[idx].repeat_penalty;
+            const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
+  
+            //const float   tfs_z           = ::params.tfs_z;
+            //const float   typical_p       = ::params.typical_p;
+            //const float   alpha_presence  = ::params.presence_penalty;
+            //const float   alpha_frequency = ::params.frequency_penalty;
+
             const bool    penalize_nl     = ::params[idx].penalize_nl;
 
             // optionally save the session on first sample (for faster prompt loading next time)

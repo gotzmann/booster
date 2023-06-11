@@ -37,16 +37,17 @@ type ModelParams struct {
 
 	UseAVX  bool
 	UseNEON bool
+	UseCUDA bool
 
 	Seed         int
 	PredictCount uint32 // new tokens to predict
 	RepeatLastN  uint32 // last n tokens to penalize
-	PartsCount   int    // amount of model parts (-1 = determine from model dimensions)
-	CtxSize      uint32 // context size
-	BatchSize    uint32 // batch size for prompt processing
-	KeepCount    uint32
-	GPULayers    uint32 // number of layers to store in VRAM
-	mainGPU      uint32 // the GPU that is used for scratch and small tensors
+	//PartsCount   int    // amount of model parts (-1 = determine from model dimensions)
+	CtxSize   uint32 // context size
+	BatchSize uint32 // batch size for prompt processing
+	KeepCount uint32
+	GPULayers uint32 // number of layers to store in VRAM
+	mainGPU   uint32 // the GPU that is used for scratch and small tensors
 
 	// tensorSplit[LLAMA_MAX_DEVICES] float32 {0}; // how split tensors should be distributed across GPUs
 

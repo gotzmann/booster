@@ -5,11 +5,13 @@ host: localhost
 port: 8080
 mode: prod
 pods: 3
-threads: [ 8, 6, 2 ]
+threads: [ 2, 8, 4 ]
+gpus: [ 0, 0, 0 ]
+gpulayers: [ 100, 0, 0 ]
 avx: false
 neon: true
 cuda: false
-default: airoboros-7b
+defaultmodel: airoboros-7b
 
 # --- models
 

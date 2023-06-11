@@ -95,6 +95,7 @@ type Config struct {
 
 	Pods      int     // pods count
 	Threads   []int64 // threads count for each pod
+	GPUs      []int64 // GPU number selector
 	GPULayers []int   // how many layers offload to Apple GPU?
 
 	Models []Model
@@ -106,9 +107,9 @@ type Pod struct {
 	idx       int    // pod index
 	isBusy    bool   // do pod instance doing some job?
 	Threads   int64  // how many threads in use
+	GPU       int64  // GPU index
 	GPULayers int64  // how many layers offload to Apple GPU?
 	Model     *Model // model params
-	//Context unsafe.Pointer // llama.cpp context
 }
 
 type Job struct {
@@ -130,12 +131,13 @@ type Job struct {
 }
 
 const (
-	CPPMode    = 0x00
-	GolangMode = 0x01
+	LLAMA_CPP = 0x00
+	LLAMA_GO  = 0x01
+	EXLLAMA   = 0x02
 )
 
 var (
-	ServerMode int // 0 == use llama.cpp / 1 == use llama.go
+	ServerMode int // LLAMA_CPP by default
 
 	Host string
 	Port string
@@ -153,12 +155,7 @@ var (
 	// NB! All vars below are int64 to be used as atomic counters
 	MaxThreads     int64 // used for PROD mode // TODO: detect hardware abilities automatically
 	RunningThreads int64
-	//MaxPods        int64 // used for simple mode when all settings are set from CLI
-	RunningPods int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
-
-	//Mode    string // prod, debug, ignore, etc
-	//Pods    int    // how many pods start
-	//Threads []int  // how many threads allow per pod (int64 for atomic manipulations)
+	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
 
 	mu sync.Mutex // guards any Jobs change
 
@@ -166,51 +163,23 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	//Pods     map[string][]*Pod // All pods splitted on blocks by model ID keys
-	//IdlePods map[string][]*Pod // Indexes of idle pods
-	//Contexts []unsafe.Pointer // Pointers to llama.cpp contexts
-
 	Pods   []*Pod              // There N pods with some threads within as described in config
 	Models map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
 )
 
 func init() {
-	//Pods = make(map[string][]*Pod, 64)      // 64 is just some commnon sense default
-	//Models = make(map[string][]*llama.Model, 64) // 64 is just some commnon sense default
-	//IdlePods = make(map[string][]*Pod, 64)  // same here
 	Jobs = make(map[string]*Job, 1024)      // 1024 is like some initial space to grow
 	Queue = make(map[string]struct{}, 1024) // same here
 
 	// FIXME: ASAP Check those are set from within Init()
 	// --- set model parameters from user settings and safe defaults
 	params = &llama.ModelParams{
-		//Model: opts.Model,
-
-		//MaxThreads: opts.Threads,
-
-		//UseAVX:  opts.UseAVX,
-		//UseNEON: opts.UseNEON,
-
-		//Interactive: opts.Chat,
-
-		//CtxSize:      opts.Context,
-		Seed: -1,
-		//PredictCount: opts.Predict,
-		//RepeatLastN:  opts.Context, // TODO: Research on best value
-		PartsCount: -1,
-		//BatchSize:    opts.Context, // TODO: What's the better size?
-
-		TopK: 40,
-		TopP: 0.95,
-		//Temp:          opts.Temp,
-		RepeatPenalty: 1.10,
-
+		Seed:       -1,
 		MemoryFP16: true,
 	}
 }
 
 // Init allocates contexts for independent pods
-// TODO: Allow to load and work with different models at the same time
 func Init(
 	host, port string,
 	pods int, threads, gpuLayers int64,
@@ -221,14 +190,11 @@ func Init(
 	repeatPenalty float32, repeatLastN int,
 	seed uint32) {
 
-	ServerMode = CPPMode
+	ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
-	//MaxPods = int64(pods)
 	RunningPods = 0
 	params.CtxSize = uint32(context)
-	//IdlePods = make([]int, pods)
-	//Contexts = make([]unsafe.Pointer, pods)
 	Pods = make([]*Pod, pods)
 	Models = make(map[string][]*Model)
 
@@ -275,48 +241,22 @@ func Init(
 			Suffix:      suffix,
 			ContextSize: context,
 			Predict:     predict,
-			Temp:        temp,
-			//Seed:    seed,
 
-			// TODO: Allow to set more parameters from CLI
-			//TopK:          model.TopK,
-			//TopP:          model.TopP,
-			//RepeatPenalty: model.RepeatPenalty,
-			//Mirostat:      model.Mirostat,
-			//MirostatTAU:   model.MirostatTAU,
-			//MirostatETA:   model.MirostatETA,
+			Mirostat:    mirostat,
+			MirostatTAU: mirostatTAU,
+			MirostatETA: mirostatETA,
+
+			Temp: temp,
+			TopK: topK,
+			TopP: topP,
+
+			RepeatPenalty: repeatPenalty,
+			RepeatLastN:   repeatLastN,
 		}
-
-		/*pod := &Pod{
-			Context: ctx,
-			Model: &Model{
-				Path:   model,
-				Prefix: prefix,
-				Suffix: suffix,
-				//Pods:    1,
-				//Threads: int64(threads),
-				ContextSize: context,
-				Predict:     predict,
-				Temp:        temp,
-				//Seed:    seed,
-			},
-		}*/
-
-		/*
-			// NB! We'll use empty string "" as key for default model
-			if Pods[""] == nil {
-				Pods[""] = make([]*Pod, pods)
-			}
-			Pods[""] = append(Pods[""], pod)
-			if IdlePods[""] == nil {
-				IdlePods[""] = make([]*Pod, pods)
-			}
-			IdlePods[""] = append(IdlePods[""], pod) */
 	}
 }
 
 // Init allocates contexts for independent pods
-// TODO: Allow to load and work with different models at the same time
 func InitFromConfig(conf *Config) {
 
 	// -- some validations TODO: move to better place
@@ -345,10 +285,9 @@ func InitFromConfig(conf *Config) {
 
 	// -- init golbal settings
 
-	ServerMode = CPPMode
+	ServerMode = LLAMA_CPP
 	Host = conf.Host
 	Port = conf.Port
-	//MaxThreads = int64(conf.Threads)
 	DefaultModel = conf.DefaultModel
 	Pods = make([]*Pod, conf.Pods)
 	Models = make(map[string][]*Model)
@@ -423,12 +362,10 @@ func InitFromConfig(conf *Config) {
 				TopP: model.TopP,
 
 				RepeatPenalty: model.RepeatPenalty,
+				RepeatLastN:   model.RepeatLastN,
 			}
 		}
 	}
-
-	RunningPods = 0    // not needed
-	RunningThreads = 0 // not needed
 }
 
 // --- init and run Fiber server
@@ -448,13 +385,12 @@ func Run() {
 	app.Listen(Host + ":" + Port)
 }
 
-// --- our evergreen Engine looking for job queue and starting up to MaxPods workers
+// --- evergreen Engine looking for job queue and starting up to MaxPods workers
 
 func Engine(app *fiber.App) {
 
 	for {
 
-		// TODO: different levels of priority queues here
 		for jobID := range Queue {
 
 			// TODO: MaxThreads instead of MaxPods
@@ -467,14 +403,14 @@ func Engine(app *fiber.App) {
 
 			// production mode with settings from config file
 			// TODO: >= MaxThreads + pod.Model.Threads
-			if MaxThreads > 0 && RunningThreads >= MaxThreads {
+			if RunningThreads >= MaxThreads {
 				continue
 			}
 
 			// TODO: Better to store model name right there with JobID to avoid locking
-			mu.Lock()
-			model := Jobs[jobID].Model
-			mu.Unlock()
+			/////mu.Lock()
+			/////model := Jobs[jobID].Model
+			/////mu.Unlock()
 
 			/////if MaxThreads > 0 && len(IdlePods[model]) == 0 {
 			/////	continue
@@ -483,8 +419,18 @@ func Engine(app *fiber.App) {
 			// -- move job from waiting queue to processing and assign it pod from idle pool
 			// TODO: Use different mutexes for Jobs map, Pods map and maybe for atomic counters
 
-			mu.Lock()
+			now := time.Now().UnixMilli()
+
+			mu.Lock() // -- locked
+
 			delete(Queue, jobID)
+
+			// ignore jobs placed more than 2 minutes ago
+			if now-Jobs[jobID].CreatedAt > 120*1000 {
+				mu.Unlock()
+				continue
+			}
+
 			Jobs[jobID].Status = "processing"
 			//if model == "" {
 			//	model = DefaultModel
@@ -493,30 +439,27 @@ func Engine(app *fiber.App) {
 
 			// TODO: replace len(Pods) for defined value
 			var pod *Pod
-			for i := 0; i < len(Pods); i++ {
-				if Pods[i].isBusy {
+			var idx int
+			//for i := 0; i < len(Pods); i++ {
+			for idx, pod = range Pods {
+				if pod.isBusy {
 					continue
 				}
-				pod = Pods[i]
-				//pod = Pods[i]
 				pod.isBusy = true
-				// -- "load" the model into pod
-				pod.Model = Models[model][i]
-				//pod.Context = unsafe.Pointer(Models[model][i].Context) // TODO: Get rid of Context within Pod?
+				// "load" the model into pod
+				model := Jobs[jobID].Model
+				pod.Model = Models[model][idx]
 				break
 			}
 
-			/////pod := IdlePods[model][len(IdlePods[model])-1]
+			mu.Unlock() // -- unlocked
+
 			if pod == nil {
 				// FIXME: Something really wrong going here! We need to fix this ASAP
 				// TODO: Log this case!
-				mu.Unlock()
-				Colorize("\n[magenta][ ERROR ][white] Failed to get idle pod for '%s' model!\n\n", model)
+				Colorize("\n[magenta][ ERROR ][white] Failed to get idle pod!\n\n")
 				continue
 			}
-
-			/////IdlePods[model] = IdlePods[model][:len(IdlePods[model])-1]
-			mu.Unlock()
 
 			// FIXME: Check RunningPods one more time?
 			// TODO: Is it make sense to use atomic over just mutex here?
@@ -532,7 +475,7 @@ func Engine(app *fiber.App) {
 		}
 
 		// TODO: Sync over channels
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -549,7 +492,7 @@ func Do(jobID string, pod *Pod) {
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
 
 	mu.Lock()
-	Jobs[jobID].StartedAt = time.Now().Unix()
+	Jobs[jobID].StartedAt = time.Now().UnixMilli()
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
 	// TODO: Play with prompt without leading space
 	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
@@ -558,7 +501,7 @@ func Do(jobID string, pod *Pod) {
 	prompt := " " + pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix // add a space to match LLaMA tokenizer behavior
 	mu.Unlock()
 
-	if ServerMode == CPPMode { // --- use llama.cpp backend
+	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
 
 		//tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
 		tokenCount := C.loop(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(prompt))
@@ -568,7 +511,7 @@ func Do(jobID string, pod *Pod) {
 
 		// TODO: Move some slow ops outside of critical section
 		mu.Lock()
-		Jobs[jobID].FinishedAt = time.Now().Unix()
+		Jobs[jobID].FinishedAt = time.Now().UnixMilli()
 		Jobs[jobID].Status = "finished"
 		Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
@@ -710,7 +653,7 @@ func Do(jobID string, pod *Pod) {
 		ctx.ReleaseContext()
 
 		mu.Lock()
-		Jobs[jobID].FinishedAt = time.Now().Unix()
+		Jobs[jobID].FinishedAt = time.Now().UnixMilli()
 		// FIXME: Clean output from prefix/suffix for instruct models!
 		Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
 		Jobs[jobID].Status = "finished"
@@ -754,7 +697,7 @@ func Do(jobID string, pod *Pod) {
 
 func PlaceJob(jobID, model, session, prompt string) {
 
-	timing := time.Now().Unix()
+	timing := time.Now().UnixMilli()
 
 	mu.Lock()
 
