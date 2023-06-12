@@ -2,7 +2,6 @@
 
 #include "llama.h"
 #include "ggml.h"
-//#include "bridge.h"
 
 #include <string>
 #include <vector>
@@ -36,20 +35,20 @@ std::unordered_map<std::string, int64_t> timings;
 #define NULL_DEVICE "NUL:"
 #define TTY_DEVICE "COM1:"
 #else
-//#define NULL_DEVICE "/dev/null"
-//#define TTY_DEVICE "/dev/tty"
+#define NULL_DEVICE "/dev/null"
+#define TTY_DEVICE "/dev/tty"
 #endif
 
 // FIXME: Redirect C++ stderr into log file 
 void hide() {
-//    freopen(NULL_DEVICE, "w", stdout);
-//    freopen(NULL_DEVICE, "w", stderr);
+    freopen(NULL_DEVICE, "w", stdout);
+    freopen(NULL_DEVICE, "w", stderr);
 }    
 
 // FIXME: Doesn't work for MacOS ?
 void show() {
-//    freopen(TTY_DEVICE, "w", stdout);
-//    freopen(TTY_DEVICE, "w", stderr);
+    freopen(TTY_DEVICE, "w", stdout);
+    freopen(TTY_DEVICE, "w", stderr);
 }
 
 struct gpt_params {
@@ -686,9 +685,9 @@ void * initContext(
     ::params[idx].seed           = seed;
     
     // FIXME: Hide and Show init messages
-    ////hide();
+    hide();
     auto res =  init_context(idx);
-    ////show();
+    show();
 
     //fprintf(stderr, "\n=== initContext | new params[%d].temp = %f ===", idx, ::params[idx].temp);
     //fprintf(stderr, "\n=== initContext | default TopK = %d ===", ::params[idx].top_k);

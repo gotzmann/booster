@@ -23,7 +23,6 @@ import "C"
 
 import (
 	"container/ring"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -104,6 +103,8 @@ type Config struct {
 	Models []Model
 
 	DefaultModel string // default model ID
+
+	Deadline int64 // deadline in seconds after which unprocessed jobs will be deleted from the queue
 }
 
 type Pod struct {
@@ -162,14 +163,14 @@ var (
 
 	mu sync.Mutex // guards any Jobs change
 
-	// TODO: Background watcher which will make waiting jobs obsolete after some deadline
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
 	Pods   []*Pod              // There N pods with some threads within as described in config
 	Models map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
 
-	log *zap.SugaredLogger
+	log      *zap.SugaredLogger
+	deadline int64
 )
 
 func init() {
@@ -194,12 +195,14 @@ func Init(
 	mirostat int, mirostatTAU float32, mirostatETA float32,
 	temp float32, topK int, topP float32,
 	repeatPenalty float32, repeatLastN int,
+	deadlineIn int64,
 	seed uint32) {
 
 	ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
 	log = zapLog
+	deadline = deadlineIn
 	RunningPods = 0
 	params.CtxSize = uint32(context)
 	Pods = make([]*Pod, pods)
@@ -267,6 +270,7 @@ func Init(
 func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 
 	log = zapLog
+	deadline = conf.Deadline
 
 	// -- some validations TODO: move to better place
 
@@ -435,10 +439,10 @@ func Engine(app *fiber.App) {
 			delete(Queue, jobID)
 
 			// ignore jobs placed more than 3 minutes ago
-			if now-Jobs[jobID].CreatedAt > 3*60*1000 {
+			if deadline > 0 && (now-Jobs[jobID].CreatedAt) > deadline*1000 {
 				delete(Jobs, jobID)
 				mu.Unlock()
-				log.Infow("Job deleted due to deadline", zap.String("jobID", jobID))
+				log.Infow("[JOB] Job was deleted after deadline", zap.String("jobID", jobID))
 				continue
 			}
 
@@ -539,6 +543,8 @@ func Do(jobID string, pod *Pod) {
 
 		pod.isBusy = false
 		mu.Unlock()
+
+		log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", prompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
 
 	} else { // --- use llama.go framework
 
@@ -757,9 +763,6 @@ func NewJob(ctx *fiber.Ctx) error {
 	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
 	payload.Model = strings.Trim(payload.Model, "\n ")
 
-	json, _ := json.Marshal(payload)
-	log.Infow("NewJob", zap.String("payload", string(json)))
-
 	// -- validate prompt
 
 	if payload.Model != "" {
@@ -805,6 +808,8 @@ func NewJob(ctx *fiber.Ctx) error {
 	}
 
 	PlaceJob(payload.ID, payload.Model, payload.Session, payload.Prompt)
+
+	log.Infow("[JOB] New job placed to queue", "jobID", payload.ID, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
 	// TODO: Guard with mutex Jobs[payload.ID] access
 	// TODO: Return [model] and [session] if not empty

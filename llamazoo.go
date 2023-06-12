@@ -69,6 +69,7 @@ type Options struct {
 	Server        bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
 	Debug         bool    `long:"debug" description:"Stream debug info to console while processing requests"`
 	Log           string  `long:"log" description:"Log file location to save all events in Server mode"`
+	Deadline      int64   `long:"deadline" description:"Time in seconds after which unprocessed jobs will be deleted from the queue"`
 	Host          string  `long:"host" description:"Host to allow requests from in Server mode [ localhost by default ]"`
 	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Pods          int     `long:"pods" description:"Maximum pods of parallel execution allowed in Server mode [ 1 by default ]"`
@@ -154,7 +155,7 @@ func main() {
 	if !opts.Server {
 		showLogo()
 	} else {
-		log.Infof("LLaMAZoo v%s starting...", VERSION)
+		log.Infof("[START] LLaMAZoo v%s starting...", VERSION)
 	}
 
 	// --- Allow graceful shutdown via OS signals
@@ -175,7 +176,7 @@ func main() {
 			os.Exit(0)
 		}
 		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo stopped. Ciao!\n\n")
-		log.Info("LLaMAZoo stopped. Ciao!")
+		log.Info("[STOP] LLaMAZoo stopped. Ciao!")
 	}()
 
 	// --- Listen for OS signals in background
@@ -187,7 +188,7 @@ func main() {
 			// -- break execution immediate when DEBUG
 			if opts.Debug {
 				Colorize("\n[light_magenta][ STOP ][light_blue] Immediate shutdown...\n\n")
-				log.Info("Immediate shutdown...")
+				log.Info("[STOP] Immediate shutdown...")
 				os.Exit(0)
 			}
 
@@ -200,8 +201,8 @@ func main() {
 			}
 			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
 			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
-			log.Info("Graceful shutdown...")
-			log.Infof("Wait while [ %d ] requests will be finished...", pending)
+			log.Info("[STOP] Graceful shutdown...")
+			log.Infof("[STOP] Wait while [ %d ] requests will be finished...", pending)
 		}
 	}()
 
@@ -370,6 +371,7 @@ func main() {
 			opts.Mirostat, opts.MirostatTAU, opts.MirostatETA,
 			opts.Temp, opts.TopK, opts.TopP,
 			opts.RepeatPenalty, opts.RepeatLastN,
+			opts.Deadline,
 			opts.Seed)
 	}
 
@@ -416,7 +418,7 @@ func main() {
 	}
 
 	Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
-	log.Infof("REST API running on %s:%s", opts.Host, opts.Port)
+	log.Infof("[START] REST API running on %s:%s", opts.Host, opts.Port)
 
 	server.Run()
 }
@@ -500,8 +502,8 @@ func parseOptions() *Options {
 		opts.RepeatLastN = -1
 	}
 
-	if opts.Debug || (!opts.Server && !opts.Silent) {
-		doPrint = true
+	if opts.Server && !opts.Debug {
+		doPrint = false
 	}
 
 	if opts.Server {

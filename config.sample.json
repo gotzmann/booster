@@ -12,6 +12,7 @@
     "cuda": false,
     "defaultModel": "airoboros-7b",
     "log": "llamazoo.log",
+    "deadline": 180,
 
     "models": [
 
