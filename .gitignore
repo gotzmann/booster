@@ -4,6 +4,7 @@
 .idea
 .bin
 .pprof
+*.log
 config.json
 config.yaml
 !config.sample.json

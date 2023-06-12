@@ -12,6 +12,7 @@ avx: false
 neon: true
 cuda: false
 defaultmodel: airoboros-7b
+log: llamazoo.log
 
 # --- models
 

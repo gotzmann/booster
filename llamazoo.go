@@ -53,6 +53,7 @@ import (
 	"github.com/mitchellh/colorstring"
 	"github.com/pkg/profile"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
@@ -67,7 +68,7 @@ type Options struct {
 	Seed          uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
 	Server        bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
 	Debug         bool    `long:"debug" description:"Stream debug info to console while processing requests"`
-	Log           bool    `long:"log" description:"Log file location to save all events in Server mode"`
+	Log           string  `long:"log" description:"Log file location to save all events in Server mode"`
 	Host          string  `long:"host" description:"Host to allow requests from in Server mode [ localhost by default ]"`
 	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Pods          int     `long:"pods" description:"Maximum pods of parallel execution allowed in Server mode [ 1 by default ]"`
@@ -128,17 +129,33 @@ func main() {
 		defer profile.Start(profile.ProfilePath(".")).Stop()
 	}
 
-	// TODO: Silent mode for YAML / JSON configs
-	if !opts.Silent {
-		showLogo()
+	var zapWriter zapcore.WriteSyncer
+	zapConfig := zap.NewProductionEncoderConfig()
+	zapConfig.NameKey = "llamazoo" // TODO: pod name from config?
+	zapConfig.CallerKey = ""       // do not log caller like "llamazoo/llamazoo.go:156"
+	zapConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	fileEncoder := zapcore.NewJSONEncoder(zapConfig)
+	if opts.Log != "" {
+		conf.Log = opts.Log
 	}
-
-	logger, err := zap.NewProduction()
-	if err != nil {
-		Colorize("\n[light_magenta][ ERROR ][white] Can't init logging, shutdown...\n\n")
-		os.Exit(0)
+	if conf.Log != "" {
+		logFile, err := os.OpenFile(conf.Log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			Colorize("\n[light_magenta][ ERROR ][white] Can't init logging, shutdown...\n\n")
+			os.Exit(0)
+		}
+		zapWriter = zapcore.AddSync(logFile)
+		//defaultLogLevel := zapcore.DebugLevel
 	}
+	core := zapcore.NewTee(zapcore.NewCore(fileEncoder, zapWriter, zapcore.DebugLevel))
+	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 	log := logger.Sugar()
+
+	if !opts.Server {
+		showLogo()
+	} else {
+		log.Infof("LLaMAZoo v%s starting...", VERSION)
+	}
 
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
@@ -150,6 +167,7 @@ func main() {
 
 	defer func() {
 		signal.Stop(signalChan)
+		logger.Sync()
 		reason := recover()
 		if reason != nil {
 			Colorize("\n[light_magenta][ ERROR ][white] %s\n\n", reason)
@@ -169,6 +187,7 @@ func main() {
 			// -- break execution immediate when DEBUG
 			if opts.Debug {
 				Colorize("\n[light_magenta][ STOP ][light_blue] Immediate shutdown...\n\n")
+				log.Info("Immediate shutdown...")
 				os.Exit(0)
 			}
 
@@ -181,8 +200,8 @@ func main() {
 			}
 			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
 			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
-			//case <-ctx.Done():
-			//	Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
+			log.Info("Graceful shutdown...")
+			log.Infof("Wait while [ %d ] requests will be finished...", pending)
 		}
 	}()
 
@@ -339,10 +358,11 @@ func main() {
 
 	// if config was read from file and thus has meaningful settings, go init from there. otherwise use CLI settings
 	if conf.ID != "" {
-		server.InitFromConfig(&conf)
+		server.InitFromConfig(&conf, log)
 	} else {
 		server.Init(
 			opts.Host, opts.Port,
+			log,
 			opts.Pods, opts.Threads, opts.GPULayers,
 			opts.Model,
 			opts.Prefix, opts.Suffix,
@@ -353,12 +373,8 @@ func main() {
 			opts.Seed)
 	}
 
-	// --- wait for API calls as REST server, or compute just the one prompt from user CLI
-
-	//var wg sync.WaitGroup
-	//wg.Add(1)
-
 	// --- Debug output of results and stop after 1 hour in case of running withous --server flag
+
 	if opts.Debug {
 		go func() {
 			iter := 0
@@ -390,23 +406,19 @@ func main() {
 
 				time.Sleep(3 * time.Second)
 				iter++
-				if iter > 600 {
-					Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
-					break
-				}
+				//if iter > 600 {
+				//	Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
+				//	break
+				//}
 
 			}
-			//wg.Done()
 		}()
 	}
 
 	Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
 	log.Infof("REST API running on %s:%s", opts.Host, opts.Port)
 
-	/*go*/
 	server.Run()
-
-	//wg.Wait()
 }
 
 func parseOptions() *Options {

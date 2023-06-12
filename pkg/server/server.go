@@ -23,6 +23,7 @@ import "C"
 
 import (
 	"container/ring"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -38,6 +39,7 @@ import (
 	"github.com/google/uuid"
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
+	"go.uber.org/zap"
 
 	"github.com/gotzmann/llamazoo/pkg/llama"
 	"github.com/gotzmann/llamazoo/pkg/ml"
@@ -88,6 +90,7 @@ type Config struct {
 
 	Host string
 	Port string
+	Log  string
 
 	AVX  bool
 	NEON bool
@@ -165,6 +168,8 @@ var (
 
 	Pods   []*Pod              // There N pods with some threads within as described in config
 	Models map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
+
+	log *zap.SugaredLogger
 )
 
 func init() {
@@ -182,6 +187,7 @@ func init() {
 // Init allocates contexts for independent pods
 func Init(
 	host, port string,
+	zapLog *zap.SugaredLogger,
 	pods int, threads, gpuLayers int64,
 	model, prefix, suffix string,
 	context, predict int,
@@ -193,6 +199,7 @@ func Init(
 	ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
+	log = zapLog
 	RunningPods = 0
 	params.CtxSize = uint32(context)
 	Pods = make([]*Pod, pods)
@@ -257,7 +264,9 @@ func Init(
 }
 
 // Init allocates contexts for independent pods
-func InitFromConfig(conf *Config) {
+func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
+
+	log = zapLog
 
 	// -- some validations TODO: move to better place
 
@@ -429,6 +438,7 @@ func Engine(app *fiber.App) {
 			if now-Jobs[jobID].CreatedAt > 3*60*1000 {
 				delete(Jobs, jobID)
 				mu.Unlock()
+				log.Infow("Job deleted due to deadline", zap.String("jobID", jobID))
 				continue
 			}
 
@@ -521,13 +531,12 @@ func Do(jobID string, pod *Pod) {
 		// TODO: Better processing here
 
 		result = strings.Trim(result, "\n ")
-		prompt = strings.Trim(prompt, "\n ") // TODO: Extra step - not needed, just dont use leading space
-		if strings.HasPrefix(result, prompt) {
+		prompt = strings.Trim(prompt, "\n ")   // TODO: Extra step - not needed, just dont use leading space
+		if strings.HasPrefix(result, prompt) { // FIXME ASAP: Find better place to show results in real-time
 			result = result[len(prompt):]
 		}
 		Jobs[jobID].Output = strings.Trim(result, "\n ")
 
-		/////IdlePods[pod.Model.ID] = append(IdlePods[pod.Model.ID], pod) // return pod to the pool
 		pod.isBusy = false
 		mu.Unlock()
 
@@ -720,6 +729,7 @@ func PlaceJob(jobID, model, session, prompt string) {
 //
 //	{
 //	    "id": "5fb8ebd0-e0c9-4759-8f7d-35590f6c9fcb",
+//      "model": "airoboros-7b",
 //	    "prompt": "Why Golang is so popular?"
 //	}
 
@@ -733,14 +743,24 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	payload := struct {
 		ID      string `json:"id"`
-		Session string `json:"session"`
-		Model   string `json:"model"`
+		Session string `json:"session,omitempty"`
+		Model   string `json:"model,omitempty"`
 		Prompt  string `json:"prompt"`
 	}{}
 
-	// normalize prompt
+	if err := ctx.BodyParser(&payload); err != nil {
+		// TODO: Proper error handling
+	}
+
+	// -- normalize prompt
+
 	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
 	payload.Model = strings.Trim(payload.Model, "\n ")
+
+	json, _ := json.Marshal(payload)
+	log.Infow("NewJob", zap.String("payload", string(json)))
+
+	// -- validate prompt
 
 	if payload.Model != "" {
 		if _, ok := Models[payload.Model]; !ok {
@@ -748,10 +768,6 @@ func NewJob(ctx *fiber.Ctx) error {
 				Status(fiber.StatusBadRequest).
 				SendString("Wrong model name!")
 		}
-	}
-
-	if err := ctx.BodyParser(&payload); err != nil {
-		// TODO: Proper error handling
 	}
 
 	if _, err := uuid.Parse(payload.ID); err != nil {
@@ -866,6 +882,9 @@ func GetJob(ctx *fiber.Ctx) error {
 // Join colorstring and go-colorable to allow colors both on Mac and Windows
 // TODO: Implement as a small library
 func Colorize(format string, opts ...interface{}) (n int, err error) {
+	//if !doPrint {
+	//	return
+	//}
 	var DefaultOutput = colorable.NewColorableStdout()
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
