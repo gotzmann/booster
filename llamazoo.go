@@ -147,6 +147,8 @@ func main() {
 		}
 		zapWriter = zapcore.AddSync(logFile)
 		//defaultLogLevel := zapcore.DebugLevel
+	} else {
+		zapWriter = os.Stdout
 	}
 	core := zapcore.NewTee(zapcore.NewCore(fileEncoder, zapWriter, zapcore.DebugLevel))
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))

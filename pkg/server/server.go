@@ -881,8 +881,9 @@ func GetJob(ctx *fiber.Ctx) error {
 	prompt := Jobs[jobID].Prompt
 	fullPrompt := Jobs[jobID].FullPrompt // we need the full prompt with prefix and suffix here
 	output := Jobs[jobID].Output
-	created := Jobs[jobID].CreatedAt
-	finished := Jobs[jobID].FinishedAt
+	//created := Jobs[jobID].CreatedAt
+	//finished := Jobs[jobID].FinishedAt
+	//model := Jobs[jobID].Model
 	mu.Unlock() // --
 
 	if status == "processing" {
@@ -894,14 +895,14 @@ func GetJob(ctx *fiber.Ctx) error {
 	}
 
 	return ctx.JSON(fiber.Map{
-		"id":      jobID,
-		"status":  status,
-		"prompt":  prompt,
-		"output":  output,
-		"created": created,
+		"id":     jobID,
+		"status": status,
+		"prompt": prompt,
+		"output": output,
+		//"created": created,
 		//"started":  Jobs[jobID].StartedAt,
-		"finished": finished,
-		//"model":    "model-xx", // TODO: Real model ID
+		//"finished": finished,
+		//"model":    model,
 	})
 }
 
