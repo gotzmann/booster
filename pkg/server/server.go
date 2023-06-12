@@ -425,8 +425,9 @@ func Engine(app *fiber.App) {
 
 			delete(Queue, jobID)
 
-			// ignore jobs placed more than 2 minutes ago
-			if now-Jobs[jobID].CreatedAt > 120*1000 {
+			// ignore jobs placed more than 3 minutes ago
+			if now-Jobs[jobID].CreatedAt > 3*60*1000 {
+				delete(Jobs, jobID)
 				mu.Unlock()
 				continue
 			}

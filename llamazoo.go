@@ -52,6 +52,7 @@ import (
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
 	"github.com/pkg/profile"
+	"go.uber.org/zap"
 
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
@@ -66,19 +67,20 @@ type Options struct {
 	Seed          uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
 	Server        bool    `long:"server" description:"Start in Server Mode acting as REST API endpoint"`
 	Debug         bool    `long:"debug" description:"Stream debug info to console while processing requests"`
-	Host          string  `long:"host" description:"Host to allow requests from in Server Mode [ localhost by default ]"`
+	Log           bool    `long:"log" description:"Log file location to save all events in Server mode"`
+	Host          string  `long:"host" description:"Host to allow requests from in Server mode [ localhost by default ]"`
 	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
-	Pods          int     `long:"pods" description:"Maximum pods or units of parallel execution allowed in Server Mode [ 1 by default ]"`
+	Pods          int     `long:"pods" description:"Maximum pods of parallel execution allowed in Server mode [ 1 by default ]"`
 	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
 	Context       uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
 	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
 	Mirostat      int     `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
-	MirostatTAU   float32 `long:"mirostat-tau" description:"Mirostat TAU value [ 0.10 by default ]"`
-	MirostatETA   float32 `long:"mirostat-eta" description:"Mirostat ETA value [ 0.10 by default ]"`
-	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.40 by default ]"`
+	MirostatTAU   float32 `long:"mirostat-tau" description:"Mirostat TAU value [ 0.1 by default ]"`
+	MirostatETA   float32 `long:"mirostat-eta" description:"Mirostat ETA value [ 0.1 by default ]"`
+	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.4 by default ]"`
 	TopK          int     `long:"top-k" description:"TopK parameter for the model [ 8 by default ]"`
-	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.80 by default ]"`
-	RepeatPenalty float32 `long:"repeat-penalty" description:"RepeatPenalty [ 1.10 by default ]"`
+	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.8 by default ]"`
+	RepeatPenalty float32 `long:"repeat-penalty" description:"RepeatPenalty [ 1.1 by default ]"`
 	RepeatLastN   int     `long:"repeat-last-n" description:"RepeatLastN [ -1 by default ]"`
 	Silent        bool    `long:"silent" description:"Hide welcome logo and other output [ shown by default ]"`
 	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
@@ -90,34 +92,37 @@ type Options struct {
 	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
 }
 
+var (
+	doPrint bool = true
+	doLog   bool = false
+	conf    server.Config
+)
+
 func main() {
-
-	conf := server.Config{}
-
-	// --- Allow graceful shutdown via OS signals
-	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-
-	//ctx := context.Background()
-	//ctx, cancel := context.WithCancel(ctx)
-
-	// Do all we need in case of graceful shutdown or unexpected panic
-	defer func() {
-		signal.Stop(signalChan)
-		reason := recover()
-		if reason != nil {
-			Colorize("\n[light_magenta][ ERROR ][white] %s\n\n", reason)
-			os.Exit(0)
-		}
-		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo stopped. Ciao!\n\n")
-	}()
 
 	// --- parse command line options
 
-	// TODO: Allow to overwrite some options from the command-line
 	opts := parseOptions()
+
+	// --- read config from JSON or YAML
+
+	var feed config.Feeder
+	if !opts.Ignore {
+
+		if _, err := os.Stat("config.json"); err == nil {
+			feed = feeder.Json{Path: "config.json"}
+		} else if _, err := os.Stat("config.yaml"); err == nil {
+			feed = feeder.Yaml{Path: "config.yaml"}
+		}
+
+		if feed != nil {
+			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
+			if err != nil {
+				Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file! %s\n\n", err.Error())
+				os.Exit(0)
+			}
+		}
+	}
 
 	if opts.Profile {
 		defer profile.Start(profile.ProfilePath(".")).Stop()
@@ -128,7 +133,35 @@ func main() {
 		showLogo()
 	}
 
-	// Listen for OS signals in background
+	logger, err := zap.NewProduction()
+	if err != nil {
+		Colorize("\n[light_magenta][ ERROR ][white] Can't init logging, shutdown...\n\n")
+		os.Exit(0)
+	}
+	log := logger.Sugar()
+
+	// --- Allow graceful shutdown via OS signals
+	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// --- Do all we need in case of graceful shutdown or unexpected panic
+
+	defer func() {
+		signal.Stop(signalChan)
+		reason := recover()
+		if reason != nil {
+			Colorize("\n[light_magenta][ ERROR ][white] %s\n\n", reason)
+			log.Error("%s", reason)
+			os.Exit(0)
+		}
+		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo stopped. Ciao!\n\n")
+		log.Info("LLaMAZoo stopped. Ciao!")
+	}()
+
+	// --- Listen for OS signals in background
+
 	go func() {
 		select {
 		case <-signalChan:
@@ -152,26 +185,6 @@ func main() {
 			//	Colorize("\n[magenta][ STOP ][white] Graceful shutdown...\n\n")
 		}
 	}()
-
-	// --- read config from JSON or YAML
-
-	var feed config.Feeder
-	if !opts.Ignore {
-
-		if _, err := os.Stat("config.json"); err == nil {
-			feed = feeder.Json{Path: "config.json"}
-		} else if _, err := os.Stat("config.yaml"); err == nil {
-			feed = feeder.Yaml{Path: "config.yaml"}
-		}
-
-		if feed != nil {
-			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
-			if err != nil {
-				Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file! %s\n\n", err.Error())
-				os.Exit(0)
-			}
-		}
-	}
 
 	// -- DEBUG
 
@@ -387,9 +400,8 @@ func main() {
 		}()
 	}
 
-	if !opts.Silent && opts.Server {
-		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
-	}
+	Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
+	log.Infof("REST API running on %s:%s", opts.Host, opts.Port)
 
 	/*go*/
 	server.Run()
@@ -403,7 +415,7 @@ func parseOptions() *Options {
 
 	_, err := flags.Parse(&opts)
 	if err != nil {
-		Colorize("\n[magenta][ ERROR ][white] Can't parse options from command line!\n\n")
+		Colorize("\n[magenta][ ERROR ][white] Can't parse options from command line! %s\n\n", err.Error())
 		os.Exit(0)
 	}
 
@@ -476,6 +488,14 @@ func parseOptions() *Options {
 		opts.RepeatLastN = -1
 	}
 
+	if opts.Debug || (!opts.Server && !opts.Silent) {
+		doPrint = true
+	}
+
+	if opts.Server {
+		doLog = true
+	}
+
 	return &opts
 }
 
@@ -483,6 +503,9 @@ func parseOptions() *Options {
 // Join colorstring and go-colorable to allow colors both on Mac and Windows
 // TODO: Implement as a small library
 func Colorize(format string, opts ...interface{}) (n int, err error) {
+	if !doPrint {
+		return
+	}
 	var DefaultOutput = colorable.NewColorableStdout()
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
