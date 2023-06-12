@@ -15,7 +15,7 @@ void * initContext(
 	float temp, int topK, float topP,
 	float repeat_penalty, int repeat_last_n,
 	int32_t seed);
-int64_t loop(int idx, void * ctx, char * jobID, char * prompt);
+int64_t doInference(int idx, void * ctx, char * jobID, char * prompt);
 const char * status(char * jobID);
 int64_t timing(char * jobID);
 */
@@ -117,11 +117,12 @@ type Pod struct {
 }
 
 type Job struct {
-	ID      string
-	Session string // ID of continuous user session in chat mode
-	Status  string
-	Prompt  string
-	Output  string
+	ID         string
+	Session    string // ID of continuous user session in chat mode
+	Status     string
+	Prompt     string
+	FullPrompt string // prompt with prefix / suffix
+	Output     string
 
 	CreatedAt  int64
 	StartedAt  int64
@@ -395,7 +396,11 @@ func Run() {
 
 	go Engine(app)
 
-	app.Listen(Host + ":" + Port)
+	err := app.Listen(Host + ":" + Port)
+	if err != nil {
+		Colorize("[ERROR] Can't start REST API on %s:%s", Host, Port)
+		log.Infof("[ERROR] Can't start REST API on %s:%s", Host, Port)
+	}
 }
 
 // --- evergreen Engine looking for job queue and starting up to MaxPods workers
@@ -506,20 +511,21 @@ func Do(jobID string, pod *Pod) {
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
 
-	mu.Lock()
+	mu.Lock() // --
 	Jobs[jobID].StartedAt = time.Now().UnixMilli()
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
 	// TODO: Play with prompt without leading space
 	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
 	// TODO: Allow setting prefix/suffix from CLI
 	// TODO: Implement translation for prompt elsewhere
-	prompt := " " + pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix // add a space to match LLaMA tokenizer behavior
-	mu.Unlock()
+	Jobs[jobID].FullPrompt = pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix
+	// add a space to match LLaMA tokenizer behavior
+	prompt := " " + Jobs[jobID].FullPrompt
+	mu.Unlock() // --
 
 	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
 
-		//tokenCount := C.loop(Contexts[pod], C.CString(jobID), C.CString(prompt))
-		tokenCount := C.loop(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(prompt))
+		tokenCount := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(prompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
@@ -856,29 +862,45 @@ func GetStatus(ctx *fiber.Ctx) error {
 
 func GetJob(ctx *fiber.Ctx) error {
 
-	id := ctx.Params("id")
+	jobID := ctx.Params("id")
 
-	if _, err := uuid.Parse(id); err != nil {
+	if _, err := uuid.Parse(jobID); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Wrong UUID4 id for request!")
+			SendString("Wrong ID for request! Should be valid UUID v4")
 	}
 
-	if _, ok := Jobs[id]; !ok {
+	if _, ok := Jobs[jobID]; !ok {
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			SendString("Request ID was not found!")
 	}
 
-	// TODO: Guard with mutex
+	mu.Lock() // --
+	status := Jobs[jobID].Status
+	prompt := Jobs[jobID].Prompt
+	fullPrompt := Jobs[jobID].FullPrompt // we need the full prompt with prefix and suffix here
+	output := Jobs[jobID].Output
+	created := Jobs[jobID].CreatedAt
+	finished := Jobs[jobID].FinishedAt
+	mu.Unlock() // --
+
+	if status == "processing" {
+		output = C.GoString(C.status(C.CString(jobID)))
+		output = strings.Trim(output, "\n ")
+		if strings.HasPrefix(output, fullPrompt) {
+			output = output[len(fullPrompt):] // TODO: Trim again?
+		}
+	}
+
 	return ctx.JSON(fiber.Map{
-		"id":       id,
-		"status":   Jobs[id].Status,
-		"prompt":   Jobs[id].Prompt,
-		"output":   Jobs[id].Output,
-		"created":  Jobs[id].CreatedAt,
-		"started":  Jobs[id].StartedAt,
-		"finished": Jobs[id].FinishedAt,
+		"id":      jobID,
+		"status":  status,
+		"prompt":  prompt,
+		"output":  output,
+		"created": created,
+		//"started":  Jobs[jobID].StartedAt,
+		"finished": finished,
 		//"model":    "model-xx", // TODO: Real model ID
 	})
 }

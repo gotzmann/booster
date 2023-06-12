@@ -23,7 +23,7 @@ package main
 // find / -name vector 2>/dev/null
 
 // void * initFromParams(char * modelName, int threads);
-// void loop(void * ctx, char * jobID, char * prompt);
+// void doInference(void * ctx, char * jobID, char * prompt);
 // const char * status(char * jobID);
 
 // #cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
@@ -175,8 +175,8 @@ func main() {
 			log.Error("%s", reason)
 			os.Exit(0)
 		}
-		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo stopped. Ciao!\n\n")
-		log.Info("[STOP] LLaMAZoo stopped. Ciao!")
+		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo was stopped. Arrivederci!\n\n")
+		log.Info("[STOP] LLaMAZoo was stopped. Arrivederci!")
 	}()
 
 	// --- Listen for OS signals in background
@@ -186,6 +186,7 @@ func main() {
 		case <-signalChan:
 
 			// -- break execution immediate when DEBUG
+
 			if opts.Debug {
 				Colorize("\n[light_magenta][ STOP ][light_blue] Immediate shutdown...\n\n")
 				log.Info("[STOP] Immediate shutdown...")
@@ -193,16 +194,16 @@ func main() {
 			}
 
 			// -- wait while job will be done otherwise
+
 			server.GoShutdown = true
-			//cancel()
+			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
+			log.Info("[STOP] Graceful shutdown...")
 			pending := len(server.Queue)
 			if pending > 0 {
 				pending += conf.Pods
+				Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
+				log.Infof("[STOP] Wait while [ %d ] requests will be finished...", pending)
 			}
-			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
-			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
-			log.Info("[STOP] Graceful shutdown...")
-			log.Infof("[STOP] Wait while [ %d ] requests will be finished...", pending)
 		}
 	}()
 

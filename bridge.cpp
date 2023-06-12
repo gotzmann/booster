@@ -188,10 +188,9 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
     return res;
 }
 
-// TODO: Better naming
 // Process prompt and compute output, return total number of tokens processed
 // idx - index of pod / context / params to do processing within
-int64_t loopCPP(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & text) {
+int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & text) {
 
     llama_reset_timings(ctx);
 
@@ -245,6 +244,8 @@ int64_t loopCPP(int idx, struct llama_context * ctx, const std::string & jobID, 
         // predict
         if (embd.size() > 0) {
 
+            // TODO: Investigate about infinite context here
+            
             // infinite text generation via context swapping
             // if we run out of context:
             // - take the n_keep first tokens from the original prompt (via n_past)
@@ -468,25 +469,18 @@ int64_t loopCPP(int idx, struct llama_context * ctx, const std::string & jobID, 
             }
         }
 
-        // display text
-        ////if (input_echo) {
-            mutex.lock();
-            for (auto id : embd) {
-                //printf(" [ %d ] ", id); // DEBUG
-                ////printf("%s", llama_token_to_str(ctx, id));
-                // FIXME: Experimental Code
-                //printf(" [ LOCK ] "); // DEBUG
-                //unique_lock<std::shared_mutex> lk(mutex);
-                jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
-                //printf(" [ UNLOCK ] "); // DEBUG
-            }
-            mutex.unlock();
-            fflush(stdout);
-        ////}
-        // reset color to default if we there is no pending user input
-        ////if (input_echo && (int)embd_inp.size() == n_consumed) {
-        ////    set_console_color(con_st, CONSOLE_COLOR_DEFAULT);
-        ////}
+        mutex.lock();
+        for (auto id : embd) {
+            //printf(" [ %d ] ", id); // DEBUG
+            ////printf("%s", llama_token_to_str(ctx, id));
+            // FIXME: Experimental Code
+            //printf(" [ LOCK ] "); // DEBUG
+            //unique_lock<std::shared_mutex> lk(mutex);
+            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+            //printf(" [ UNLOCK ] "); // DEBUG
+        }
+        mutex.unlock();
+        fflush(stdout);
 
         // in interactive mode, and not currently processing queued inputs;
         // check if we should prompt the user for more
@@ -635,7 +629,6 @@ int64_t loopCPP(int idx, struct llama_context * ctx, const std::string & jobID, 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
-    //char * res = (char *) jobs[jobID].c_str();
     const char * res = jobs[jobID].c_str();
     mutex.unlock_shared();
     return res;
@@ -660,9 +653,6 @@ void * initContext(
     float temp, int top_k, float top_p, 
     float repeat_penalty, int repeat_last_n,
     int32_t seed) {
-
-    //fprintf(stderr, "\n\n=== initContext | default params[%d].temp = %f ===", idx, ::params[idx].temp);
-    //fprintf(stderr, "\n=== initContext | default params[%d].model = %s ===", idx, ::params[idx].model.c_str());
     
     ::params[idx].model          = modelName;
     ::params[idx].n_threads      = threads;
@@ -684,43 +674,27 @@ void * initContext(
     
     ::params[idx].seed           = seed;
     
-    // FIXME: Hide and Show init messages
     hide();
     auto res =  init_context(idx);
-    show();
-
-    //fprintf(stderr, "\n=== initContext | new params[%d].temp = %f ===", idx, ::params[idx].temp);
-    //fprintf(stderr, "\n=== initContext | default TopK = %d ===", ::params[idx].top_k);
-    //fprintf(stderr, "\n=== initContext | new params[%d].model = %s ===", idx, ::params[idx].model.c_str());
+    //show();
 
     return res;
 }
 
-////void * tokenize(void * ctx, char * prompt) {
-////    fprintf(stderr, "\n=== tokenize ===");
-////    std::string text = prompt;
-////    std::vector<llama_token> tokens = llama_tokenize((struct llama_context *)ctx, text, true);
-////    return &tokens;
-////}
-
-int64_t loop(int idx, void * ctx, char * jobID, char * prompt) {
-    //fprintf(stderr, "\n=== loop ===");
-
+int64_t doInference(int idx, void * ctx, char * jobID, char * prompt) {
     std::string id = jobID;
     std::string text = prompt;
-    return loopCPP(idx, (struct llama_context *)ctx, id, text);
+    return do_inference(idx, (struct llama_context *)ctx, id, text);
 }
 
 // return current result of processing
 const char * status(char * jobID) {
-    //fprintf(stderr, "\n=== status ===");
     std::string id = jobID;
     return statusCPP(id);
 }
 
 // return average token processing timing from context
 int64_t timing(char * jobID) {
-    //fprintf(stderr, "\n=== status ===");
     std::string id = jobID;
     return timingCPP(id);
 }
