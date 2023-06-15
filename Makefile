@@ -1,4 +1,4 @@
-LLAMA_METAL := true
+#LLAMA_METAL := true
 #LLAMA_NO_ACCELERATE := true
 default: llamazoo
 
