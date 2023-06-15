@@ -500,7 +500,7 @@ func parseOptions() *Options {
 	}
 
 	if opts.TopP == 0 {
-		opts.TopP = 0.6
+		opts.TopP = 0.8
 	}
 
 	if opts.RepeatPenalty == 0 {

@@ -73,7 +73,7 @@ struct gpt_params {
 
     float   temp              = 0.2; // 0.80f; // 1.0 = disabled
     int32_t top_k             = 10;   // 40; // <= 0 to use vocab size
-    float   top_p             = 0.6; // 0.95f; // 1.0 = disabled
+    float   top_p             = 0.8; // 0.95f; // 1.0 = disabled
 
     float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled
     int32_t repeat_last_n     = -1;  // 64; // last n tokens to penalize (0 = disable penalty, -1 = context size)
