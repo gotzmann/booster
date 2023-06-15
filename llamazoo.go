@@ -133,7 +133,7 @@ func main() {
 	var zapWriter zapcore.WriteSyncer
 	zapConfig := zap.NewProductionEncoderConfig()
 	zapConfig.NameKey = "llamazoo" // TODO: pod name from config?
-	zapConfig.CallerKey = ""       // do not log caller like "llamazoo/llamazoo.go:156"
+	//zapConfig.CallerKey = ""       // do not log caller like "llamazoo/llamazoo.go:156"
 	zapConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	fileEncoder := zapcore.NewJSONEncoder(zapConfig)
 	if opts.Log != "" {
@@ -148,10 +148,11 @@ func main() {
 		zapWriter = zapcore.AddSync(logFile)
 		//defaultLogLevel := zapcore.DebugLevel
 	} else {
-		zapWriter = os.Stdout
+		zapWriter = os.Stderr
 	}
 	core := zapcore.NewTee(zapcore.NewCore(fileEncoder, zapWriter, zapcore.DebugLevel))
-	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	//logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	logger := zap.New(core)
 	log := logger.Sugar()
 
 	if !opts.Server {
@@ -334,6 +335,10 @@ func main() {
 	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q5_1.bin"
 	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q8_0.bin"
 
+	// https://huggingface.co/TheBloke/tulu-13B-GGML
+	//opts.Model = "/Users/me/models/13B/tulu-13b.ggmlv3.q4_0.bin"
+	//opts.Model = "/Users/me/models/13B/tulu-13b.ggmlv3.q4_K_S.bin"
+
 	// ==== 30B ====
 
 	// https://huggingface.co/MetaIX/GPT4-X-Alpaca-30B-4bit/tree/main
@@ -382,7 +387,7 @@ func main() {
 
 	if opts.Debug {
 		go func() {
-			iter := 0
+			//iter := 0
 			for {
 
 				Colorize("\n[magenta]============== JOBS ==============\n")
@@ -409,18 +414,19 @@ func main() {
 					break
 				}
 
-				time.Sleep(3 * time.Second)
-				iter++
+				time.Sleep(2 * time.Second)
+				//iter++
 				//if iter > 600 {
 				//	Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
 				//	break
 				//}
-
 			}
 		}()
 	}
 
-	Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
+	if !opts.Server {
+		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
+	}
 	log.Infof("[START] REST API running on %s:%s", opts.Host, opts.Port)
 
 	server.Run()
@@ -478,7 +484,7 @@ func parseOptions() *Options {
 	}
 
 	if opts.MirostatTAU == 0 {
-		opts.MirostatTAU = 0.1
+		opts.MirostatTAU = 0.2
 	}
 
 	if opts.MirostatETA == 0 {
@@ -486,19 +492,19 @@ func parseOptions() *Options {
 	}
 
 	if opts.Temp == 0 {
-		opts.Temp = 0.40
+		opts.Temp = 0.2
 	}
 
 	if opts.TopK == 0 {
-		opts.TopK = 8
+		opts.TopK = 10
 	}
 
 	if opts.TopP == 0 {
-		opts.TopP = 0.80
+		opts.TopP = 0.6
 	}
 
 	if opts.RepeatPenalty == 0 {
-		opts.RepeatPenalty = 1.10
+		opts.RepeatPenalty = 1.1
 	}
 
 	if opts.RepeatLastN == 0 {
