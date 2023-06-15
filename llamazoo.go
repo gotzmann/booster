@@ -31,9 +31,11 @@ package main
 
 /*
 const char * status(char * jobID);
-#cgo CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG
-#cgo CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL
+#cgo linux CFLAGS:   -I. -O3 -fPIC -pthread -std=c17
+#cgo linux CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17
 #cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o -lstdc++ -lm
+#cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG
+#cgo darwin CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL
 #cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 */
 import "C"

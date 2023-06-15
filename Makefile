@@ -1,6 +1,6 @@
 LLAMA_METAL := true
 #LLAMA_NO_ACCELERATE := true
-default: llamazoo 
+default: llamazoo
 
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot
@@ -308,6 +308,13 @@ build-info.h: $(wildcard .git/index) scripts/build-info.sh
 # CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
 # build LLaMAZoo for the current platform and all popular others
 llamazoo: bridge.o ggml.o llama.o k_quants.o ggml-metal.o $(OBJS)
+	CGO_ENABLED=1 CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
+#	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o llamazoo.exe llamazoo.go 
+#	GOOS=darwin GOARCH=arm64 go build -o llamazoo-darwin-arm64 llamazoo.go
+#	GOOS=linux GOARCH=amd64 go build -o llamazoo-linux-amd64 llamazoo.go 
+#	GOOS=linux GOARCH=arm64 go build -o llamazoo-linux-arm64 llamazoo.go  
+
+arm64: bridge.o ggml.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
 #	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o llamazoo.exe llamazoo.go 
 #	GOOS=darwin GOARCH=arm64 go build -o llamazoo-darwin-arm64 llamazoo.go
