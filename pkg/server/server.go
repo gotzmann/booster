@@ -520,12 +520,12 @@ func Do(jobID string, pod *Pod) {
 	// TODO: Implement translation for prompt elsewhere
 	Jobs[jobID].FullPrompt = pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix
 	// add a space to match LLaMA tokenizer behavior
-	prompt := " " + Jobs[jobID].FullPrompt
+	fullPrompt := " " + Jobs[jobID].FullPrompt
 	mu.Unlock() // --
 
 	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
 
-		tokenCount := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(prompt))
+		tokenCount := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(fullPrompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
@@ -541,16 +541,17 @@ func Do(jobID string, pod *Pod) {
 		// TODO: Better processing here
 
 		result = strings.Trim(result, "\n ")
-		prompt = strings.Trim(prompt, "\n ")   // TODO: Extra step - not needed, just dont use leading space
-		if strings.HasPrefix(result, prompt) { // FIXME ASAP: Find better place to show results in real-time
+		prompt := strings.Trim(fullPrompt, "\n ") // TODO: Extra step - not needed, just dont use leading space
+		if strings.HasPrefix(result, prompt) {    // FIXME ASAP: Find better place to show results in real-time
 			result = result[len(prompt):]
+			result = strings.Trim(result, "\n ")
 		}
-		Jobs[jobID].Output = strings.Trim(result, "\n ")
+		Jobs[jobID].Output = result
 
 		pod.isBusy = false
 		mu.Unlock()
 
-		log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", prompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
+		log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", fullPrompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
 
 	} else { // --- use llama.go framework
 
