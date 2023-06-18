@@ -891,6 +891,7 @@ func GetJob(ctx *fiber.Ctx) error {
 		output = strings.Trim(output, "\n ")
 		if strings.HasPrefix(output, fullPrompt) {
 			output = output[len(fullPrompt):] // TODO: Trim again?
+			output = strings.Trim(output, "\n ")
 		}
 	}
 

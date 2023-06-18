@@ -486,7 +486,7 @@ func parseOptions() *Options {
 	}
 
 	if opts.MirostatTAU == 0 {
-		opts.MirostatTAU = 0.2
+		opts.MirostatTAU = 0.1
 	}
 
 	if opts.MirostatETA == 0 {
@@ -494,7 +494,7 @@ func parseOptions() *Options {
 	}
 
 	if opts.Temp == 0 {
-		opts.Temp = 0.2
+		opts.Temp = 0.1
 	}
 
 	if opts.TopK == 0 {
@@ -502,7 +502,7 @@ func parseOptions() *Options {
 	}
 
 	if opts.TopP == 0 {
-		opts.TopP = 0.8
+		opts.TopP = 0.5
 	}
 
 	if opts.RepeatPenalty == 0 {

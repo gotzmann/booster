@@ -68,12 +68,12 @@ struct gpt_params {
     // --- sampling parameters
 
     int     mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 0.2; // 5.0 // target entropy
+    float   mirostat_tau      = 0.1; // 5.0 // target entropy
     float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
-    float   temp              = 0.2; // 0.80f; // 1.0 = disabled
+    float   temp              = 0.1; // 0.80f; // 1.0 = disabled
     int32_t top_k             = 10;   // 40; // <= 0 to use vocab size
-    float   top_p             = 0.8; // 0.95f; // 1.0 = disabled
+    float   top_p             = 0.5; // 0.95f; // 1.0 = disabled
 
     float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled
     int32_t repeat_last_n     = -1;  // 64; // last n tokens to penalize (0 = disable penalty, -1 = context size)
