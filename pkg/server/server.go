@@ -518,9 +518,9 @@ func Do(jobID string, pod *Pod) {
 	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
 	// TODO: Allow setting prefix/suffix from CLI
 	// TODO: Implement translation for prompt elsewhere
-	Jobs[jobID].FullPrompt = pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix
 	// add a space to match LLaMA tokenizer behavior
-	fullPrompt := " " + Jobs[jobID].FullPrompt
+	fullPrompt := " " + pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix
+	Jobs[jobID].FullPrompt = fullPrompt
 	mu.Unlock() // --
 
 	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
@@ -556,7 +556,7 @@ func Do(jobID string, pod *Pod) {
 	} else { // --- use llama.go framework
 
 		// tokenize the prompt
-		embdPrompt := ml.Tokenize(vocab, prompt, true)
+		embdPrompt := ml.Tokenize(vocab, fullPrompt, true)
 
 		// ring buffer for last N tokens
 		lastNTokens := ring.New(int(params.CtxSize))
