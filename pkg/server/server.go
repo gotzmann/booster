@@ -887,11 +887,13 @@ func GetJob(ctx *fiber.Ctx) error {
 	//model := Jobs[jobID].Model
 	mu.Unlock() // --
 
+	fullPrompt = strings.Trim(fullPrompt, "\n ")
+
 	if status == "processing" {
 		output = C.GoString(C.status(C.CString(jobID)))
 		output = strings.Trim(output, "\n ")
 		if strings.HasPrefix(output, fullPrompt) {
-			output = output[len(fullPrompt):] // TODO: Trim again?
+			output = output[len(fullPrompt):]
 			output = strings.Trim(output, "\n ")
 		}
 	}
