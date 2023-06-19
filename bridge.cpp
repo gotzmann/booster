@@ -56,7 +56,6 @@ struct gpt_params {
     int32_t seed          = -1;   // RNG seed
     int32_t n_threads     = 1;    // get_num_physical_cores();
     int32_t n_predict     = -1;   // new tokens to predict
-    //int32_t n_parts       = -1;   // amount of model parts (-1 = determine from model dimensions)
     int32_t n_ctx         = 1024; // context size
     int32_t n_batch       = 1024; // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
@@ -72,7 +71,7 @@ struct gpt_params {
     float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
     float   temp              = 0.1; // 0.80f; // 1.0 = disabled
-    int32_t top_k             = 10;   // 40; // <= 0 to use vocab size
+    int32_t top_k             = 10;  // 40; // <= 0 to use vocab size
     float   top_p             = 0.5; // 0.95f; // 1.0 = disabled
 
     float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled

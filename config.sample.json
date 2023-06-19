@@ -28,6 +28,7 @@
             "topK": 40,
             "topP": 0.92,
             "repeatPenalty": 1.10,
+            "repeatLastN": -1,
             "mirostat": 0,
             "mirostatTAU": 0,
             "mirostatETA": 0
@@ -43,7 +44,8 @@
             "temp": 0.40,
             "topK": 0,
             "topP": 0,
-            "repeatPenalty": 1.10,
+            "repeatPenalty": 1.1,
+            "repeatLastN": -1,
             "mirostat": 2,
             "mirostatTAU": 1,
             "mirostatETA": 0.1
@@ -61,6 +63,7 @@
             "topK": 40,
             "topP": 0.92,
             "repeatPenalty": 1.10,
+            "repeatLastN": -1,
             "mirostat": 0,
             "mirostatTAU": 0,
             "mirostatETA": 0
@@ -77,6 +80,7 @@
             "topK": 8,
             "topP": 0.92,
             "repeatPenalty": 1.10,
+            "repeatLastN": -1,
             "mirostat": 0,
             "mirostatTAU": 0,
             "mirostatETA": 0

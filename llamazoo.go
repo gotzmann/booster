@@ -481,9 +481,9 @@ func parseOptions() *Options {
 		opts.Predict = 512
 	}
 
-	if opts.Mirostat == 0 {
-		opts.Mirostat = 0
-	}
+	//if opts.Mirostat == 0 {
+	//	opts.Mirostat = 0
+	//}
 
 	if opts.MirostatTAU == 0 {
 		opts.MirostatTAU = 0.1

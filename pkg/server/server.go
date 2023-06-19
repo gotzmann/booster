@@ -120,8 +120,8 @@ type Job struct {
 	ID         string
 	Session    string // ID of continuous user session in chat mode
 	Status     string
-	Prompt     string
-	FullPrompt string // prompt with prefix / suffix
+	Prompt     string // exact user prompt, trimmed from spaces and newlines
+	FullPrompt string // full prompt with prefix / suffix
 	Output     string
 
 	CreatedAt  int64
@@ -510,16 +510,19 @@ func Do(jobID string, pod *Pod) {
 
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
+	now := time.Now().UnixMilli()
 
 	mu.Lock() // --
-	Jobs[jobID].StartedAt = time.Now().UnixMilli()
+	Jobs[jobID].StartedAt = now
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
 	// TODO: Play with prompt without leading space
 	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
 	// TODO: Allow setting prefix/suffix from CLI
 	// TODO: Implement translation for prompt elsewhere
 	// add a space to match LLaMA tokenizer behavior
-	fullPrompt := " " + pod.Model.Prefix + Jobs[jobID].Prompt + pod.Model.Suffix
+	prompt := Jobs[jobID].Prompt
+	fullPrompt := " " + pod.Model.Prefix + prompt + pod.Model.Suffix
+	fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1) // FIXME: Experimental !!!
 	Jobs[jobID].FullPrompt = fullPrompt
 	mu.Unlock() // --
 
@@ -530,28 +533,30 @@ func Do(jobID string, pod *Pod) {
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
 
-		// TODO: Move some slow ops outside of critical section
-		mu.Lock()
-		Jobs[jobID].FinishedAt = time.Now().UnixMilli()
-		Jobs[jobID].Status = "finished"
-		Jobs[jobID].TokenCount = int64(tokenCount)
-		Jobs[jobID].TokenEval = int64(C.timing(C.CString(jobID)))
-
 		// -- remove suffix and prefix from the output
 		// TODO: Better processing here
 
-		result = strings.Trim(result, "\n ")
-		prompt := strings.Trim(fullPrompt, "\n ") // TODO: Extra step - not needed, just dont use leading space
-		if strings.HasPrefix(result, prompt) {    // FIXME ASAP: Find better place to show results in real-time
-			result = result[len(prompt):]
-			result = strings.Trim(result, "\n ")
+		//result = strings.Trim(result, "\n ")
+		//prompt := strings.Trim(fullPrompt, "\n ") // TODO: Extra step - not needed, just dont use leading space
+		if strings.HasPrefix(result, fullPrompt) { // FIXME ASAP: Find better place to show results in real-time
+			result = result[len(fullPrompt):]
 		}
+		result = strings.Trim(result, "\n ")
+
+		now = time.Now().UnixMilli()
+		eval := int64(C.timing(C.CString(jobID)))
+		// TODO: Move some slow ops outside of critical section
+
+		mu.Lock() // --
+		Jobs[jobID].FinishedAt = now
+		Jobs[jobID].Status = "finished"
+		Jobs[jobID].TokenCount = int64(tokenCount)
+		Jobs[jobID].TokenEval = eval
 		Jobs[jobID].Output = result
-
 		pod.isBusy = false
-		mu.Unlock()
+		mu.Unlock() // --
 
-		log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", fullPrompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
+		log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", prompt, "fullPrompt", fullPrompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
 
 	} else { // --- use llama.go framework
 
@@ -887,11 +892,11 @@ func GetJob(ctx *fiber.Ctx) error {
 	//model := Jobs[jobID].Model
 	mu.Unlock() // --
 
-	fullPrompt = strings.Trim(fullPrompt, "\n ")
+	//fullPrompt = strings.Trim(fullPrompt, "\n ")
 
 	if status == "processing" {
 		output = C.GoString(C.status(C.CString(jobID)))
-		output = strings.Trim(output, "\n ")
+		//output = strings.Trim(output, "\n ")
 		if strings.HasPrefix(output, fullPrompt) {
 			output = output[len(fullPrompt):]
 			output = strings.Trim(output, "\n ")
