@@ -416,8 +416,10 @@ func Run() {
 	})
 
 	app.Post("/jobs/", NewJob)
-	app.Get("/jobs/status/:id", GetStatus)
+	app.Get("/jobs/status/:id", GetJobStatus)
 	app.Get("/jobs/:id", GetJob)
+
+	app.Get("/health", GetHealth)
 
 	go Engine(app)
 
@@ -883,7 +885,7 @@ func NewJob(ctx *fiber.Ctx) error {
 
 // --- GET /jobs/status/:id
 
-func GetStatus(ctx *fiber.Ctx) error {
+func GetJobStatus(ctx *fiber.Ctx) error {
 
 	id := ctx.Params("id")
 
@@ -953,6 +955,20 @@ func GetJob(ctx *fiber.Ctx) error {
 		//"started":  Jobs[jobID].StartedAt,
 		//"finished": finished,
 		//"model":    model,
+	})
+}
+
+// --- GET /health
+
+func GetHealth(ctx *fiber.Ctx) error {
+
+	cpuPercent := float32(RunningThreads) / float32(MaxThreads)
+
+	return ctx.JSON(fiber.Map{
+		"podCount": len(Pods),
+		// fmt.Sprintf("%.2f", float32(RunningThreads)/float32(MaxThreads)*100)
+		"cpuLoad": cpuPercent,
+		"gpuLoad": 0.0,
 	})
 }
 
