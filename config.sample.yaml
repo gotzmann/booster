@@ -3,32 +3,32 @@
 id: "mac-m1-pro"
 host: localhost
 port: 8080
-mode: prod
 pods: 3
 threads: [ 2, 8, 4 ]
 gpus: [ 0, 0, 0 ]
 gpulayers: [ 100, 0, 0 ]
-avx: false
-neon: true
-cuda: false
-defaultmodel: airoboros-7b
 log: llamazoo.log
 deadline: 180
 
-# --- models
+# --- working modes
+
+modes:
+  default: airoboros-13b
+  fast: wizardlm-7b
+
+# --- available models
 
 models:
-
-  # --- Airoboros 7B
 
   - 
     id: airoboros-7b
     name: Airoboros 7B
     path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
+    preamble:
     prefix: "USER:"
     suffix: "ASSISTANT:"
-    contextsize: 1024
-    predict: 512
+    contextsize: 2048
+    predict: 1024
     temp: 0.1
     topk: 10
     topp: 0.5
@@ -36,56 +36,21 @@ models:
     repeatlastn: -1
     mirostat: 2
     mirostattau: 0.1
-    mirostateta: 0.1
-
-  -
-    id: airoboros-7b-creative
-    name: Airoboros 7B Creative
-    path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
-    prefix: "USER:"
-    suffix: "ASSISTANT:"
-    contextsize: 1024
-    predict: 512
-    temp: 0.40
-    topk: 0
-    topp: 0
-    repeatpenalty: 1.10
-    repeatlastn: -1
-    mirostat: 2
-    mirostattau: 1
-    mirostateta: 0.1       
-
-  # --- WizardLM 7B
+    mirostateta: 0.1      
 
   -
     id: wizard-7b
     name: WizardLM 7B
     path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
+    preamble:
     prefix: "### Instruction:"
     suffix: "### Response:"
-    contextsize: 1024
-    predict: 512
-    temp: 0.80
-    topk: 40
-    topp: 0.92
-    repeatpenalty: 1.10
-    repeatlastn: -1
-    mirostat: 0
-    mirostattau: 0
-    mirostateta: 0
-
-    -
-    id: wizard-7b-strict
-    name: WizardLM 7B Strict
-    path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
-    prefix: "### Instruction:"
-    suffix: "### Response:"
-    contextsize: 1024
-    predict: 512
-    temp: 0.40
-    topk: 8
-    topp: 0.92
-    repeatpenalty: 1.10
+    contextsize: 2048
+    predict: 1024
+    temp: 0.1
+    topk: 10
+    topp: 0.5
+    repeatpenalty: 1.1
     repeatlastn: -1
     mirostat: 0
     mirostattau: 0

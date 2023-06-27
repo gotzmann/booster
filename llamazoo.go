@@ -65,6 +65,7 @@ const VERSION = "0.9.9"
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 	Model         string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
+	Preamble      string  `long:"preamble" description:"Preamble for model prompt, like \"You are a helpful AI assistant\""`
 	Prefix        string  `long:"prefix" description:"Prompt prefix if needed, like \"### Instruction:\""`
 	Suffix        string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
 	Seed          uint32  `long:"seed" description:"Seed number for random generator initialization [ current Unix time by default ]"`
@@ -122,7 +123,7 @@ func main() {
 		if feed != nil {
 			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
 			if err != nil {
-				Colorize("\n[magenta][ ERROR ][white] Can't parse config from JSON file! %s\n\n", err.Error())
+				Colorize("\n[magenta][ ERROR ][white] Can't parse config file! %s\n\n", err.Error())
 				os.Exit(0)
 			}
 		}
@@ -376,7 +377,7 @@ func main() {
 			log,
 			opts.Pods, opts.Threads, opts.GPULayers,
 			opts.Model,
-			opts.Prefix, opts.Suffix,
+			opts.Preamble, opts.Prefix, opts.Suffix,
 			int(opts.Context), int(opts.Predict),
 			opts.Mirostat, opts.MirostatTAU, opts.MirostatETA,
 			opts.Temp, opts.TopK, opts.TopP,
@@ -407,7 +408,7 @@ func main() {
 						job.ID,
 						job.Model,
 						job.Status,
-						job.TokenCount,
+						0, // job.TokenCount,
 						job.TokenEval,
 						output)
 				}

@@ -65,8 +65,9 @@ type Model struct {
 
 	Context unsafe.Pointer // *llama.Context
 
-	Prefix string // prompt prefix for instruct-type models
-	Suffix string // prompt suffix
+	Preamble string
+	Prefix   string // prompt prefix for instruct-type models
+	Suffix   string // prompt suffix
 
 	ContextSize int
 	Predict     int
@@ -87,6 +88,8 @@ type Model struct {
 type Config struct {
 	ID string // server key, should be unique within cluster
 
+	Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
+
 	Host string
 	Port string
 	Log  string
@@ -102,7 +105,7 @@ type Config struct {
 
 	Models []Model
 
-	DefaultModel string // default model ID
+	//DefaultModel string // default model ID
 
 	Deadline int64 // deadline in seconds after which unprocessed jobs will be deleted from the queue
 }
@@ -128,11 +131,15 @@ type Job struct {
 	StartedAt  int64
 	FinishedAt int64
 
-	Seed  int64  // TODO: Store seed
+	Seed int64 // TODO: Store seed
+
+	Mode  string
 	Model string // TODO: Store model ID, "" for default should be then replaced
 
-	TokenCount int64 // total tokens processed (icnluding prompt)
-	TokenEval  int64 // timing per token (prompt + output), ms
+	PreambleTokenCount int64
+	PromptTokenCount   int64 // total tokens processed (icnluding prompt)
+	OutputTokenCount   int64
+	TokenEval          int64 // timing per token (prompt + output), ms
 }
 
 const (
@@ -168,6 +175,7 @@ var (
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
 	Pods   []*Pod              // There N pods with some threads within as described in config
+	Modes  map[string]string   // Each unique model might have some special [ mode ] assigned to it
 	Models map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
 
 	log      *zap.SugaredLogger
@@ -191,7 +199,7 @@ func Init(
 	host, port string,
 	zapLog *zap.SugaredLogger,
 	pods int, threads, gpuLayers int64,
-	model, prefix, suffix string,
+	model, preamble, prefix, suffix string,
 	context, predict int,
 	mirostat int, mirostatTAU float32, mirostatETA float32,
 	temp float32, topK int, topP float32,
@@ -207,6 +215,7 @@ func Init(
 	RunningPods = 0
 	params.CtxSize = uint32(context)
 	Pods = make([]*Pod, pods)
+	Modes = map[string]string{"default": ""}
 	Models = make(map[string][]*Model)
 
 	// model from CLI will have empty name by default
@@ -248,6 +257,7 @@ func Init(
 		Models[""][pod] = &Model{
 			Path:        model,
 			Context:     ctx,
+			Preamble:    preamble,
 			Prefix:      prefix,
 			Suffix:      suffix,
 			ContextSize: context,
@@ -285,15 +295,17 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		os.Exit(0)
 	}
 
-	defaultModelFound := false
-	for _, model := range conf.Models {
-		if conf.DefaultModel == model.ID {
-			defaultModelFound = true
+	defaultModelSet := false
+	for mode, model := range conf.Modes {
+		if mode == "default" {
+			defaultModelSet = true
+			DefaultModel = model
 		}
 	}
 
-	if !defaultModelFound {
-		Colorize("\n[magenta][ ERROR ][white] Default model not found: %s\n\n", conf.DefaultModel)
+	if !defaultModelSet {
+		Colorize("\n[magenta][ ERROR ][white] Default model is not set with config [ modes ] section!\n\n")
+		log.Infof("[ERROR] Default model is not set with config [ modes ] section!")
 		os.Exit(0)
 	}
 
@@ -302,9 +314,11 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	ServerMode = LLAMA_CPP
 	Host = conf.Host
 	Port = conf.Port
-	DefaultModel = conf.DefaultModel
+	//DefaultModel = conf.DefaultModel
 	Pods = make([]*Pod, conf.Pods)
+	Modes = conf.Modes // make(map[string]string)
 	Models = make(map[string][]*Model)
+	defaultModelFound := false
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
@@ -317,6 +331,10 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		}
 
 		for _, model := range conf.Models {
+
+			if model.ID == DefaultModel {
+				defaultModelFound = true
+			}
 
 			// --- Allow user home dir resolve with tilde ~
 			// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
@@ -361,8 +379,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				Path:    model.Path,
 				Context: ctx,
 
-				Prefix: model.Prefix,
-				Suffix: model.Suffix,
+				Preamble: model.Preamble,
+				Prefix:   model.Prefix,
+				Suffix:   model.Suffix,
 
 				ContextSize: model.ContextSize,
 				Predict:     model.Predict,
@@ -379,6 +398,12 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				RepeatLastN:   model.RepeatLastN,
 			}
 		}
+	}
+
+	if !defaultModelFound {
+		Colorize("\n[magenta][ ERROR ][white] Default model file is not found!\n\n")
+		log.Infof("[ERROR] Default model file is not found!")
+		os.Exit(0)
 	}
 }
 
@@ -521,14 +546,15 @@ func Do(jobID string, pod *Pod) {
 	// TODO: Implement translation for prompt elsewhere
 	// add a space to match LLaMA tokenizer behavior
 	prompt := Jobs[jobID].Prompt
-	fullPrompt := " " + pod.Model.Prefix + prompt + pod.Model.Suffix
+	fullPrompt := " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
 	fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1) // FIXME: Experimental !!!
 	Jobs[jobID].FullPrompt = fullPrompt
 	mu.Unlock() // --
 
 	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
 
-		tokenCount := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(fullPrompt))
+		/*tokenCount := */
+		C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(fullPrompt))
 
 		// TODO: Trim prompt from beginning
 		result := C.GoString(C.status(C.CString(jobID)))
@@ -550,7 +576,8 @@ func Do(jobID string, pod *Pod) {
 		mu.Lock() // --
 		Jobs[jobID].FinishedAt = now
 		Jobs[jobID].Status = "finished"
-		Jobs[jobID].TokenCount = int64(tokenCount)
+		// FIXME ASAP : Log all meaninful details !!!
+		//Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = eval
 		Jobs[jobID].Output = result
 		pod.isBusy = false
@@ -723,7 +750,7 @@ func Do(jobID string, pod *Pod) {
 
 // --- Place new job into queue
 
-func PlaceJob(jobID, model, session, prompt string) {
+func PlaceJob(jobID, mode, model, session, prompt string) {
 
 	timing := time.Now().UnixMilli()
 
@@ -731,6 +758,7 @@ func PlaceJob(jobID, model, session, prompt string) {
 
 	Jobs[jobID] = &Job{
 		ID:        jobID,
+		Mode:      mode,
 		Model:     model,
 		Session:   session,
 		Prompt:    prompt,
@@ -762,6 +790,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	payload := struct {
 		ID      string `json:"id"`
 		Session string `json:"session,omitempty"`
+		Mode    string `json:"mode,omitempty"`
 		Model   string `json:"model,omitempty"`
 		Prompt  string `json:"prompt"`
 	}{}
@@ -773,9 +802,18 @@ func NewJob(ctx *fiber.Ctx) error {
 	// -- normalize prompt
 
 	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
+	payload.Mode = strings.Trim(payload.Mode, "\n ")
 	payload.Model = strings.Trim(payload.Model, "\n ")
 
 	// -- validate prompt
+
+	if payload.Mode != "" {
+		if _, ok := Modes[payload.Mode]; !ok {
+			return ctx.
+				Status(fiber.StatusBadRequest).
+				SendString("Wrong mode!")
+		}
+	}
 
 	if payload.Model != "" {
 		if _, ok := Models[payload.Model]; !ok {
@@ -819,9 +857,12 @@ func NewJob(ctx *fiber.Ctx) error {
 		payload.Model = DefaultModel
 	}
 
-	PlaceJob(payload.ID, payload.Model, payload.Session, payload.Prompt)
+	// FIXME ASAP : Use payload Model and Mode selectors !!!
+	payload.Model = DefaultModel
 
-	log.Infow("[JOB] New job placed to queue", "jobID", payload.ID, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
+	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt)
+
+	log.Infow("[JOB] New job placed to queue", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
 	// TODO: Guard with mutex Jobs[payload.ID] access
 	// TODO: Return [model] and [session] if not empty
