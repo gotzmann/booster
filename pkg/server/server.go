@@ -124,6 +124,7 @@ type Job struct {
 	Session    string // ID of continuous user session in chat mode
 	Status     string
 	Prompt     string // exact user prompt, trimmed from spaces and newlines
+	Translate  string // translation direction like "en:ru" ask translate input to EN first, then output to RU
 	FullPrompt string // full prompt with prefix / suffix
 	Output     string
 
@@ -752,7 +753,7 @@ func Do(jobID string, pod *Pod) {
 
 // --- Place new job into queue
 
-func PlaceJob(jobID, mode, model, session, prompt string) {
+func PlaceJob(jobID, mode, model, session, prompt, translate string) {
 
 	timing := time.Now().UnixMilli()
 
@@ -764,6 +765,7 @@ func PlaceJob(jobID, mode, model, session, prompt string) {
 		Model:     model,
 		Session:   session,
 		Prompt:    prompt,
+		Translate: translate,
 		Status:    "queued",
 		CreatedAt: timing,
 	}
@@ -790,11 +792,12 @@ func NewJob(ctx *fiber.Ctx) error {
 	}
 
 	payload := struct {
-		ID      string `json:"id"`
-		Session string `json:"session,omitempty"`
-		Mode    string `json:"mode,omitempty"`
-		Model   string `json:"model,omitempty"`
-		Prompt  string `json:"prompt"`
+		ID        string `json:"id"`
+		Session   string `json:"session,omitempty"`
+		Mode      string `json:"mode,omitempty"`
+		Model     string `json:"model,omitempty"`
+		Prompt    string `json:"prompt"`
+		Translate string `json:"translate"`
 	}{}
 
 	if err := ctx.BodyParser(&payload); err != nil {
@@ -806,6 +809,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
 	payload.Mode = strings.Trim(payload.Mode, "\n ")
 	payload.Model = strings.Trim(payload.Model, "\n ")
+	payload.Translate = strings.Trim(payload.Translate, "\n ")
 
 	// -- validate prompt
 
@@ -862,7 +866,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	// FIXME ASAP : Use payload Model and Mode selectors !!!
 	payload.Model = DefaultModel
 
-	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt)
+	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt, payload.Translate)
 
 	log.Infow("[JOB] New job placed to queue", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
