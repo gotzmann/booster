@@ -4,12 +4,16 @@ package server
 // https://github.com/golang/go/wiki/cgo
 // https://pkg.go.dev/cmd/cgo
 
+// FIXME: unknown type name 'bool' => char numa, bool low_vram,
+
 /*
+#include <stdlib.h>
 #include <stdint.h>
 void * initContext(
 	int idx,
 	char * modelName,
 	int threads, int gpuLayers,
+	int numa, int low_vram,
 	int context, int predict,
 	int mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
@@ -98,6 +102,9 @@ type Config struct {
 	NEON bool
 	CUDA bool
 
+	NUMA    int // should be bool, but there problems with CGO bools on MacOS
+	LowVRAM int // the same
+
 	Pods      int     // pods count
 	Threads   []int64 // threads count for each pod
 	GPUs      []int64 // GPU number selector
@@ -170,6 +177,9 @@ var (
 	RunningThreads int64
 	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
 
+	NUMA    bool
+	LowVRAM bool
+
 	mu sync.Mutex // guards any Jobs change
 
 	Jobs  map[string]*Job     // all seen jobs in any state
@@ -200,6 +210,7 @@ func Init(
 	host, port string,
 	zapLog *zap.SugaredLogger,
 	pods int, threads, gpuLayers int64,
+	numa, lowVRAM int, // porblems with CGO bool on MacOS
 	model, preamble, prefix, suffix string,
 	context, predict int,
 	mirostat int, mirostatTAU float32, mirostatETA float32,
@@ -211,6 +222,8 @@ func Init(
 	ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
+	NUMA = numa == 1
+	LowVRAM = lowVRAM == 1
 	log = zapLog
 	deadline = deadlineIn
 	RunningPods = 0
@@ -245,6 +258,7 @@ func Init(
 			C.int(pod),
 			C.CString(model),
 			C.int(threads), C.int(gpuLayers),
+			C.int(numa), C.int(lowVRAM),
 			C.int(context), C.int(predict),
 			C.int(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
@@ -316,6 +330,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	ServerMode = LLAMA_CPP
 	Host = conf.Host
 	Port = conf.Port
+	NUMA = conf.NUMA == 1
+	LowVRAM = conf.LowVRAM == 1
 	//DefaultModel = conf.DefaultModel
 	Pods = make([]*Pod, conf.Pods)
 	Modes = conf.Modes // make(map[string]string)
@@ -360,6 +376,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(pod),
 				C.CString(path),
 				C.int(threads), C.int(conf.GPULayers[pod]),
+				C.int(conf.NUMA), C.int(conf.LowVRAM),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),

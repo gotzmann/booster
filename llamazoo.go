@@ -94,6 +94,8 @@ type Options struct {
 	GPULayers     int64   `long:"gpu-layers" description:"Use Apple GPU inference, offload NN layers"`
 	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
 	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
+	NUMA          bool    `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
+	LowVRAM       bool    `long:"low-vram" description:"Reduces VRAM usage at the cost of performance"`
 	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
 }
 
@@ -101,6 +103,8 @@ var (
 	doPrint bool = true
 	doLog   bool = false
 	conf    server.Config
+	NUMA    int
+	LowVRAM int
 )
 
 func main() {
@@ -376,6 +380,7 @@ func main() {
 			opts.Host, opts.Port,
 			log,
 			opts.Pods, opts.Threads, opts.GPULayers,
+			NUMA, LowVRAM,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
 			int(opts.Context), int(opts.Predict),
@@ -472,6 +477,14 @@ func parseOptions() *Options {
 
 	if opts.Port == "" {
 		opts.Port = "8080"
+	}
+
+	if opts.NUMA {
+		NUMA = 1
+	}
+
+	if opts.LowVRAM {
+		LowVRAM = 1
 	}
 
 	if opts.Context == 0 {

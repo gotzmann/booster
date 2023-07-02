@@ -10,6 +10,7 @@
 //#include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <tuple>
 
 // Shared map for storing pairs of [UUID] -> [Output] while processing within C++ side
 // After returning final result to Go side, we can safely remove the current result from the map
@@ -137,11 +138,21 @@ struct gpt_params {
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
 
-// --- Global params for all pods. Do anyone needs more that total 8 pods per machine?
+// --- Global params for all pods. Do anyone needs more than 16 pods per machine?
 
-gpt_params params[8];
+gpt_params params[16];
+llama_model * models[16];
+llama_context * contexts[16];
 
-struct llama_context * init_context(int idx /*const gpt_params & params*/) {
+///// struct llama_context * init_context(int idx /*const gpt_params & params*/) {
+///// std::tuple<struct llama_model *, struct llama_context *> init_from_gpt_params(int idx) {
+
+// init_context() replaces llama_init_from_gpt_params():
+// - it init model first    
+// - than creates context from model
+// - we init globals with those values
+// - finally return context pointer 
+struct llama_context * init_context(int idx) {
 
     auto lparams = llama_context_default_params();
 
@@ -157,26 +168,50 @@ struct llama_context * init_context(int idx /*const gpt_params & params*/) {
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
     lparams.n_gpu_layers = params[idx].n_gpu_layers; // TODO: multiGPU selection
+    //lparams.numa = params[idx].numa;
+    lparams.low_vram = params[idx].low_vram;
 
-    llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
+    ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
-    if (lctx == NULL) {
+    // FIXME ^^^
+    // bridge.cpp:161:28: warning: 'llama_init_from_file' is deprecated: please use llama_load_model_from_file 
+    // combined with llama_new_context_with_model instead [-Wdeprecated-declarations]
+
+    llama_model * model  = llama_load_model_from_file(params[idx].model.c_str(), lparams);
+    if (model == NULL) {
         fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params[idx].model.c_str());
+        // return std::make_tuple(nullptr, nullptr);
         return NULL;
     }
 
+    models[idx] = model;
+
+    llama_context * lctx = llama_new_context_with_model(model, lparams);
+    if (lctx == NULL) {
+        fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, params[idx].model.c_str());
+        llama_free_model(model);
+        // return std::make_tuple(nullptr, nullptr);
+        return NULL;
+    }
+
+    contexts[idx] = lctx;
+
     // TODO: Experiment with LORAs
     if (!params[idx].lora_adapter.empty()) {
-        int err = llama_apply_lora_from_file(lctx,
+        int err = llama_model_apply_lora_from_file(model,
                                              params[idx].lora_adapter.c_str(),
                                              params[idx].lora_base.empty() ? NULL : params[idx].lora_base.c_str(),
                                              params[idx].n_threads);
         if (err != 0) {
             fprintf(stderr, "%s: error: failed to apply lora adapter\n", __func__);
+            llama_free(lctx);
+            llama_free_model(model);
+            // return std::make_tuple(nullptr, nullptr);
             return NULL;
         }
     }
 
+    // return std::make_tuple(model, lctx);
     return lctx;
 }
 
@@ -650,6 +685,7 @@ void * initContext(
     int idx, 
     char * modelName, 
     int threads, int gpuLayers, 
+    bool numa, bool low_vram,
     int context, int predict,
     int mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p, 
@@ -675,6 +711,9 @@ void * initContext(
     ::params[idx].repeat_last_n  = repeat_last_n;
     
     ::params[idx].seed           = seed;
+
+    ::params[idx].numa           = numa;
+    ::params[idx].low_vram       = low_vram;
     
     hide();
     auto res =  init_context(idx);
