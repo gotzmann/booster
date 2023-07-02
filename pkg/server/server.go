@@ -237,6 +237,7 @@ func Init(
 		// Check if file exists to prevent CGO panic
 		if _, err := os.Stat(model); err != nil {
 			Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", model)
+			log.Infof("[ERROR] Model not found: %s", model)
 			os.Exit(0)
 		}
 
@@ -350,6 +351,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			// Check if file exists to prevent CGO panic
 			if _, err := os.Stat(path); err != nil {
 				Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", path)
+				log.Infof("[ERROR] Model not found: %s", path)
 				os.Exit(0)
 			}
 
