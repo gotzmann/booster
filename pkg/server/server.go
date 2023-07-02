@@ -20,6 +20,7 @@ void * initContext(
 	float repeat_penalty, int repeat_last_n,
 	int32_t seed);
 int64_t doInference(int idx, void * ctx, char * jobID, char * prompt);
+void stopInference(int idx);
 const char * status(char * jobID);
 int64_t timing(char * jobID);
 */
@@ -148,6 +149,8 @@ type Job struct {
 	PromptTokenCount   int64 // total tokens processed (icnluding prompt)
 	OutputTokenCount   int64
 	TokenEval          int64 // timing per token (prompt + output), ms
+
+	pod *Pod // we need pod.idx when stopping jobs
 }
 
 const (
@@ -436,6 +439,7 @@ func Run() {
 	})
 
 	app.Post("/jobs/", NewJob)
+	app.Delete("/jobs/:id", StopJob)
 	app.Get("/jobs/status/:id", GetJobStatus)
 	app.Get("/jobs/:id", GetJob)
 
@@ -560,6 +564,7 @@ func Do(jobID string, pod *Pod) {
 	now := time.Now().UnixMilli()
 
 	mu.Lock() // --
+	Jobs[jobID].pod = pod
 	Jobs[jobID].StartedAt = now
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
 	// TODO: Play with prompt without leading space
@@ -597,11 +602,14 @@ func Do(jobID string, pod *Pod) {
 
 		mu.Lock() // --
 		Jobs[jobID].FinishedAt = now
-		Jobs[jobID].Status = "finished"
+		if Jobs[jobID].Status != "stopped" {
+			Jobs[jobID].Status = "finished"
+		}
 		// FIXME ASAP : Log all meaninful details !!!
 		//Jobs[jobID].TokenCount = int64(tokenCount)
 		Jobs[jobID].TokenEval = eval
 		Jobs[jobID].Output = result
+		Jobs[jobID].pod = nil
 		pod.isBusy = false
 		mu.Unlock() // --
 
@@ -768,6 +776,7 @@ func Do(jobID string, pod *Pod) {
 		// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
 
 	}
+
 }
 
 // --- Place new job into queue
@@ -906,6 +915,44 @@ func NewJob(ctx *fiber.Ctx) error {
 	})
 }
 
+// --- DELETE /jobs/:id
+
+func StopJob(ctx *fiber.Ctx) error {
+
+	jobID := ctx.Params("id")
+
+	if _, err := uuid.Parse(jobID); err != nil {
+		return ctx.
+			Status(fiber.StatusBadRequest).
+			SendString("Wrong UUID4 id for request!")
+	}
+
+	mu.Lock() // -
+
+	if _, ok := Jobs[jobID]; !ok {
+		mu.Unlock()
+		return ctx.
+			Status(fiber.StatusBadRequest).
+			SendString("Request ID was not found!")
+	}
+
+	if Jobs[jobID].Status == "queued" {
+		delete(Queue, jobID)
+	}
+
+	Jobs[jobID].Status = "stopped"
+
+	if Jobs[jobID].pod != nil {
+		C.stopInference(C.int(Jobs[jobID].pod.idx))
+	}
+
+	mu.Unlock() // --
+
+	return ctx.JSON(fiber.Map{
+		"status": "stopped",
+	})
+}
+
 // --- GET /jobs/status/:id
 
 func GetJobStatus(ctx *fiber.Ctx) error {
@@ -918,6 +965,7 @@ func GetJobStatus(ctx *fiber.Ctx) error {
 			SendString("Wrong UUID4 id for request!")
 	}
 
+	// TODO: Guard with mutex
 	if _, ok := Jobs[id]; !ok {
 		return ctx.
 			Status(fiber.StatusBadRequest).

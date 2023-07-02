@@ -144,6 +144,10 @@ gpt_params params[16];
 llama_model * models[16];
 llama_context * contexts[16];
 
+// Flags to stop particular inference thread from the Go code
+
+bool stopInferenceFlags[16];
+
 ///// struct llama_context * init_context(int idx /*const gpt_params & params*/) {
 ///// std::tuple<struct llama_model *, struct llama_context *> init_from_gpt_params(int idx) {
 
@@ -229,6 +233,8 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
 // idx - index of pod / context / params to do processing within
 int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & text) {
 
+    stopInferenceFlags[idx] = false;
+
     llama_reset_timings(ctx);
 
     // TODO: Duplicate initialization code of [ llama_init_from_file ]
@@ -274,7 +280,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     std::vector<llama_token> embd;
 
-    while (n_remain != 0 /*|| params.interactive*/) {
+    while (n_remain && !stopInferenceFlags[idx] /* n_remain != 0 || params.interactive */) {
 
         //const int64_t start_time = ggml_time_us();
 
@@ -716,6 +722,10 @@ void * initContext(
     ::params[idx].low_vram       = low_vram;
     
     hide();
+    if (numa) { // FIXME: Experimental!
+        //fprintf(stderr, "\n\n === ggml_numa_init(); \n\n");
+        ggml_numa_init();
+    } 
     auto res =  init_context(idx);
     show();
 
@@ -726,6 +736,10 @@ int64_t doInference(int idx, void * ctx, char * jobID, char * prompt) {
     std::string id = jobID;
     std::string text = prompt;
     return do_inference(idx, (struct llama_context *)ctx, id, text);
+}
+
+void stopInference(int idx) {
+    ::stopInferenceFlags[idx] = true;
 }
 
 // return current result of processing

@@ -9,6 +9,8 @@ gpus: [ 0, 0, 0 ]
 gpulayers: [ 100, 0, 0 ]
 log: llamazoo.log
 deadline: 180
+numa: 0
+lowvram: 0
 
 # --- working modes
 

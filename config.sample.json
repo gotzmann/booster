@@ -8,6 +8,8 @@
     "gpuLayers": [ 100, 0, 0 ],
     "log": "llamazoo.log",
     "deadline": 180,
+    "numa": 0,
+    "lowVRAM": 0,
 
     "modes": {
         "default": "airoboros-13b",
