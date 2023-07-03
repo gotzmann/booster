@@ -9,17 +9,25 @@ package server
 /*
 #include <stdlib.h>
 #include <stdint.h>
+void * init(
+	char * sessionPath,
+	int numa,
+	int low_vram);
 void * initContext(
 	int idx,
 	char * modelName,
 	int threads, int gpuLayers,
-	int numa, int low_vram,
 	int context, int predict,
 	int mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
 	float repeat_penalty, int repeat_last_n,
 	int32_t seed);
-int64_t doInference(int idx, void * ctx, char * jobID, char * prompt);
+int64_t doInference(
+	int idx,
+	void * ctx,
+	char * jobID,
+	char * sessionID,
+	char * prompt);
 void stopInference(int idx);
 const char * status(char * jobID);
 int64_t timing(char * jobID);
@@ -106,6 +114,8 @@ type Config struct {
 	NUMA    int // should be bool, but there problems with CGO bools on MacOS
 	LowVRAM int // the same
 
+	Sessions string // path to store session files
+
 	Pods      int     // pods count
 	Threads   []int64 // threads count for each pod
 	GPUs      []int64 // GPU number selector
@@ -129,7 +139,7 @@ type Pod struct {
 
 type Job struct {
 	ID         string
-	Session    string // ID of continuous user session in chat mode
+	SessionID  string // ID of continuous user session in chat mode
 	Status     string
 	Prompt     string // exact user prompt, trimmed from spaces and newlines
 	Translate  string // translation direction like "en:ru" ask translate input to EN first, then output to RU
@@ -183,22 +193,28 @@ var (
 	NUMA    bool
 	LowVRAM bool
 
+	// FIXME TODO ASAP : Remove extra sessions from disk to prevent full disk DDoS
+	SessionPath string // path to store session files
+	MaxSessions int    // how many sessions allowed per server, remove extra session files
+
 	mu sync.Mutex // guards any Jobs change
 
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	Pods   []*Pod              // There N pods with some threads within as described in config
-	Modes  map[string]string   // Each unique model might have some special [ mode ] assigned to it
-	Models map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
+	Pods     []*Pod              // There N pods with some threads within as described in config
+	Modes    map[string]string   // Each unique model might have some special [ mode ] assigned to it
+	Models   map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
+	Sessions map[string]string   // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
 
 	log      *zap.SugaredLogger
 	deadline int64
 )
 
 func init() {
-	Jobs = make(map[string]*Job, 1024)      // 1024 is like some initial space to grow
-	Queue = make(map[string]struct{}, 1024) // same here
+	Jobs = make(map[string]*Job, 1024)       // 1024 is like some initial space to grow
+	Queue = make(map[string]struct{}, 1024)  // same here
+	Sessions = make(map[string]string, 1024) // same here
 
 	// FIXME: ASAP Check those are set from within Init()
 	// --- set model parameters from user settings and safe defaults
@@ -220,7 +236,8 @@ func Init(
 	temp float32, topK int, topP float32,
 	repeatPenalty float32, repeatLastN int,
 	deadlineIn int64,
-	seed uint32) {
+	seed uint32,
+	sessionPath string) {
 
 	ServerMode = LLAMA_CPP
 	Host = host
@@ -234,6 +251,7 @@ func Init(
 	Pods = make([]*Pod, pods)
 	Modes = map[string]string{"default": ""}
 	Models = make(map[string][]*Model)
+	SessionPath = sessionPath
 
 	// model from CLI will have empty name by default
 	if _, ok := Models[""]; !ok {
@@ -257,11 +275,15 @@ func Init(
 			os.Exit(0)
 		}
 
+		C.init(
+			C.CString(sessionPath),
+			C.int(numa),
+			C.int(lowVRAM))
+
 		ctx := C.initContext(
 			C.int(pod),
 			C.CString(model),
 			C.int(threads), C.int(gpuLayers),
-			C.int(numa), C.int(lowVRAM),
 			C.int(context), C.int(predict),
 			C.int(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
@@ -340,6 +362,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	Modes = conf.Modes // make(map[string]string)
 	Models = make(map[string][]*Model)
 	defaultModelFound := false
+	SessionPath = conf.Sessions
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
@@ -374,12 +397,15 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			// TODO: catch panic from CGO if file not found
+			C.init(
+				C.CString(SessionPath),
+				C.int(conf.NUMA),
+				C.int(conf.LowVRAM))
+
 			ctx := C.initContext(
 				C.int(pod),
 				C.CString(path),
 				C.int(threads), C.int(conf.GPULayers[pod]),
-				C.int(conf.NUMA), C.int(conf.LowVRAM),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
@@ -564,6 +590,7 @@ func Do(jobID string, pod *Pod) {
 	now := time.Now().UnixMilli()
 
 	mu.Lock() // --
+	sessionID := Jobs[jobID].SessionID
 	Jobs[jobID].pod = pod
 	Jobs[jobID].StartedAt = now
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
@@ -573,32 +600,73 @@ func Do(jobID string, pod *Pod) {
 	// TODO: Implement translation for prompt elsewhere
 	// add a space to match LLaMA tokenizer behavior
 	prompt := Jobs[jobID].Prompt
-	fullPrompt := " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
-	fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1) // FIXME: Experimental !!!
+	history := Sessions[sessionID] // empty for the first iteration and when sessions do not stored at all
+
+	var fullPrompt string
+	if history == "" {
+		// NB! Leading space as expected by LLaMA standard
+		fullPrompt = " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
+		fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
+	} else {
+		prompt = strings.Replace(pod.Model.Prefix+prompt+pod.Model.Suffix, `\n`, "\n", -1)
+		fullPrompt = history + prompt
+	}
+
 	Jobs[jobID].FullPrompt = fullPrompt
 	mu.Unlock() // --
 
 	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
 
-		/*tokenCount := */
-		C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(fullPrompt))
+		// -- Check if session file exists or create it to prevent CGO panic
 
-		// TODO: Trim prompt from beginning
+		var SessionFile string
+		if SessionPath != "" && sessionID != "" {
+			SessionFile = SessionPath + "/" + sessionID
+		}
+
+		// FIXME: Do not work as expected. Empty file rise CGO exception here
+		//        error loading session file: unexpectedly reached end of file
+		//        do_inference: error: failed to load session file './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
+
+		/*
+
+			if _, err := os.Stat(SessionFile); err != nil {
+				if os.IsNotExist(err) {
+					_, err = os.Create(SessionFile)
+					if err != nil {
+						Colorize("\n[magenta][ ERROR ][white] Can't create session file: %s\n\n", SessionFile)
+						log.Infof("[ERROR] Can't create session file: %s", SessionFile)
+						os.Exit(0)
+					}
+				} else {
+					Colorize("\n[magenta][ ERROR ][white] Some problems with session file: %s\n\n", SessionFile)
+					log.Infof("[ERROR] Some problems with session file: %s", SessionFile)
+					os.Exit(0)
+				}
+			}
+
+		*/
+
+		// do_inference: attempting to load saved session from './session.data.bin'
+		// llama_load_session_file_internal : model hparams didn't match from session file!
+		// do_inference: error: failed to load session file './session.data.bin'
+
+		/*tokenCount := */
+		C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
 		result := C.GoString(C.status(C.CString(jobID)))
 
-		// -- remove suffix and prefix from the output
-		// TODO: Better processing here
+		// Save exact result as history for future session work if storage enabled
+		if SessionFile != "" {
+			Sessions[sessionID] = result
+		}
 
-		//result = strings.Trim(result, "\n ")
-		//prompt := strings.Trim(fullPrompt, "\n ") // TODO: Extra step - not needed, just dont use leading space
-		if strings.HasPrefix(result, fullPrompt) { // FIXME ASAP: Find better place to show results in real-time
+		if strings.HasPrefix(result, fullPrompt) {
 			result = result[len(fullPrompt):]
 		}
 		result = strings.Trim(result, "\n ")
 
 		now = time.Now().UnixMilli()
 		eval := int64(C.timing(C.CString(jobID)))
-		// TODO: Move some slow ops outside of critical section
 
 		mu.Lock() // --
 		Jobs[jobID].FinishedAt = now
@@ -781,7 +849,7 @@ func Do(jobID string, pod *Pod) {
 
 // --- Place new job into queue
 
-func PlaceJob(jobID, mode, model, session, prompt, translate string) {
+func PlaceJob(jobID, mode, model, sessionID, prompt, translate string) {
 
 	timing := time.Now().UnixMilli()
 
@@ -791,7 +859,7 @@ func PlaceJob(jobID, mode, model, session, prompt, translate string) {
 		ID:        jobID,
 		Mode:      mode,
 		Model:     model,
-		Session:   session,
+		SessionID: sessionID,
 		Prompt:    prompt,
 		Translate: translate,
 		Status:    "queued",
@@ -835,9 +903,9 @@ func NewJob(ctx *fiber.Ctx) error {
 	// -- normalize prompt
 
 	payload.Prompt = strings.Trim(payload.Prompt, "\n ")
-	payload.Mode = strings.Trim(payload.Mode, "\n ")
-	payload.Model = strings.Trim(payload.Model, "\n ")
-	payload.Translate = strings.Trim(payload.Translate, "\n ")
+	//payload.Mode = strings.Trim(payload.Mode, "\n ")
+	//payload.Model = strings.Trim(payload.Model, "\n ")
+	//payload.Translate = strings.Trim(payload.Translate, "\n ")
 
 	// -- validate prompt
 

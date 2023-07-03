@@ -11,6 +11,8 @@ log: llamazoo.log
 deadline: 180
 numa: 0
 lowvram: 0
+sessions: "/home/sessions"
+maxsessions: 100
 
 # --- working modes
 

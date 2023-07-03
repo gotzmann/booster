@@ -97,14 +97,16 @@ type Options struct {
 	NUMA          bool    `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
 	LowVRAM       bool    `long:"low-vram" description:"Reduces VRAM usage at the cost of performance"`
 	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
+	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 2Gb per each ]"`
+	MaxSessions   int     `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
 }
 
 var (
 	doPrint bool = true
 	doLog   bool = false
 	conf    server.Config
-	NUMA    int
-	LowVRAM int
+	NUMA    int // need this to convert from boolean opts.NUMA due to problems with C.Bool() on MacOS
+	LowVRAM int // same story
 )
 
 func main() {
@@ -388,7 +390,8 @@ func main() {
 			opts.Temp, opts.TopK, opts.TopP,
 			opts.RepeatPenalty, opts.RepeatLastN,
 			opts.Deadline,
-			opts.Seed)
+			opts.Seed,
+			opts.Sessions)
 	}
 
 	// --- Debug output of results and stop after 1 hour in case of running withous --server flag
@@ -422,7 +425,7 @@ func main() {
 					break
 				}
 
-				time.Sleep(2 * time.Second)
+				time.Sleep(3 * time.Second)
 				//iter++
 				//if iter > 600 {
 				//	Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
