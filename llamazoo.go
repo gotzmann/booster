@@ -398,7 +398,6 @@ func main() {
 
 	if opts.Debug {
 		go func() {
-			//iter := 0
 			for {
 
 				Colorize("\n[magenta]============== JOBS ==============\n")
@@ -406,11 +405,7 @@ func main() {
 				for _, job := range server.Jobs {
 
 					var output string
-					//if job.Status == "finished" {
-					//	output = server.Jobs[job.ID].Output
-					//} else {
 					output = C.GoString(C.status(C.CString(job.ID)))
-					//}
 
 					Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s\n",
 						job.ID,
@@ -425,12 +420,7 @@ func main() {
 					break
 				}
 
-				time.Sleep(3 * time.Second)
-				//iter++
-				//if iter > 600 {
-				//	Colorize("\n[light_magenta][STOP][yellow] Time limit 600 * 3 seconds is over!")
-				//	break
-				//}
+				time.Sleep(5 * time.Second)
 			}
 		}()
 	}
