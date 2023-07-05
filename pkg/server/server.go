@@ -202,10 +202,11 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	Pods     []*Pod              // There N pods with some threads within as described in config
-	Modes    map[string]string   // Each unique model might have some special [ mode ] assigned to it
-	Models   map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
-	Sessions map[string]string   // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
+	Pods        []*Pod              // There N pods with some threads within as described in config
+	Modes       map[string]string   // Each unique model might have some special [ mode ] assigned to it
+	Models      map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
+	Sessions    map[string]string   // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
+	TokensCount map[string]int      // Store tokens within each session ID => COUNT to prevent growth over context limit
 
 	log      *zap.SugaredLogger
 	deadline int64
@@ -215,6 +216,7 @@ func init() {
 	Jobs = make(map[string]*Job, 1024)       // 1024 is like some initial space to grow
 	Queue = make(map[string]struct{}, 1024)  // same here
 	Sessions = make(map[string]string, 1024) // same here
+	TokensCount = make(map[string]int, 1024) // same here
 
 	// FIXME: ASAP Check those are set from within Init()
 	// --- set model parameters from user settings and safe defaults
@@ -598,7 +600,20 @@ func Do(jobID string, pod *Pod) {
 	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
 	// TODO: Allow setting prefix/suffix from CLI
 	// TODO: Implement translation for prompt elsewhere
-	// add a space to match LLaMA tokenizer behavior
+
+	// -- check if we are possibly going to grow out of context limit [ 2048 tokens ] and need to drop session data
+
+	var SessionFile string
+	if SessionPath != "" && sessionID != "" {
+		SessionFile = SessionPath + "/" + sessionID
+	}
+
+	if SessionFile != "" && ((TokensCount[sessionID] + pod.Model.Predict + 4) > pod.Model.ContextSize) {
+		Sessions[sessionID] = ""
+		TokensCount[sessionID] = 0
+		os.Remove(SessionFile)
+	}
+
 	prompt := Jobs[jobID].Prompt
 	history := Sessions[sessionID] // empty for the first iteration and when sessions do not stored at all
 
@@ -616,13 +631,6 @@ func Do(jobID string, pod *Pod) {
 	mu.Unlock() // --
 
 	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
-
-		// -- Check if session file exists or create it to prevent CGO panic
-
-		var SessionFile string
-		if SessionPath != "" && sessionID != "" {
-			SessionFile = SessionPath + "/" + sessionID
-		}
 
 		// FIXME: Do not work as expected. Empty file rise CGO exception here
 		//        error loading session file: unexpectedly reached end of file
@@ -647,17 +655,21 @@ func Do(jobID string, pod *Pod) {
 
 		*/
 
+		// FIXME: if model hparams were changes, session files are obsolete
+
 		// do_inference: attempting to load saved session from './session.data.bin'
 		// llama_load_session_file_internal : model hparams didn't match from session file!
 		// do_inference: error: failed to load session file './session.data.bin'
 
-		/*tokenCount := */
-		C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
+		count := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
 		result := C.GoString(C.status(C.CString(jobID)))
 
 		// Save exact result as history for future session work if storage enabled
 		if SessionFile != "" {
+			mu.Lock() // --
 			Sessions[sessionID] = result
+			TokensCount[sessionID] += int(count)
+			mu.Unlock() // --
 		}
 
 		if strings.HasPrefix(result, fullPrompt) {

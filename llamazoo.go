@@ -77,14 +77,14 @@ type Options struct {
 	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Pods          int     `long:"pods" description:"Maximum pods of parallel execution allowed in Server mode [ 1 by default ]"`
 	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
-	Context       uint32  `long:"context" description:"Context size in tokens [ 1024 by default ]"`
-	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 512 by default ]"`
+	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
+	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`
 	Mirostat      int     `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
 	MirostatTAU   float32 `long:"mirostat-tau" description:"Mirostat TAU value [ 0.1 by default ]"`
 	MirostatETA   float32 `long:"mirostat-eta" description:"Mirostat ETA value [ 0.1 by default ]"`
-	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.4 by default ]"`
+	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.1 by default ]"`
 	TopK          int     `long:"top-k" description:"TopK parameter for the model [ 8 by default ]"`
-	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.8 by default ]"`
+	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.4 by default ]"`
 	RepeatPenalty float32 `long:"repeat-penalty" description:"RepeatPenalty [ 1.1 by default ]"`
 	RepeatLastN   int     `long:"repeat-last-n" description:"RepeatLastN [ -1 by default ]"`
 	Silent        bool    `long:"silent" description:"Hide welcome logo and other output [ shown by default ]"`
@@ -97,7 +97,7 @@ type Options struct {
 	NUMA          bool    `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
 	LowVRAM       bool    `long:"low-vram" description:"Reduces VRAM usage at the cost of performance"`
 	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
-	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 2Gb per each ]"`
+	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
 	MaxSessions   int     `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
 }
 
@@ -481,11 +481,11 @@ func parseOptions() *Options {
 	}
 
 	if opts.Context == 0 {
-		opts.Context = 1024
+		opts.Context = 2048
 	}
 
 	if opts.Predict == 0 {
-		opts.Predict = 512
+		opts.Predict = 1024
 	}
 
 	//if opts.Mirostat == 0 {
@@ -505,11 +505,11 @@ func parseOptions() *Options {
 	}
 
 	if opts.TopK == 0 {
-		opts.TopK = 10
+		opts.TopK = 8
 	}
 
 	if opts.TopP == 0 {
-		opts.TopP = 0.5
+		opts.TopP = 0.4
 	}
 
 	if opts.RepeatPenalty == 0 {

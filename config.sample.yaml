@@ -34,8 +34,8 @@ models:
     contextsize: 2048
     predict: 1024
     temp: 0.1
-    topk: 10
-    topp: 0.5
+    topk: 8
+    topp: 0.4
     repeatpenalty: 1.1
     repeatlastn: -1
     mirostat: 2
@@ -52,8 +52,8 @@ models:
     contextsize: 2048
     predict: 1024
     temp: 0.1
-    topk: 10
-    topp: 0.5
+    topk: 8
+    topp: 0.4
     repeatpenalty: 1.1
     repeatlastn: -1
     mirostat: 0

@@ -12,6 +12,14 @@
 #include <unordered_map>
 #include <tuple>
 
+// FIXME ASAP - do not allow longer context when reading session file
+
+// do_inference: PROMPT [ 2386 ] tokens
+// do_inference: SESSION [ 0 ] tokens
+// do_inference: error: prompt is too long (2386 tokens, max 2044)
+// ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 877775360, available 536870912)
+// fatal error: unexpected signal during runtime execution
+
 // Shared map for storing pairs of [UUID] -> [Output] while processing within C++ side
 // After returning final result to Go side, we can safely remove the current result from the map
 
@@ -57,9 +65,9 @@ struct gpt_params {
     uint32_t seed         = -1;   // RNG seed
     int32_t n_threads     = 1;    // get_num_physical_cores();
     int32_t n_predict     = -1;   // new tokens to predict
-    int32_t n_ctx         = 1024; // context size
-    int32_t n_batch       = 1024; // batch size for prompt processing (must be >=32 to use BLAS)
-    int32_t n_keep        = 0;    // number of tokens to keep from initial prompt
+    int32_t n_ctx         = 2048; // context size
+    int32_t n_batch       = 2048; // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
     int32_t n_gpu_layers  = 0;    // number of layers to store in VRAM
     int32_t main_gpu      = 0;    // the GPU that is used for scratch and small tensors
     bool    low_vram      = 0;    // if true, reduce VRAM usage at the cost of performance
@@ -73,8 +81,8 @@ struct gpt_params {
     float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
     float   temp              = 0.1; // 0.80f; // 1.0 = disabled
-    int32_t top_k             = 10;  // 40; // <= 0 to use vocab size
-    float   top_p             = 0.5; // 0.95f; // 1.0 = disabled
+    int32_t top_k             = 8;  // 40; // <= 0 to use vocab size
+    float   top_p             = 0.4; // 0.95f; // 1.0 = disabled
 
     float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled
     int32_t repeat_last_n     = -1;  // 64; // last n tokens to penalize (0 = disable penalty, -1 = context size)
@@ -267,12 +275,20 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         if (fp != NULL) {
             std::fclose(fp);
 
-            session_tokens.resize(2048); // FIXME: session_tokens.resize(params.n_ctx);
+            // FIXME: Allow to store 2x context size to allow experiments with context swap, etc...
+            session_tokens.resize(2 * params[idx].n_ctx);
+            fprintf(stderr, "%s: session_tokens capacity = %d tokens\n", __func__, (int) session_tokens.capacity());
+
             size_t n_token_count_out = 0;
             if (!llama_load_session_file(ctx, /*path_session*/sessionFile.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
                 fprintf(stderr, "%s: error: failed to load session file '%s'\n", __func__, /*path_session*/sessionFile.c_str());
                 //return 1;
-                return 0;
+
+                // FIXME: The possible problem - mismatch between models
+                // llama_load_session_file_internal : model hparams didn't match from session file!
+                // Just ignore the problem for now, session file will be rewritten soon within C++ 
+                // and then possibly again (if Go code has another value of token counter) after 2K limit will be reached
+                // The better solution is to create new file and sync this event between Go / C++ parts
             }
             session_tokens.resize(n_token_count_out);
             // FIXME: llama_set_rng_seed(ctx, params.seed);
@@ -284,6 +300,16 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             fprintf(stderr, "%s: session file does not exist, will create\n", __func__);
         }
     }
+
+    // FIXME: Expertimental features 
+    
+    // If there active session that going to grow over the context limit soon,
+    // we are better to drop it off and start re-evaluating from the scratch
+
+    //if (session_tokens.size() > (params[idx].n_ctx - params[idx].n_predict)) {
+        // stop saving session if we run out of context
+    //    path_session.clear();
+    //}
 
     // --- END SESSIONS ---
 
@@ -298,24 +324,33 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // --- NEWER
     //if (params.interactive_first || params.instruct || !params.prompt.empty() || session_tokens.empty()) {
-    if (session_tokens.empty()) {
+    //if (session_tokens.empty()) {
         //params[idx].prompt = text;
         // Add a space in front of the first character to match OG llama tokenizer behavior
         //params[idx].prompt.insert(0, 1, ' ');
         //embd_inp = ::llama_tokenize(ctx, params[idx].prompt, true);
         //embd_inp = ::llama_tokenize(ctx, ' ' + text, true);
         embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
-    } else {
+    //} else {
     //    embd_inp = session_tokens;
-        embd_inp = ::llama_tokenize(ctx, text, true); // No leading space if session continues
-    }
+    //    embd_inp = ::llama_tokenize(ctx, text, true); // No leading space if session continues
+    //}
 
     fprintf(stderr, "%s: PROMPT [ %d ] tokens\n", __func__, (int) embd_inp.size());
     fprintf(stderr, "%s: SESSION [ %d ] tokens\n", __func__, (int) session_tokens.size());
 
     const int n_ctx = llama_n_ctx(ctx);
 
+    // FIXME: Expereimenting with long session files and context swap
+
+    // do_inference: attempting to load saved session from './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
+    // llama_load_session_file_internal : token count in session file exceeded capacity! 2154 > 2048
+    // do_inference: error: failed to load session file './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
+
+    // FIXME: Process the longer context properly and return some meaningful HTTP code to the front-end
+
     if ((int) embd_inp.size() > n_ctx - 4) {
+    //if (sessionFile.empty() && ((int) embd_inp.size() > n_ctx - 4)) {  
         fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
         //return 1;
         return 0;
@@ -351,9 +386,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     }
 
     // number of tokens to keep when resetting context
-    if (params[idx].n_keep < 0 || params[idx].n_keep > (int) embd_inp.size() /* || params[idx].instruct */) {
-        params[idx].n_keep = (int)embd_inp.size();
-    }
+    //if (params[idx].n_keep < 0 || params[idx].n_keep > (int) embd_inp.size() /* || params[idx].instruct */) {
+    //    params[idx].n_keep = (int)embd_inp.size();
+    //}
 
     // determine newline token
     //auto llama_token_newline = ::llama_tokenize(ctx, "\n", false);
@@ -405,6 +440,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             // if we run out of context:
             // - take the n_keep first tokens from the original prompt (via n_past)
             // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
+/*            
             if (n_past + (int) embd.size() > n_ctx) {
 
                 const int n_left = n_past - ::params[idx].n_keep;
@@ -417,8 +453,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
                 // stop saving session if we run out of context
                 path_session.clear();
-            }
-
+            } 
+*/
             // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
             if (n_session_consumed < (int) session_tokens.size()) {
 
