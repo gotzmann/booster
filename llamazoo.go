@@ -31,11 +31,13 @@ package main
 
 // #cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/l>
 
+// #cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm
+
 /*
 const char * status(char * jobID);
 #cgo linux CFLAGS:   -I. -O3 -fPIC -pthread -std=c17
 #cgo linux CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17
-#cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm
+#cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG
 #cgo darwin CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL
 #cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
