@@ -336,8 +336,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     //    embd_inp = ::llama_tokenize(ctx, text, true); // No leading space if session continues
     //}
 
-    fprintf(stderr, "%s: PROMPT [ %d ] tokens\n", __func__, (int) embd_inp.size());
-    fprintf(stderr, "%s: SESSION [ %d ] tokens\n", __func__, (int) session_tokens.size());
+    //fprintf(stderr, "%s: PROMPT [ %d ] tokens\n", __func__, (int) embd_inp.size());
+    //fprintf(stderr, "%s: SESSION [ %d ] tokens\n", __func__, (int) session_tokens.size());
 
     const int n_ctx = llama_n_ctx(ctx);
 
