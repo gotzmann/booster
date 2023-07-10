@@ -70,7 +70,7 @@ struct gpt_params {
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
     int32_t n_gpu_layers  = 0;    // number of layers to store in VRAM
     int32_t main_gpu      = 0;    // the GPU that is used for scratch and small tensors
-    bool    low_vram      = 0;    // if true, reduce VRAM usage at the cost of performance
+    int32_t n_probs       = 0;    // if greater than 0, output the probabilities of top n_probs tokens.
     
     float   tensor_split[LLAMA_MAX_DEVICES] = {0}; // how split tensors should be distributed across GPUs
 
@@ -125,6 +125,7 @@ struct gpt_params {
     std::string lora_adapter = "";  // lora adapter path
     std::string lora_base = "";     // base model path for the lora adapter
 
+    bool low_vram          = false; // if true, reduce VRAM usage at the cost of performance
     bool memory_f16        = true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
@@ -183,9 +184,10 @@ struct llama_context * init_context(int idx) {
     //lparams.use_mlock  = params.use_mlock;
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
-    lparams.n_gpu_layers = params[idx].n_gpu_layers; // TODO: multiGPU selection
-    //lparams.numa = params[idx].numa;
     lparams.low_vram = params[idx].low_vram;
+
+    lparams.main_gpu = params[idx].main_gpu;
+    lparams.n_gpu_layers = params[idx].n_gpu_layers;
 
     ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
@@ -841,7 +843,8 @@ void init(char * sessionPath, bool numa, bool low_vram) {
 void * initContext(
     int idx, 
     char * modelName, 
-    int threads, int gpuLayers, 
+    int threads, 
+    int gpu, int gpuLayers, 
     int context, int predict,
     int mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p, 
@@ -850,6 +853,8 @@ void * initContext(
     
     ::params[idx].model          = modelName;
     ::params[idx].n_threads      = threads;
+
+    ::params[idx].main_gpu       = gpu;
     ::params[idx].n_gpu_layers   = gpuLayers;
 
     ::params[idx].n_ctx          = context;

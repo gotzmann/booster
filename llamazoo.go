@@ -64,7 +64,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.9.9"
+const VERSION = "0.9.10"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -95,7 +95,8 @@ type Options struct {
 	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	Dir           string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
 	Profile       bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
-	GPULayers     int64   `long:"gpu-layers" description:"Use Apple GPU inference, offload NN layers"`
+	GPUs          int64   `long:"gpus" description:"Specify GPU number for each pod when there multiple GPUs available"`
+	GPULayers     int64   `long:"gpu-layers" description:"Enable GPU inference and offload NN layers for chosen GPU"`
 	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
 	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
 	NUMA          bool    `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
@@ -385,7 +386,8 @@ func main() {
 		server.Init(
 			opts.Host, opts.Port,
 			log,
-			opts.Pods, opts.Threads, opts.GPULayers,
+			opts.Pods, opts.Threads,
+			opts.GPUs, opts.GPULayers,
 			NUMA, LowVRAM,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,

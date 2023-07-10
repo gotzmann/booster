@@ -16,7 +16,8 @@ void * init(
 void * initContext(
 	int idx,
 	char * modelName,
-	int threads, int gpuLayers,
+	int threads,
+	int gpu, int gpuLayers,
 	int context, int predict,
 	int mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
@@ -230,7 +231,8 @@ func init() {
 func Init(
 	host, port string,
 	zapLog *zap.SugaredLogger,
-	pods int, threads, gpuLayers int64,
+	pods int, threads int64,
+	gpu int64, gpuLayers int64,
 	numa, lowVRAM int, // porblems with CGO bool on MacOS
 	model, preamble, prefix, suffix string,
 	context, predict int,
@@ -285,7 +287,8 @@ func Init(
 		ctx := C.initContext(
 			C.int(pod),
 			C.CString(model),
-			C.int(threads), C.int(gpuLayers),
+			C.int(threads),
+			C.int(gpu), C.int(gpuLayers),
 			C.int(context), C.int(predict),
 			C.int(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
@@ -407,7 +410,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			ctx := C.initContext(
 				C.int(pod),
 				C.CString(path),
-				C.int(threads), C.int(conf.GPULayers[pod]),
+				C.int(threads),
+				C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
