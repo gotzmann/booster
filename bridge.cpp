@@ -205,6 +205,8 @@ struct llama_context * init_context(int idx) {
 
     lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
+    fprintf(stderr, "== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
+
     ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
     // FIXME ^^^
@@ -889,9 +891,9 @@ void * initContext(
     
     ::params[idx].seed           = seed;
     
-    hide();
+    //hide();
     auto res = init_context(idx);
-    show();
+    //show();
 
     return res;
 }

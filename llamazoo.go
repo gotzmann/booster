@@ -64,7 +64,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.9.10"
+const VERSION = "0.9.12"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -169,7 +169,7 @@ func main() {
 	logger := zap.New(core)
 	log := logger.Sugar()
 
-	if !opts.Server {
+	if !opts.Server || opts.Debug {
 		showLogo()
 	} else {
 		log.Infof("[START] LLaMAZoo v%s starting...", VERSION)
@@ -223,161 +223,6 @@ func main() {
 			}
 		}
 	}()
-
-	// -- DEBUG
-
-	// ==== 7B ====
-
-	// https://huggingface.co/eachadea/ggml-vicuna-7b-1.1
-	//opts.Model = "/Users/me/models/7B/ggml-vic7b-q4_0.bin" // censored (with mirostat)
-
-	// https://huggingface.co/eachadea/ggml-wizardlm-7b/tree/main
-	//opts.Model = "/Users/me/models/7B/ggml-wizardlm-7b-q8_0.bin" // perfect with mirostat v2 (censored with mirostat)
-
-	// -- v2
-
-	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q4_0.bin" // v2 - THAT's THE MODEL! Sooo great but censored | As an AI language model...
-	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_0.bin"
-	//opts.Model = "/Users/me/models/7B/wizardLM-7b.ggml.q5_1.bin" //
-	//opts.Model = "/Users/me/models/7B/wizardLM-7b-uncensored.ggml.q4_0.bin"
-
-	// https://huggingface.co/TheBloke/koala-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/koala-7B.ggml.q4_0.bin" // v2 - bad?
-
-	// -- v3
-
-	//opts.Model = "/Users/me/models/7B/llama-7b-ggml-v3-q4_0.bin"
-
-	// https://huggingface.co/TheBloke/wizardLM-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q4_0.bin" // GOOD not GREAT! TopK for logic
-	//opts.Model = "/Users/me/models/7B/wizardLM-7B.ggmlv3.q5_0.bin" // 50% slower than 4bit, no quality boost at all
-
-	// https://huggingface.co/TheBloke/WizardLM-7B-uncensored-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/WizardLM-7B-uncensored.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/7B/WizardLM-7B-uncensored.ggmlv3.q5_0.bin"
-
-	// https://huggingface.co/TheBloke/Wizard-Vicuna-7B-Uncensored-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/Wizard-Vicuna-7B-Uncensored.ggmlv3.q4_0.bin"
-
-	// https://huggingface.co/jondurbin/airoboros-7b-ggml-q4_0/tree/main
-	//opts.Model = "/Users/me/models/7B/airoboros-7b-ggml-q4_0.bin"
-
-	// https://huggingface.co/TheBloke/guanaco-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/guanaco-7B.ggmlv3.q4_0.bin" // 50/50
-	//opts.Model = "/Users/me/models/7B/guanaco-7B.ggmlv3.q4_1.bin" // 50/50
-
-	// https://huggingface.co/TheBloke/Project-Baize-v2-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/baize-v2-7b.ggmlv3.q4_0.bin" // NO WAY! Dialog generation only and crazy loops
-
-	// https://huggingface.co/TheBloke/Samantha-7B-GGML/tree/main
-	//opts.Model = "/Users/me/models/7B/Samantha-7B.ggmlv3.q4_0.bin"
-
-	// ==== 13B ====
-
-	// https://huggingface.co/eachadea/ggml-vicuna-13b-1.1
-	//opts.Model = "/Users/me/models/13B/ggml-vic13b-q4_0.bin"
-
-	// https://huggingface.co/execveat/wizardLM-13b-ggml-4bit/tree/main
-	//opts.Model = "/Users/me/models/13B/wizardml-13b-q4_0.bin" // usable but no mirostat
-	//opts.Model = "/Users/me/models/13B/WizardML-Unc-13b-Q5_1.bin" // släktet - so so
-
-	// https://huggingface.co/TheBloke/wizard-vicuna-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/wizard-vicuna-13B.ggml.q4_0.bin" // no way with topK, try more with mirostat
-
-	// https://huggingface.co/TheBloke/Wizard-Vicuna-13B-Uncensored-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // v2
-	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q8_0.bin"
-
-	// -- v2
-
-	// https://huggingface.co/TheBloke/gpt4-x-vicuna-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/gpt4-x-vicuna-13B.ggml.q4_0.bin" // good, great with ### Instruction: { prompt } ### Response:
-
-	// https://huggingface.co/TheBloke/Wizard-Vicuna-13B-Uncensored-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q4_0.bin" // goood with mirostat! worse with topK! and use ###  prompt
-	//opts.Model = "/Users/me/models/13B/Wizard-Vicuna-13B-Uncensored.ggml.q5_1.bin" // good with mirostat and topK too! use ###
-
-	// https://www.reddit.com/r/LocalLLaMA/comments/13igxvs/new_unfiltered_13b_openaccess_ai_collectives/
-	// https://huggingface.co/TheBloke/wizard-mega-13B-GGML/resolve/main/wizard-mega-13B.ggml.q4_0.bin
-	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggml.q4_0.bin" // gooood! with Russian too | instruct and chat
-	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggml.q5_1.bin"
-
-	// https://huggingface.co/TheBloke/WizardLM-13B-Uncensored-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/wizardLM-13B-Uncensored.ggml.q4_0.bin" // släktet | 100% instruct model | not so good with Russian?
-
-	// https://huggingface.co/TheBloke/Manticore-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q4_0.bin" // use [ ### Instruction: ... ### Response: ] format without newlines
-	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q5_1.bin" // use [ ### Instruction: ... ### Assistant: ] without newlines will work too
-	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv2.q8_0.bin"
-
-	// -- v3
-
-	//opts.Model = "/Users/me/models/13B/llama-13b-ggml-v3-q4_0.bin"
-
-	// https://huggingface.co/TheBloke/wizard-mega-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/wizard-mega-13B.ggmlv3.q5_1.bin"
-
-	// https://huggingface.co/TheBloke/Manticore-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv3.q4_0.bin" // Very Good! See comparison GDocs
-	//opts.Model = "/Users/me/models/13B/Manticore-13B.ggmlv3.q5_0.bin"
-
-	// https://huggingface.co/jondurbin/airoboros-13b
-	// https://huggingface.co/latimar/airoboros-13b-ggml/tree/main
-	//opts.Model = "/Users/me/models/13B/airoboros-13B.q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/airoboros-13B.q4_1.bin"
-
-	// https://huggingface.co/latimar/airoboros-13b-ggml/tree/main
-	//opts.Model = "/Users/me/models/13B/airoboros-13B.q5_1.bin"
-
-	// https://huggingface.co/TheBloke/manticore-13b-chat-pyg-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q4_1.bin"
-	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_0.bin"
-	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q5_1.bin"
-	//opts.Model = "/Users/me/models/13B/Manticore-13B-Chat-Pyg.ggmlv3.q8_0.bin"
-
-	// https://huggingface.co/TheBloke/guanaco-13B-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/guanaco-13B.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/guanaco-13B.ggmlv3.q5_0.bin"
-
-	// https://huggingface.co/TheBloke/wizardLM-13B-1.0-GGML/tree/main
-	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q4_1.bin"
-	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q5_0.bin"
-	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q5_1.bin"
-	//opts.Model = "/Users/me/models/13B/WizardLM-13B-1.0.ggmlv3.q8_0.bin"
-
-	// https://huggingface.co/TheBloke/tulu-13B-GGML
-	//opts.Model = "/Users/me/models/13B/tulu-13b.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/13B/tulu-13b.ggmlv3.q4_K_S.bin"
-
-	// ==== 30B ====
-
-	// https://huggingface.co/MetaIX/GPT4-X-Alpaca-30B-4bit/tree/main
-	//opts.Model = "/Users/me/models/30B/gpt4-x-alpaca-30b-ggml-q4_1.bin" // maybe with mirostat ?
-
-	// -- v2
-
-	// https://huggingface.co/TheBloke/OpenAssistant-SFT-7-Llama-30B-GGML/tree/main
-	//opts.Model = "/Users/me/models/30B/OpenAssistant-SFT-7-Llama-30B.ggml.q4_0.bin" // broken? not, bad bad
-
-	// -- v3
-
-	//opts.Model = "/Users/me/models/30B/WizardLM-30B-Uncensored.ggmlv3.q4_0.bin"
-	//opts.Model = "/Users/me/models/30B/WizardLM-30B-Uncensored.ggmlv3.q4_0.bin"
-
-	// https://huggingface.co/TheBloke/Wizard-Vicuna-30B-Uncensored-GGML/tree/main
-	//opts.Model = "/Users/me/models/30B/Wizard-Vicuna-30B-Uncensored.ggmlv3.q4_0.bin"
-
-	//opts.Model = "/Users/me/models/30B/guanaco-33B.ggmlv3.q4_0.bin" // Too wild for instruct mode
-
-	// https://huggingface.co/TheBloke/samantha-33B-GGML/tree/main
-	//opts.Model = "/Users/me/models/30B/samantha-33B.ggmlv3.q4_0.bin"
-
-	// https://huggingface.co/TheBloke/hippogriff-30b-chat-GGML/tree/main
-	//opts.Model = "/Users/me/models/30B/hippogriff-30b.ggmlv3.q4_0.bin"
 
 	// if config was read from file and thus has meaningful settings, go init from there. otherwise use CLI settings
 	if conf.ID != "" {
