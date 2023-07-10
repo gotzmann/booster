@@ -203,7 +203,7 @@ struct llama_context * init_context(int idx) {
         lparams.tensor_split[i] = 0.0f;
     }
 
-    lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
+    // lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
     fprintf(stderr, "== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
 
