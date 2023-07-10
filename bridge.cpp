@@ -186,8 +186,24 @@ struct llama_context * init_context(int idx) {
     //lparams.embedding  = params.embedding;
     lparams.low_vram = params[idx].low_vram;
 
+    // -- Init GPU inference params right
+
+    // 100% model layers should be placed into the one GPU
+    // and main_gpu (for computing scratch buffers) is always 
+    // the same as GPU for big tensors compute
+
+    // int32_t n_gpu_layers;                    // number of layers to store in VRAM
+    // int32_t main_gpu;                        // the GPU that is used for scratch and small tensors
+    // float   tensor_split[LLAMA_MAX_DEVICES]; // how to split layers across multiple GPUs
+
     lparams.main_gpu = params[idx].main_gpu;
     lparams.n_gpu_layers = params[idx].n_gpu_layers;
+
+    for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
+        lparams.tensor_split[i] = 0.0f;
+    }
+
+    lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
     ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
