@@ -32,6 +32,7 @@ int64_t doInference(
 void stopInference(int idx);
 const char * status(char * jobID);
 int64_t timing(char * jobID);
+int64_t promptEval(char * jobID);
 */
 import "C"
 
@@ -159,7 +160,9 @@ type Job struct {
 	PreambleTokenCount int64
 	PromptTokenCount   int64 // total tokens processed (icnluding prompt)
 	OutputTokenCount   int64
-	TokenEval          int64 // timing per token (prompt + output), ms
+
+	PromptEval int64 // timing per token (prompt + output), ms
+	TokenEval  int64 // timing per token (prompt + output), ms
 
 	pod *Pod // we need pod.idx when stopping jobs
 }
@@ -682,6 +685,7 @@ func Do(jobID string, pod *Pod) {
 		result = strings.Trim(result, "\n ")
 
 		now = time.Now().UnixMilli()
+		promptEval := int64(C.promptEval(C.CString(jobID)))
 		eval := int64(C.timing(C.CString(jobID)))
 
 		mu.Lock() // --
@@ -691,6 +695,7 @@ func Do(jobID string, pod *Pod) {
 		}
 		// FIXME ASAP : Log all meaninful details !!!
 		//Jobs[jobID].TokenCount = int64(tokenCount)
+		Jobs[jobID].PromptEval = promptEval
 		Jobs[jobID].TokenEval = eval
 		Jobs[jobID].Output = result
 		Jobs[jobID].pod = nil

@@ -258,11 +258,12 @@ func main() {
 					var output string
 					output = C.GoString(C.status(C.CString(job.ID)))
 
-					Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d ] ms. per token [light_blue]| %s\n",
+					Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d ] tokens | [ %d + %d ] ms. per token [light_blue]| %s\n",
 						job.ID,
 						job.Model,
 						job.Status,
 						0, // job.TokenCount,
+						job.PromptEval,
 						job.TokenEval,
 						output)
 				}

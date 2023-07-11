@@ -34,7 +34,10 @@
 
 std::unordered_map<std::string, std::string> jobs;
 
-// Map of vectors storing token evaluation timings [ in milliseconds ]
+// Map of vectors storing PROMPT token evaluation timings [ in milliseconds ]
+std::unordered_map<std::string, int64_t> promptEvals;
+
+// Map of vectors storing OUTPUT token evaluation timings [ in milliseconds ]
 std::unordered_map<std::string, int64_t> timings;
 
 // Suspend stdout / stderr messaging
@@ -821,12 +824,13 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // TODO: Sum all timings
     // compute average time needed for processing one token
-    const int32_t avg_compute_time = //1e-3 * llama_t_sample_us(ctx) / n_sample + 
+    //const int32_t avg_compute_time = //1e-3 * llama_t_sample_us(ctx) / n_sample + 
                                      //1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
-                                     1e-3 * llama_t_eval_us(ctx) / n_eval;
+    //                                 1e-3 * llama_t_eval_us(ctx) / n_eval;
 
     mutex.lock();
-    timings[jobID] = avg_compute_time;
+    promptEvals[jobID] = 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval;
+    timings[jobID] = 1e-3 * llama_t_eval_us(ctx) / n_eval; // avg_compute_time;
     mutex.unlock();
 
     return n_p_eval + n_eval;
@@ -836,6 +840,14 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
     const char * res = jobs[jobID].c_str();
+    mutex.unlock_shared();
+    return res;
+}
+
+// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+int64_t promptEvalCPP(const std::string & jobID) {
+    mutex.lock_shared();
+    int64_t res = promptEvals[jobID];
     mutex.unlock_shared();
     return res;
 }
@@ -915,7 +927,13 @@ const char * status(char * jobID) {
     return statusCPP(id);
 }
 
-// return average token processing timing from context
+// return average PROMPT token processing timing from context
+int64_t promptEval(char * jobID) {
+    std::string id = jobID;
+    return promptEvalCPP(id);
+}
+
+// return average OUTPUT token processing timing from context
 int64_t timing(char * jobID) {
     std::string id = jobID;
     return timingCPP(id);
