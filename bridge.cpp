@@ -40,6 +40,12 @@ std::unordered_map<std::string, int64_t> promptEvals;
 // Map of vectors storing OUTPUT token evaluation timings [ in milliseconds ]
 std::unordered_map<std::string, int64_t> timings;
 
+// Map of vectors storing PROMPT token count
+std::unordered_map<std::string, int64_t> promptTokenCount;
+
+// Map of vectors storing OUTPUT token count
+std::unordered_map<std::string, int64_t> outputTokenCount;
+
 // Suspend stdout / stderr messaging
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
@@ -69,7 +75,9 @@ struct gpt_params {
     int32_t n_threads     = 1;    // get_num_physical_cores();
     int32_t n_predict     = -1;   // new tokens to predict
     int32_t n_ctx         = 2048; // context size
-    int32_t n_batch       = 2048; // batch size for prompt processing (must be >=32 to use BLAS)
+    // NB! When n_batch is too big, there an error trying to pool new memory:
+    // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
+    int32_t n_batch       = 512;  // batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
     int32_t n_gpu_layers  = 0;    // number of layers to store in VRAM
     int32_t main_gpu      = 0;    // the GPU that is used for scratch and small tensors
@@ -359,10 +367,18 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     //    embd_inp = ::llama_tokenize(ctx, text, true); // No leading space if session continues
     //}
 
+    const int n_ctx = llama_n_ctx(ctx);
+    promptTokenCount[jobID] = embd_inp.size();
+
+    //fprintf(stderr, "%s: N_CTX PARAMS [ %d ] tokens\n", __func__, params[idx].n_ctx);
+    //fprintf(stderr, "%s: N_CTX LLAMAS [ %d ] tokens\n", __func__, n_ctx);
     //fprintf(stderr, "%s: PROMPT [ %d ] tokens\n", __func__, (int) embd_inp.size());
     //fprintf(stderr, "%s: SESSION [ %d ] tokens\n", __func__, (int) session_tokens.size());
 
-    const int n_ctx = llama_n_ctx(ctx);
+    //if (embd_inp.size() > (n_ctx - 1)) {
+    //    fprintf(stderr, "%s: ERROR !!! TOKENIZE > N_CTX\n", __func__);
+    //    return 0; // FIXME: We do need to handle the error of extra large input
+    //}
 
     // FIXME: Expereimenting with long session files and context swap
 
@@ -372,7 +388,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // FIXME: Process the longer context properly and return some meaningful HTTP code to the front-end
 
-    if ((int) embd_inp.size() > n_ctx - 4) {
+    if (embd_inp.size() > (n_ctx - 4)) {
     //if (sessionFile.empty() && ((int) embd_inp.size() > n_ctx - 4)) {  
         fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
         //return 1;
@@ -509,6 +525,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 if (n_eval > ::params[idx].n_batch) {
                     n_eval = ::params[idx].n_batch;
                 }
+
                 if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
                     return 0;
@@ -853,6 +870,14 @@ int64_t promptEvalCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+int64_t getPromptTokenCountCPP(const std::string & jobID) {
+    mutex.lock_shared();
+    int64_t res = promptTokenCount[jobID];
+    mutex.unlock_shared();
+    return res;
+}
+
+// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 int64_t timingCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = timings[jobID];
@@ -931,6 +956,12 @@ const char * status(char * jobID) {
 int64_t promptEval(char * jobID) {
     std::string id = jobID;
     return promptEvalCPP(id);
+}
+
+// return average PROMPT token processing timing from context
+int64_t getPromptTokenCount(char * jobID) {
+    std::string id = jobID;
+    return getPromptTokenCountCPP(id);
 }
 
 // return average OUTPUT token processing timing from context

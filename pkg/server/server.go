@@ -33,6 +33,7 @@ void stopInference(int idx);
 const char * status(char * jobID);
 int64_t timing(char * jobID);
 int64_t promptEval(char * jobID);
+int64_t getPromptTokenCount(char * jobID);
 */
 import "C"
 
@@ -694,7 +695,7 @@ func Do(jobID string, pod *Pod) {
 			Jobs[jobID].Status = "finished"
 		}
 		// FIXME ASAP : Log all meaninful details !!!
-		//Jobs[jobID].TokenCount = int64(tokenCount)
+		Jobs[jobID].OutputTokenCount = int64(count)
 		Jobs[jobID].PromptEval = promptEval
 		Jobs[jobID].TokenEval = eval
 		Jobs[jobID].Output = result
