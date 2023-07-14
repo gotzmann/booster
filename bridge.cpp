@@ -216,7 +216,7 @@ struct llama_context * init_context(int idx) {
         lparams.tensor_split[i] = 0.0f;
     }
 
-    // lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
+    lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
     fprintf(stderr, "\n== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
     fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
@@ -314,7 +314,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
             // FIXME: Allow to store 2x context size to allow experiments with context swap, etc...
             // session_tokens.resize(2 * params[idx].n_ctx);
-            
+
             session_tokens.resize(params[idx].n_ctx);
             fprintf(stderr, "%s: session_tokens capacity = %d tokens\n", __func__, (int) session_tokens.capacity());
 
