@@ -832,7 +832,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         ////}
     }
 
-    if (!sessionFile.empty() /* && params.prompt_cache_all && !params.prompt_cache_ro */) {
+    if (!isGPU && !sessionFile.empty() /* && params.prompt_cache_all && !params.prompt_cache_ro */) {
         fprintf(stderr, "\n%s: saving final output [ %d tokens ] to session file '%s'\n", __func__, (int) session_tokens.size(), /*path_session*/sessionFile.c_str());
         llama_save_session_file(ctx, /*path_session*/sessionFile.c_str(), session_tokens.data(), session_tokens.size());
     }
