@@ -136,7 +136,7 @@ struct gpt_params {
 
     // ---
 
-    std::string model  = "models/lamma-7B/ggml-model.bin"; // model path
+    std::string model  = "";             // model path
     std::string prompt = "";
     std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
     std::string input_prefix = "";       // string to prefix user inputs with
@@ -168,15 +168,15 @@ struct gpt_params {
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
 
-// --- Global params for all pods. Do anyone needs more than 16 pods per machine?
+// --- Global params for all pods. Do anyone needs more than 8 pods per machine?
 
-gpt_params params[16];
-llama_model * models[16];
-llama_context * contexts[16];
+gpt_params params[8];
+llama_model * models[8];
+llama_context * contexts[8];
 
 // Flags to stop particular inference thread from the Go code
 
-bool stopInferenceFlags[16];
+bool stopInferenceFlags[8];
 
 // Directory where session data files will be held. Emtpy string if sessions are disabled
 
@@ -198,14 +198,14 @@ struct llama_context * init_context(int idx) {
     //     [params]  is of type gpt_params and has n_threads parameter
 
     lparams.n_ctx        = params[idx].n_ctx;
-    lparams.n_batch      = params[idx].n_ctx; // TODO: Is it right to have batch the same size as context?
+    //lparams.n_batch      = params[idx].n_ctx; // TODO: Is it right to have batch the same size as context?
     lparams.seed         = params[idx].seed;
     //lparams.f16_kv     = params.memory_f16;
     //lparams.use_mmap   = params.use_mmap;
     //lparams.use_mlock  = params.use_mlock;
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
-    lparams.low_vram     = true; // ::low_vram;
+    lparams.low_vram     = ::low_vram;
 
     // -- Init GPU inference params right
 
@@ -220,11 +220,11 @@ struct llama_context * init_context(int idx) {
     lparams.main_gpu = params[idx].main_gpu;
     lparams.n_gpu_layers = params[idx].n_gpu_layers;
 
-    for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
-        lparams.tensor_split[i] = 0.0f;
-    }
+    //for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
+    //    lparams.tensor_split[i] = 0.0f;
+    //}
 
-    lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
+    //lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
     fprintf(stderr, "\n== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
     fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
@@ -288,6 +288,8 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
 int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & sessionID, const std::string & text) {
 
     stopInferenceFlags[idx] = false;
+    
+    bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
 
     llama_reset_timings(ctx);
 
@@ -304,14 +306,13 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // --- SESSIONS ---
 
-    bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
-
     //std::string path_session = "./session.data.bin";
     //std::string path_session = "./"; // FIXME: params.path_prompt_cache;
     std::vector<llama_token> session_tokens;
 
     // NB! Do not store sessions for fast GPU-machines
-    if (!isGPU && !sessionFile.empty()) {
+    if (!isGPU && 
+        !sessionFile.empty()) {
 
         fprintf(stderr, "%s: attempting to load saved session from '%s'\n", __func__, /*path_session*/sessionFile.c_str());
 
@@ -413,7 +414,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // debug message about similarity of saved session, if applicable
     size_t n_matching_session_tokens = 0;
-    if (!isGPU && session_tokens.size()) {
+    if (!isGPU && 
+        session_tokens.size()) {
+
         for (llama_token id : session_tokens) {
             if (n_matching_session_tokens >= embd_inp.size() || id != embd_inp[n_matching_session_tokens]) {
                 break;
@@ -435,8 +438,11 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // if we will use the cache for the full prompt without reaching the end of the cache, force
     // reevaluation of the last token token to recalculate the cached logits
-    if (!isGPU && !embd_inp.empty() && n_matching_session_tokens == embd_inp.size() &&
-            session_tokens.size() > embd_inp.size()) {
+    if (!isGPU && 
+        !embd_inp.empty() && 
+        n_matching_session_tokens == embd_inp.size() &&
+        session_tokens.size() > embd_inp.size()) {
+
         session_tokens.resize(embd_inp.size() - 1);
     }
 
@@ -457,9 +463,11 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     //bool need_to_save_session = !path_session.empty() && n_matching_session_tokens < embd_inp.size();
 
     int n_past             = 0;
-    int n_remain           = ::params[idx].n_predict;
     int n_consumed         = 0;
     int n_session_consumed = 0;
+
+    int n_batch            = ::params[idx].n_batch;
+    int n_remain           = ::params[idx].n_predict;
 
     std::vector<llama_token> embd;
 
@@ -470,24 +478,29 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     //    llama_reset_timings(ctx);
     //}
 
-    while (n_remain && !stopInferenceFlags[idx] /* ( n_remain != 0 && !is_antiprompt ) || params.interactive */) {
+    fprintf(stderr, "%s === 001 ===\n", __func__); // DEBUG
+    fprintf(stderr, "%s === embd.size() = %d ===\n", __func__, (int) embd.size()); // DEBUG
+
+    while (n_remain && 
+        n_past < n_ctx &&
+        !stopInferenceFlags[idx]) {
 
         // predict
         if (embd.size() > 0) {
 
             // Note: n_ctx - 4 here is to match the logic for commandline prompt handling via
             // --prompt or --file which uses the same value.
-            auto max_embd_size = n_ctx - 4;
+            //auto max_embd_size = n_ctx - 4;
 
             // Ensure the input doesn't exceed the context size by truncating embd if necessary.
-            if ((int)embd.size() > max_embd_size) {
+            //if ((int) embd.size() > max_embd_size) {
                 //auto skipped_tokens = embd.size() - max_embd_size;
                 //console_set_color(con_st, CONSOLE_COLOR_ERROR);
                 //printf("<<input too long: skipped %zu token%s>>", skipped_tokens, skipped_tokens != 1 ? "s" : "");
                 //console_set_color(con_st, CONSOLE_COLOR_DEFAULT);
                 //fflush(stdout);
-                embd.resize(max_embd_size);
-            }
+            //    embd.resize(max_embd_size);
+            //}
 
             // TODO: Investigate about infinite context here
 
@@ -528,6 +541,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                         break;
                     }
                 }
+
                 if (i > 0) {
                     embd.erase(embd.begin(), embd.begin() + i);
                 }
@@ -581,21 +595,35 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 */
             // -- new
 
-            for (int i = 0; i < (int) embd.size(); i += ::params[idx].n_batch) {
+            // NB! The token count of your prompt plus max_tokens cannot exceed the model’s context length. 
+            // Most models have a context length of 2048 tokens
+
+            fprintf(stderr, "%s === 002 ===\n", __func__); // DEBUG
+
+            for (int i = 0; i < (int) embd.size(); i += n_batch) {
+
+                fprintf(stderr, "%s === 002-1 ===\n", __func__); // DEBUG
 
                 int n_eval = (int) embd.size() - i;
-                if (n_eval > ::params[idx].n_batch) {
-                    n_eval = ::params[idx].n_batch;
+                if (n_eval > n_batch) {
+                    n_eval = n_batch;
                 }
+
+                fprintf(stderr, "%s === 002-2 ===\n", __func__); // DEBUG
+                fprintf(stderr, "%s === i = %d | size = %d | batch = %d \n", __func__, (int) i, (int) embd.size(), (int) n_batch); // DEBUG
+                fprintf(stderr, "%s === n_eval = %d | n_past = %d | n_threads = %d \n", __func__, (int) n_eval, (int) n_past, (int) ::params[idx].n_threads); // DEBUG
 
                 if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
                     return 0;
                 }
+
                 n_past += n_eval;
             }
 
-            if (embd.size() > 0 && !path_session.empty()) {
+            fprintf(stderr, "%s === 002-3 ===\n", __func__); // DEBUG
+
+            if (!isGPU && embd.size() > 0 && !path_session.empty()) {
                 session_tokens.insert(session_tokens.end(), embd.begin(), embd.end());
                 n_session_consumed = session_tokens.size();
             }
@@ -603,6 +631,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
         embd.clear();
         // embd_guidance.clear(); // -- new feature
+
+        fprintf(stderr, "%s === 003 ===\n", __func__); // DEBUG
+        fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
 
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
@@ -634,6 +665,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             //}
 
             llama_token id = 0;
+
+            fprintf(stderr, "%s === 004 ===\n", __func__); // DEBUG
 
             {
                 auto logits  = llama_get_logits(ctx); // FIXME: Are there problem if logits not cleared after another request ??
@@ -688,6 +721,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 if (!penalize_nl) {
                     logits[llama_token_nl()] = nl_logit;
                 }
+
+                fprintf(stderr, "%s === 005 ===\n", __func__); // DEBUG
 
                 ////if (temp <= 0) {
                 ////    printf("[GREEDY-SAMPLING]");
