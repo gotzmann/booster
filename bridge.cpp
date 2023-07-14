@@ -107,6 +107,14 @@ struct gpt_params {
     float   tfs_z             = 1.0; // 1.0 = disabled
     float   typical_p         = 1.0; // 1.0 = disabled
 
+    // TODO: Look for new feature
+
+    // Classifier-Free Guidance
+    // https://arxiv.org/abs/2306.17806
+    std::string cfg_negative_prompt;       // string to help guidance
+    float       cfg_scale         = 1.f;   // How strong is guidance
+    float       cfg_smooth_factor = 1.f;   // Smooth factor between old and new logits
+
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
     // --- Some (possibly be wrong) observations
@@ -527,6 +535,52 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
+
+            // -- NEW feature
+/*
+            if (ctx_guidance) {
+                int input_size = 0;
+                llama_token* input_buf = NULL;
+
+                if (n_past_guidance < (int) guidance_inp.size()) {
+                    // Guidance context should have the same data with these modifications:
+                    //
+                    // * Replace the initial prompt
+                    // * Shift everything by guidance_offset
+                    embd_guidance = guidance_inp;
+                    if (embd.begin() + original_prompt_len < embd.end()) {
+                        embd_guidance.insert(
+                            embd_guidance.end(),
+                            embd.begin() + original_prompt_len,
+                            embd.end()
+                        );
+                    }
+
+                    input_buf = embd_guidance.data();
+                    input_size = embd_guidance.size();
+                    //fprintf(stderr, "\n---------------------\n");
+                    //for (int i = 0; i < (int) embd_guidance.size(); i++) {
+                        //fprintf(stderr, "%s", llama_token_to_str(ctx, embd_guidance[i]));
+                    //}
+                    //fprintf(stderr, "\n---------------------\n");
+                } else {
+                    input_buf = embd.data();
+                    input_size = embd.size();
+                }
+
+                for (int i = 0; i < input_size; i += params.n_batch) {
+                    int n_eval = std::min(input_size - i, params.n_batch);
+                    if (llama_eval(ctx_guidance, input_buf + i, n_eval, n_past_guidance, params.n_threads)) {
+                        fprintf(stderr, "%s : failed to eval\n", __func__);
+                        return 1;
+                    }
+
+                    n_past_guidance += n_eval;
+                }
+            }
+*/
+            // -- new
+
             for (int i = 0; i < (int) embd.size(); i += ::params[idx].n_batch) {
 
                 int n_eval = (int) embd.size() - i;
@@ -548,6 +602,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         }
 
         embd.clear();
+        // embd_guidance.clear(); // -- new feature
 
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
@@ -598,7 +653,11 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 }
 
                 llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
-
+/* new feature
+                if (ctx_guidance) {
+                    llama_sample_classifier_free_guidance(ctx, &candidates_p, ctx_guidance, params.cfg_scale, params.cfg_smooth_factor);
+                }
+*/
                 // --- Apply penalties
 
                 float nl_logit = logits[llama_token_nl()];
@@ -901,7 +960,9 @@ void init(char * sessionPath, bool numa, bool lowVRAM) {
     //    ggml_numa_init();
     //}
     ::low_vram = lowVRAM;
-    llama_init_backend(numa); 
+    //llama_init_backend(numa); 
+    llama_backend_init(numa);
+    // TODO: before server exit: llama_backend_free();
 }
 
 void * initContext(
