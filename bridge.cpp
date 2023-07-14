@@ -32,6 +32,8 @@
 // https://github.com/tsixta/tsmap
 // https://github.com/kshk123/hashMap
 
+bool low_vram; // global setting
+
 std::unordered_map<std::string, std::string> jobs;
 
 // Map of vectors storing PROMPT token evaluation timings [ in milliseconds ]
@@ -195,7 +197,7 @@ struct llama_context * init_context(int idx) {
     //lparams.use_mlock  = params.use_mlock;
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
-    lparams.low_vram = params[idx].low_vram;
+    lparams.low_vram     = ::low_vram;
 
     // -- Init GPU inference params right
 
@@ -216,7 +218,8 @@ struct llama_context * init_context(int idx) {
 
     // lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
-    fprintf(stderr, "== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
+    fprintf(stderr, "\n== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
+    fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
 
     ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
@@ -293,11 +296,14 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // --- SESSIONS ---
 
+    bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
+
     //std::string path_session = "./session.data.bin";
     //std::string path_session = "./"; // FIXME: params.path_prompt_cache;
     std::vector<llama_token> session_tokens;
 
-    if (/* !path_session */ !sessionFile.empty()) {
+    // NB! Do not store sessions for fast GPU-machines
+    if (!isGPU && !sessionFile.empty()) {
 
         fprintf(stderr, "%s: attempting to load saved session from '%s'\n", __func__, /*path_session*/sessionFile.c_str());
 
@@ -307,7 +313,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             std::fclose(fp);
 
             // FIXME: Allow to store 2x context size to allow experiments with context swap, etc...
-            session_tokens.resize(2 * params[idx].n_ctx);
+            // session_tokens.resize(2 * params[idx].n_ctx);
+            
+            session_tokens.resize(params[idx].n_ctx);
             fprintf(stderr, "%s: session_tokens capacity = %d tokens\n", __func__, (int) session_tokens.capacity());
 
             size_t n_token_count_out = 0;
@@ -388,7 +396,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // FIXME: Process the longer context properly and return some meaningful HTTP code to the front-end
 
-    if (embd_inp.size() > (n_ctx - 4)) {
+    if ((int) embd_inp.size() > (n_ctx - 4)) {
     //if (sessionFile.empty() && ((int) embd_inp.size() > n_ctx - 4)) {  
         fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
         //return 1;
@@ -397,7 +405,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // debug message about similarity of saved session, if applicable
     size_t n_matching_session_tokens = 0;
-    if (session_tokens.size()) {
+    if (!isGPU && session_tokens.size()) {
         for (llama_token id : session_tokens) {
             if (n_matching_session_tokens >= embd_inp.size() || id != embd_inp[n_matching_session_tokens]) {
                 break;
@@ -419,7 +427,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     // if we will use the cache for the full prompt without reaching the end of the cache, force
     // reevaluation of the last token token to recalculate the cached logits
-    if (!embd_inp.empty() && n_matching_session_tokens == embd_inp.size() &&
+    if (!isGPU && !embd_inp.empty() && n_matching_session_tokens == embd_inp.size() &&
             session_tokens.size() > embd_inp.size()) {
         session_tokens.resize(embd_inp.size() - 1);
     }
@@ -495,7 +503,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             } 
 */
             // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
-            if (n_session_consumed < (int) session_tokens.size()) {
+            if (!isGPU && n_session_consumed < (int) session_tokens.size()) {
 
                 size_t i = 0;
                 for ( ; i < embd.size(); i++) {
@@ -887,12 +895,13 @@ int64_t timingCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void init(char * sessionPath, bool numa, bool low_vram) {
+void init(char * sessionPath, bool numa, bool lowVRAM) {
     ::path_session = sessionPath;
-    if (numa) {
-        //fprintf(stderr, "\n\n === ggml_numa_init(); \n\n");
-        ggml_numa_init();
-    } 
+    //if (numa) {
+    //    ggml_numa_init();
+    //}
+    ::low_vram = lowVRAM;
+    llama_init_backend(numa); 
 }
 
 void * initContext(
