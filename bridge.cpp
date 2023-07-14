@@ -197,7 +197,7 @@ struct llama_context * init_context(int idx) {
     //lparams.use_mlock  = params.use_mlock;
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
-    lparams.low_vram     = ::low_vram;
+    lparams.low_vram     = true; // ::low_vram;
 
     // -- Init GPU inference params right
 
@@ -245,7 +245,7 @@ struct llama_context * init_context(int idx) {
     }
 
     contexts[idx] = lctx;
-
+/*
     // TODO: Experiment with LORAs
     if (!params[idx].lora_adapter.empty()) {
         int err = llama_model_apply_lora_from_file(model,
@@ -260,7 +260,7 @@ struct llama_context * init_context(int idx) {
             return NULL;
         }
     }
-
+*/
     // return std::make_tuple(model, lctx);
     return lctx;
 }
