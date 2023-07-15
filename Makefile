@@ -1,5 +1,12 @@
-#LLAMA_METAL := true
-#LLAMA_NO_ACCELERATE := true
+# make clean && CUDA_PATH=/usr/local/cuda-12.0 LLAMA_CUBLAS=1 LLAMA_CUDA_DMMV_X=64 LLAMA_CUDA_DMMV_Y=2 make amd64 && ./llamazoo --server --debug
+
+# LLAMA_METAL := true
+# LLAMA_NO_ACCELERATE := true
+
+# LLAMA_CUBLAS := ON
+# LLAMA_CUDA_DMMV_X := 64
+# LLAMA_CUDA_DMMV_Y := 2
+
 default: llamazoo
 
 # Define the default target now so that it is always the first target
