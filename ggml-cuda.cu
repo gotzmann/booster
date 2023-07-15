@@ -3702,6 +3702,8 @@ void ggml_cuda_assign_buffers_impl(struct ggml_tensor * tensor, bool scratch, bo
         extra = ggml_cuda_alloc_temp_tensor_extra();
         extra->data_device[g_main_device] = src1_ddv;
     } else if (scratch) {
+        fprintf(stderr, "\n== %s: size = %d\n", __func__, (int) size);
+        fprintf(stderr, "\n== %s: g_scratch_size = %d\n", __func__, (int) g_scratch_size);
         GGML_ASSERT(size <= g_scratch_size);
         if (g_scratch_offset + size > g_scratch_size) {
             g_scratch_offset = 0;
