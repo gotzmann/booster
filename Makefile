@@ -353,6 +353,12 @@ build-info.h: $(wildcard .git/index) scripts/build-info.sh
 		rm $@.tmp; \
 	fi
 
+# https://github.com/ggerganov/llama.cpp/pull/1827
+# Are you setting LLAMA_CUDA_DMMV_X (default 32) and LLAMA_CUDA_DMMV_Y (default 1) at compile time? 
+# These values determine how much data the GPU processes at once for the computationally most expensive operations 
+# and setting higher values is beneficial on fast GPUs (but make sure they are powers of 2). 
+# On my RTX 3090 setting LLAMA_CUDA_DMMV_X=64 LLAMA_CUDA_DMMV_Y=2 increases performance by 20%.	
+
 # CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
 # build LLaMAZoo for the current platform and all popular others
 llamazoo: bridge.o ggml.o llama.o k_quants.o ggml-metal.o $(OBJS)
