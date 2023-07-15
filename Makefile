@@ -155,14 +155,11 @@ ifdef LLAMA_MPI
 	CFLAGS += -DGGML_USE_MPI -Wno-cast-qual
 	CXXFLAGS += -DGGML_USE_MPI -Wno-cast-qual
 	OBJS     += ggml-mpi.o
-
-ggml-mpi.o: ggml-mpi.c ggml-mpi.h
-	$(CC) $(CFLAGS) -c $< -o $@
 endif # LLAMA_MPI
 
 ifdef LLAMA_OPENBLAS
-	CFLAGS  += -DGGML_USE_OPENBLAS -I/usr/local/include/openblas -I/usr/include/openblas
-	LDFLAGS += -lopenblas
+	CFLAGS  += -DGGML_USE_OPENBLAS $(shell pkg-config --cflags openblas)
+	LDFLAGS += $(shell pkg-config --libs openblas)
 endif # LLAMA_OPENBLAS
 
 ifdef LLAMA_BLIS
@@ -230,9 +227,6 @@ ifdef LLAMA_METAL
 	CXXFLAGS += -DGGML_USE_METAL
 	LDFLAGS  += -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 	OBJS     += ggml-metal.o
-
-ggml-metal.o: ggml-metal.m ggml-metal.h
-	$(CC) $(CFLAGS) -c $< -o $@
 endif # LLAMA_METAL
 
 ifneq ($(filter aarch64%,$(UNAME_M)),)
@@ -256,6 +250,16 @@ ifneq ($(filter armv8%,$(UNAME_M)),)
 	# Raspberry Pi 3, 4, Zero 2 (32-bit)
 	CFLAGS += -mfp16-format=ieee -mno-unaligned-access
 endif
+
+ifdef LLAMA_METAL
+ggml-metal.o: ggml-metal.m ggml-metal.h
+	$(CC) $(CFLAGS) -c $< -o $@
+endif # LLAMA_METAL
+
+ifdef LLAMA_MPI
+ggml-mpi.o: ggml-mpi.c ggml-mpi.h
+	$(CC) $(CFLAGS) -c $< -o $@
+endif # LLAMA_MPI
 
 ifdef LLAMA_NO_K_QUANTS
 k_quants.o: k_quants.c k_quants.h
@@ -298,7 +302,7 @@ bridge.o: bridge.cpp
 
 clean:
 	rm -vf *.o *.so main quantize quantize-stats perplexity embedding benchmark-matmult save-load-state server simple vdot train-text-from-scratch embd-input-test build-info.h
-	rm -f *.a llamazoo
+	rm -f *.a bridge.o llamazoo
 
 #
 # Examples
