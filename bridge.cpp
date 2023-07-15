@@ -192,13 +192,14 @@ std::string path_session;
 // - finally return context pointer 
 struct llama_context * init_context(int idx) {
 
+    bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
+
     auto lparams = llama_context_default_params();
 
     // NB! [lparams] is of type llama_context_params and have no all parameters from bigger gpt_params
     //     [params]  is of type gpt_params and has n_threads parameter
 
     lparams.n_ctx        = params[idx].n_ctx;
-    //lparams.n_batch      = params[idx].n_ctx; // TODO: Is it right to have batch the same size as context?
     lparams.seed         = params[idx].seed;
     //lparams.f16_kv     = params.memory_f16;
     //lparams.use_mmap   = params.use_mmap;
@@ -206,6 +207,9 @@ struct llama_context * init_context(int idx) {
     //lparams.logits_all = params.perplexity;
     //lparams.embedding  = params.embedding;
     lparams.low_vram     = ::low_vram;
+
+    // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
+    lparams.n_batch = isGPU ? 512 : params[idx].n_ctx;
 
     // -- Init GPU inference params right
 
@@ -226,8 +230,10 @@ struct llama_context * init_context(int idx) {
 
     //lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
+    fprintf(stderr, "== %s: n_ctx = %d\n", __func__, (int) lparams.n_ctx);
+    fprintf(stderr, "== %s: n_batch = %d\n", __func__, (int) lparams.n_batch);
     fprintf(stderr, "\n== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
-    fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
+    fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
 
     ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
 
