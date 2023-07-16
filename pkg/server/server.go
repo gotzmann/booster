@@ -38,7 +38,6 @@ int64_t getPromptTokenCount(char * jobID);
 import "C"
 
 import (
-	"container/ring"
 	"fmt"
 	"os"
 	"os/user"
@@ -132,8 +131,9 @@ type Config struct {
 }
 
 type Pod struct {
-	idx       int    // pod index
-	isBusy    bool   // do pod instance doing some job?
+	idx       int  // pod index
+	isBusy    bool // do pod instance doing some job?
+	isGPU     bool
 	Threads   int64  // how many threads in use
 	GPU       int64  // GPU index
 	GPULayers int64  // how many layers offload to Apple GPU?
@@ -273,6 +273,7 @@ func Init(
 		MaxThreads += threads
 		Pods[pod] = &Pod{
 			idx:     pod,
+			isGPU:   gpuLayers > 0,
 			Threads: threads,
 		}
 
@@ -380,6 +381,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		MaxThreads += threads
 		Pods[pod] = &Pod{
 			idx:     pod,
+			isGPU:   conf.GPULayers[pod] > 0,
 			Threads: threads,
 		}
 
@@ -598,8 +600,10 @@ func Do(jobID string, pod *Pod) {
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
 	now := time.Now().UnixMilli()
+	isGPU := pod.isGPU
 
 	mu.Lock() // --
+
 	sessionID := Jobs[jobID].SessionID
 	Jobs[jobID].pod = pod
 	Jobs[jobID].StartedAt = now
@@ -612,261 +616,270 @@ func Do(jobID string, pod *Pod) {
 	// -- check if we are possibly going to grow out of context limit [ 2048 tokens ] and need to drop session data
 
 	var SessionFile string
-	if SessionPath != "" && sessionID != "" {
-		SessionFile = SessionPath + "/" + sessionID
-	}
+	if !isGPU {
 
-	if SessionFile != "" && ((TokensCount[sessionID] + pod.Model.Predict + 4) > pod.Model.ContextSize) {
-		Sessions[sessionID] = ""
-		TokensCount[sessionID] = 0
-		os.Remove(SessionFile)
+		if SessionPath != "" && sessionID != "" {
+			SessionFile = SessionPath + "/" + sessionID
+		}
+
+		if SessionFile != "" && ((TokensCount[sessionID] + pod.Model.Predict + 4) > pod.Model.ContextSize) {
+			Sessions[sessionID] = ""
+			TokensCount[sessionID] = 0
+			os.Remove(SessionFile)
+		}
 	}
 
 	prompt := Jobs[jobID].Prompt
-	history := Sessions[sessionID] // empty for the first iteration and when sessions do not stored at all
+	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
 
 	var fullPrompt string
 	if history == "" {
 		// NB! Leading space as expected by LLaMA standard
 		fullPrompt = " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
-		fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
+		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 	} else {
-		prompt = strings.Replace(pod.Model.Prefix+prompt+pod.Model.Suffix, `\n`, "\n", -1)
+		prompt = pod.Model.Prefix + prompt + pod.Model.Suffix
+		// prompt = strings.Replace(prompt, `\n`, "\n", -1)
 		fullPrompt = history + prompt
 	}
 
 	Jobs[jobID].FullPrompt = fullPrompt
+
 	mu.Unlock() // --
 
-	if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
+	// if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
 
-		// FIXME: Do not work as expected. Empty file rise CGO exception here
-		//        error loading session file: unexpectedly reached end of file
-		//        do_inference: error: failed to load session file './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
+	// FIXME: Do not work as expected. Empty file rise CGO exception here
+	//        error loading session file: unexpectedly reached end of file
+	//        do_inference: error: failed to load session file './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
 
-		/*
+	/*
 
-			if _, err := os.Stat(SessionFile); err != nil {
-				if os.IsNotExist(err) {
-					_, err = os.Create(SessionFile)
-					if err != nil {
-						Colorize("\n[magenta][ ERROR ][white] Can't create session file: %s\n\n", SessionFile)
-						log.Infof("[ERROR] Can't create session file: %s", SessionFile)
-						os.Exit(0)
-					}
-				} else {
-					Colorize("\n[magenta][ ERROR ][white] Some problems with session file: %s\n\n", SessionFile)
-					log.Infof("[ERROR] Some problems with session file: %s", SessionFile)
+		if _, err := os.Stat(SessionFile); err != nil {
+			if os.IsNotExist(err) {
+				_, err = os.Create(SessionFile)
+				if err != nil {
+					Colorize("\n[magenta][ ERROR ][white] Can't create session file: %s\n\n", SessionFile)
+					log.Infof("[ERROR] Can't create session file: %s", SessionFile)
 					os.Exit(0)
 				}
-			}
-
-		*/
-
-		// FIXME: if model hparams were changes, session files are obsolete
-
-		// do_inference: attempting to load saved session from './session.data.bin'
-		// llama_load_session_file_internal : model hparams didn't match from session file!
-		// do_inference: error: failed to load session file './session.data.bin'
-
-		count := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
-		result := C.GoString(C.status(C.CString(jobID)))
-
-		// Save exact result as history for future session work if storage enabled
-		if SessionFile != "" {
-			mu.Lock() // --
-			Sessions[sessionID] = result
-			TokensCount[sessionID] += int(count)
-			mu.Unlock() // --
-		}
-
-		if strings.HasPrefix(result, fullPrompt) {
-			result = result[len(fullPrompt):]
-		}
-		result = strings.Trim(result, "\n ")
-
-		now = time.Now().UnixMilli()
-		promptEval := int64(C.promptEval(C.CString(jobID)))
-		eval := int64(C.timing(C.CString(jobID)))
-
-		mu.Lock() // --
-		Jobs[jobID].FinishedAt = now
-		if Jobs[jobID].Status != "stopped" {
-			Jobs[jobID].Status = "finished"
-		}
-		// FIXME ASAP : Log all meaninful details !!!
-		Jobs[jobID].OutputTokenCount = int64(count)
-		Jobs[jobID].PromptEval = promptEval
-		Jobs[jobID].TokenEval = eval
-		Jobs[jobID].Output = result
-		Jobs[jobID].pod = nil
-		pod.isBusy = false
-		mu.Unlock() // --
-
-		log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", prompt, "fullPrompt", fullPrompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
-
-	} else { // --- use llama.go framework
-
-		// tokenize the prompt
-		embdPrompt := ml.Tokenize(vocab, fullPrompt, true)
-
-		// ring buffer for last N tokens
-		lastNTokens := ring.New(int(params.CtxSize))
-
-		// method to append a token to the ring buffer
-		appendToken := func(token uint32) {
-			lastNTokens.Value = token
-			lastNTokens = lastNTokens.Next()
-		}
-
-		// zeroing the ring buffer
-		for i := 0; i < int(params.CtxSize); i++ {
-			appendToken(0)
-		}
-
-		evalCounter := 0
-		tokenCounter := 0
-		pastCount := uint32(0)
-		consumedCount := uint32(0)           // number of tokens, already processed from the user prompt
-		remainedCount := params.PredictCount // how many tokens we still need to generate to achieve predictCount
-		embd := make([]uint32, 0, params.BatchSize)
-
-		evalPerformance := make([]int64, 0, params.PredictCount)
-		samplePerformance := make([]int64, 0, params.PredictCount)
-		fullPerformance := make([]int64, 0, params.PredictCount)
-
-		// new context opens sync channel and starts workers for tensor compute
-		ctx := llama.NewContext(model, params)
-
-		for remainedCount > 0 {
-
-			// TODO: Store total time of evaluation and average per token + token count
-			start := time.Now().UnixNano()
-
-			if len(embd) > 0 {
-
-				// infinite text generation via context swapping
-				// if we run out of context:
-				// - take the n_keep first tokens from the original prompt (via n_past)
-				// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
-
-				if pastCount+uint32(len(embd)) > params.CtxSize {
-					leftCount := pastCount - params.KeepCount
-					pastCount = params.KeepCount
-
-					// insert n_left/2 tokens at the start of embd from last_n_tokens
-					// embd = append(lastNTokens[:leftCount/2], embd...)
-					embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
-				}
-
-				evalStart := time.Now().UnixNano()
-				if err := llama.Eval(ctx, vocab, model, embd, pastCount, params); err != nil {
-					// TODO: Finish job properly with [failed] status
-				}
-				evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
-				evalCounter++
-			}
-
-			pastCount += uint32(len(embd))
-			embd = embd[:0]
-
-			if int(consumedCount) < len(embdPrompt) {
-
-				for len(embdPrompt) > int(consumedCount) && len(embd) < int(params.BatchSize) {
-
-					embd = append(embd, embdPrompt[consumedCount])
-					appendToken(embdPrompt[consumedCount])
-					consumedCount++
-				}
-
 			} else {
-
-				//if params.IgnoreEOS {
-				//	Ctx.Logits[ml.TOKEN_EOS] = 0
-				//}
-
-				sampleStart := time.Now().UnixNano()
-				id := llama.SampleTopPTopK( /*ctx,*/ ctx.Logits,
-					lastNTokens, params.RepeatLastN,
-					params.TopK, params.TopP,
-					params.Temp, params.RepeatPenalty)
-				samplePerformance = append(samplePerformance, time.Now().UnixNano()-sampleStart)
-
-				appendToken(id)
-
-				// replace end of text token with newline token when in interactive mode
-				//if id == ml.TOKEN_EOS && params.Interactive && !params.Instruct {
-				//	id = ml.NewLineToken
-				//}
-
-				embd = append(embd, id) // add to the context
-
-				remainedCount-- // decrement remaining sampling budget
-			}
-
-			fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
-
-			// skip adding the whole prompt to the output if processed at once
-			if evalCounter == 0 && int(consumedCount) == len(embdPrompt) {
-				continue
-			}
-
-			// --- assemble the final ouptut, EXCLUDING the prompt
-
-			for _, id := range embd {
-
-				tokenCounter++
-				token := ml.Token2Str(vocab, id) // TODO: Simplify
-
-				mu.Lock()
-				Jobs[jobID].Output += token
-				mu.Unlock()
+				Colorize("\n[magenta][ ERROR ][white] Some problems with session file: %s\n\n", SessionFile)
+				log.Infof("[ERROR] Some problems with session file: %s", SessionFile)
+				os.Exit(0)
 			}
 		}
 
-		// close sync channel and stop compute workers
-		ctx.ReleaseContext()
+	*/
 
-		mu.Lock()
-		Jobs[jobID].FinishedAt = time.Now().UnixMilli()
-		// FIXME: Clean output from prefix/suffix for instruct models!
-		Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
-		Jobs[jobID].Status = "finished"
-		mu.Unlock()
+	// FIXME: if model hparams were changes, session files are obsolete
 
-		//if ml.DEBUG {
-		Colorize("\n\n=== EVAL TIME | ms ===\n\n")
-		for _, time := range evalPerformance {
-			Colorize("%d | ", time/1_000_000)
-		}
+	// do_inference: attempting to load saved session from './session.data.bin'
+	// llama_load_session_file_internal : model hparams didn't match from session file!
+	// do_inference: error: failed to load session file './session.data.bin'
 
-		Colorize("\n\n=== SAMPLING TIME | ms ===\n\n")
-		for _, time := range samplePerformance {
-			Colorize("%d | ", time/1_000_000)
-		}
+	count := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
+	result := C.GoString(C.status(C.CString(jobID)))
 
-		Colorize("\n\n=== FULL TIME | ms ===\n\n")
-		for _, time := range fullPerformance {
-			Colorize("%d | ", time/1_000_000)
-		}
+	Colorize("\n=== HISTORY ===\n%s\n", history)
+	Colorize("\n=== FULL PROMPT ===\n%s\n", fullPrompt)
+	Colorize("\n=== RESULT ===\n%s\n", result)
 
-		avgEval := int64(0)
-		for _, time := range fullPerformance {
-			avgEval += time / 1_000_000
-		}
-		avgEval /= int64(len(fullPerformance))
-
-		Colorize(
-			"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
-			avgEval,
-			float64(1000)/float64(avgEval))
-		//}
-
-		// TODO: Proper logging
-		// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
-
+	// Save exact result as history for future session work if storage enabled
+	if !isGPU && SessionFile != "" {
+		mu.Lock() // --
+		Sessions[sessionID] = result
+		TokensCount[sessionID] += int(count)
+		mu.Unlock() // --
 	}
 
+	if strings.HasPrefix(result, fullPrompt) {
+		result = result[len(fullPrompt):]
+	}
+	result = strings.Trim(result, "\n ")
+
+	now = time.Now().UnixMilli()
+	promptEval := int64(C.promptEval(C.CString(jobID)))
+	eval := int64(C.timing(C.CString(jobID)))
+
+	mu.Lock() // --
+	Jobs[jobID].FinishedAt = now
+	if Jobs[jobID].Status != "stopped" {
+		Jobs[jobID].Status = "finished"
+	}
+	// FIXME ASAP : Log all meaninful details !!!
+	Jobs[jobID].OutputTokenCount = int64(count)
+	Jobs[jobID].PromptEval = promptEval
+	Jobs[jobID].TokenEval = eval
+	Jobs[jobID].Output = result
+	Jobs[jobID].pod = nil
+	pod.isBusy = false
+	mu.Unlock() // --
+
+	log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", prompt, "fullPrompt", fullPrompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
+	/*
+	   } else { // --- use llama.go framework
+
+	   	// tokenize the prompt
+	   	embdPrompt := ml.Tokenize(vocab, fullPrompt, true)
+
+	   	// ring buffer for last N tokens
+	   	lastNTokens := ring.New(int(params.CtxSize))
+
+	   	// method to append a token to the ring buffer
+	   	appendToken := func(token uint32) {
+	   		lastNTokens.Value = token
+	   		lastNTokens = lastNTokens.Next()
+	   	}
+
+	   	// zeroing the ring buffer
+	   	for i := 0; i < int(params.CtxSize); i++ {
+	   		appendToken(0)
+	   	}
+
+	   	evalCounter := 0
+	   	tokenCounter := 0
+	   	pastCount := uint32(0)
+	   	consumedCount := uint32(0)           // number of tokens, already processed from the user prompt
+	   	remainedCount := params.PredictCount // how many tokens we still need to generate to achieve predictCount
+	   	embd := make([]uint32, 0, params.BatchSize)
+
+	   	evalPerformance := make([]int64, 0, params.PredictCount)
+	   	samplePerformance := make([]int64, 0, params.PredictCount)
+	   	fullPerformance := make([]int64, 0, params.PredictCount)
+
+	   	// new context opens sync channel and starts workers for tensor compute
+	   	ctx := llama.NewContext(model, params)
+
+	   	for remainedCount > 0 {
+
+	   		// TODO: Store total time of evaluation and average per token + token count
+	   		start := time.Now().UnixNano()
+
+	   		if len(embd) > 0 {
+
+	   			// infinite text generation via context swapping
+	   			// if we run out of context:
+	   			// - take the n_keep first tokens from the original prompt (via n_past)
+	   			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
+
+	   			if pastCount+uint32(len(embd)) > params.CtxSize {
+	   				leftCount := pastCount - params.KeepCount
+	   				pastCount = params.KeepCount
+
+	   				// insert n_left/2 tokens at the start of embd from last_n_tokens
+	   				// embd = append(lastNTokens[:leftCount/2], embd...)
+	   				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
+	   			}
+
+	   			evalStart := time.Now().UnixNano()
+	   			if err := llama.Eval(ctx, vocab, model, embd, pastCount, params); err != nil {
+	   				// TODO: Finish job properly with [failed] status
+	   			}
+	   			evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
+	   			evalCounter++
+	   		}
+
+	   		pastCount += uint32(len(embd))
+	   		embd = embd[:0]
+
+	   		if int(consumedCount) < len(embdPrompt) {
+
+	   			for len(embdPrompt) > int(consumedCount) && len(embd) < int(params.BatchSize) {
+
+	   				embd = append(embd, embdPrompt[consumedCount])
+	   				appendToken(embdPrompt[consumedCount])
+	   				consumedCount++
+	   			}
+
+	   		} else {
+
+	   			//if params.IgnoreEOS {
+	   			//	Ctx.Logits[ml.TOKEN_EOS] = 0
+	   			//}
+
+	   			sampleStart := time.Now().UnixNano()
+	   			id := llama.SampleTopPTopK( / * ctx, * / ctx.Logits,
+	   				lastNTokens, params.RepeatLastN,
+	   				params.TopK, params.TopP,
+	   				params.Temp, params.RepeatPenalty)
+	   			samplePerformance = append(samplePerformance, time.Now().UnixNano()-sampleStart)
+
+	   			appendToken(id)
+
+	   			// replace end of text token with newline token when in interactive mode
+	   			//if id == ml.TOKEN_EOS && params.Interactive && !params.Instruct {
+	   			//	id = ml.NewLineToken
+	   			//}
+
+	   			embd = append(embd, id) // add to the context
+
+	   			remainedCount-- // decrement remaining sampling budget
+	   		}
+
+	   		fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
+
+	   		// skip adding the whole prompt to the output if processed at once
+	   		if evalCounter == 0 && int(consumedCount) == len(embdPrompt) {
+	   			continue
+	   		}
+
+	   		// --- assemble the final ouptut, EXCLUDING the prompt
+
+	   		for _, id := range embd {
+
+	   			tokenCounter++
+	   			token := ml.Token2Str(vocab, id) // TODO: Simplify
+
+	   			mu.Lock()
+	   			Jobs[jobID].Output += token
+	   			mu.Unlock()
+	   		}
+	   	}
+
+	   	// close sync channel and stop compute workers
+	   	ctx.ReleaseContext()
+
+	   	mu.Lock()
+	   	Jobs[jobID].FinishedAt = time.Now().UnixMilli()
+	   	// FIXME: Clean output from prefix/suffix for instruct models!
+	   	Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
+	   	Jobs[jobID].Status = "finished"
+	   	mu.Unlock()
+
+	   	//if ml.DEBUG {
+	   	Colorize("\n\n=== EVAL TIME | ms ===\n\n")
+	   	for _, time := range evalPerformance {
+	   		Colorize("%d | ", time/1_000_000)
+	   	}
+
+	   	Colorize("\n\n=== SAMPLING TIME | ms ===\n\n")
+	   	for _, time := range samplePerformance {
+	   		Colorize("%d | ", time/1_000_000)
+	   	}
+
+	   	Colorize("\n\n=== FULL TIME | ms ===\n\n")
+	   	for _, time := range fullPerformance {
+	   		Colorize("%d | ", time/1_000_000)
+	   	}
+
+	   	avgEval := int64(0)
+	   	for _, time := range fullPerformance {
+	   		avgEval += time / 1_000_000
+	   	}
+	   	avgEval /= int64(len(fullPerformance))
+
+	   	Colorize(
+	   		"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
+	   		avgEval,
+	   		float64(1000)/float64(avgEval))
+	   	//}
+
+	   	// TODO: Proper logging
+	   	// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
+
+	   }
+	*/
 }
 
 // --- Place new job into queue
