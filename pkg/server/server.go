@@ -600,7 +600,7 @@ func Do(jobID string, pod *Pod) {
 	// TODO: Proper logging
 	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
 	now := time.Now().UnixMilli()
-	isGPU := pod.isGPU
+	//isGPU := pod.isGPU
 
 	mu.Lock() // --
 
@@ -615,17 +615,25 @@ func Do(jobID string, pod *Pod) {
 
 	// -- check if we are possibly going to grow out of context limit [ 2048 tokens ] and need to drop session data
 
-	var SessionFile string
-	if !isGPU {
+	if sessionID != "" {
+
+		var SessionFile string
 
 		if SessionPath != "" && sessionID != "" {
 			SessionFile = SessionPath + "/" + sessionID
 		}
 
-		if SessionFile != "" && ((TokensCount[sessionID] + pod.Model.Predict + 4) > pod.Model.ContextSize) {
+		// -- null the session when near the context limit (allow up to 1/2 of max predict size)
+		// TODO: We need a better (smart) context data handling here
+
+		if (TokensCount[sessionID] + (pod.Model.Predict / 2) + 4) > pod.Model.ContextSize {
+
 			Sessions[sessionID] = ""
 			TokensCount[sessionID] = 0
-			os.Remove(SessionFile)
+
+			if SessionFile != "" {
+				os.Remove(SessionFile)
+			}
 		}
 	}
 
@@ -686,7 +694,7 @@ func Do(jobID string, pod *Pod) {
 	Colorize("\n=== RESULT ===\n%s\n", result)
 
 	// Save exact result as history for future session work if storage enabled
-	if !isGPU && SessionFile != "" {
+	if sessionID != "" {
 		mu.Lock() // --
 		Sessions[sessionID] = result
 		TokensCount[sessionID] += int(count)
