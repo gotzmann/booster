@@ -690,9 +690,9 @@ func Do(jobID string, pod *Pod) {
 	result := C.GoString(C.status(C.CString(jobID)))
 	promptTokenCount := C.getPromptTokenCount(C.CString(jobID))
 
-	Colorize("\n=== HISTORY ===\n%s\n", history)
-	Colorize("\n=== FULL PROMPT ===\n%s\n", fullPrompt)
-	Colorize("\n=== RESULT ===\n%s\n", result)
+	//Colorize("\n=== HISTORY ===\n%s\n", history)
+	//Colorize("\n=== FULL PROMPT ===\n%s\n", fullPrompt)
+	//Colorize("\n=== RESULT ===\n%s\n", result)
 
 	// Save exact result as history for future session work if storage enabled
 	if sessionID != "" {
@@ -704,10 +704,9 @@ func Do(jobID string, pod *Pod) {
 
 	if strings.HasPrefix(result, fullPrompt) {
 		result = result[len(fullPrompt):]
-		Colorize("\n=== HAS PREFIX ===\n%s\n", result)
 	}
 	result = strings.Trim(result, "\n ")
-	Colorize("\n=== RESULT AFTER ===\n%s\n", result)
+	//Colorize("\n=== RESULT AFTER ===\n%s\n", result)
 
 	now = time.Now().UnixMilli()
 	promptEval := int64(C.promptEval(C.CString(jobID)))

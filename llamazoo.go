@@ -67,7 +67,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.9.13"
+const VERSION = "0.9.14"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -174,9 +174,8 @@ func main() {
 
 	if !opts.Server || opts.Debug {
 		showLogo()
-	} else {
-		log.Infof("[START] LLaMAZoo v%s starting...", VERSION)
 	}
+	log.Infof("[START] LLaMAZoo v%s starting...", VERSION)
 
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
@@ -281,7 +280,7 @@ func main() {
 		}()
 	}
 
-	if !opts.Server {
+	if !opts.Server || opts.Debug {
 		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
 	}
 	log.Infof("[START] REST API running on %s:%s", opts.Host, opts.Port)
