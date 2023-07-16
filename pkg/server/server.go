@@ -686,8 +686,9 @@ func Do(jobID string, pod *Pod) {
 	// llama_load_session_file_internal : model hparams didn't match from session file!
 	// do_inference: error: failed to load session file './session.data.bin'
 
-	count := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
+	outputTokenCount := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
 	result := C.GoString(C.status(C.CString(jobID)))
+	promptTokenCount := C.getPromptTokenCount(C.CString(jobID))
 
 	Colorize("\n=== HISTORY ===\n%s\n", history)
 	Colorize("\n=== FULL PROMPT ===\n%s\n", fullPrompt)
@@ -697,34 +698,52 @@ func Do(jobID string, pod *Pod) {
 	if sessionID != "" {
 		mu.Lock() // --
 		Sessions[sessionID] = result
-		TokensCount[sessionID] += int(count)
+		TokensCount[sessionID] += int(outputTokenCount)
 		mu.Unlock() // --
 	}
 
 	if strings.HasPrefix(result, fullPrompt) {
 		result = result[len(fullPrompt):]
+		Colorize("\n=== HAS PREFIX ===\n%s\n", result)
 	}
 	result = strings.Trim(result, "\n ")
+	Colorize("\n=== RESULT AFTER ===\n%s\n", result)
 
 	now = time.Now().UnixMilli()
 	promptEval := int64(C.promptEval(C.CString(jobID)))
 	eval := int64(C.timing(C.CString(jobID)))
 
 	mu.Lock() // --
+
 	Jobs[jobID].FinishedAt = now
 	if Jobs[jobID].Status != "stopped" {
 		Jobs[jobID].Status = "finished"
 	}
 	// FIXME ASAP : Log all meaninful details !!!
-	Jobs[jobID].OutputTokenCount = int64(count)
+	Jobs[jobID].PromptTokenCount = int64(promptTokenCount)
+	Jobs[jobID].OutputTokenCount = int64(outputTokenCount)
 	Jobs[jobID].PromptEval = promptEval
 	Jobs[jobID].TokenEval = eval
 	Jobs[jobID].Output = result
 	Jobs[jobID].pod = nil
 	pod.isBusy = false
+
 	mu.Unlock() // --
 
-	log.Infow("[JOB] Job was finished", "jobID", jobID, "prompt", prompt, "fullPrompt", fullPrompt, "output", result) // TODO: Log performance (TokenCount + Total Time)
+	log.Infow(
+		"[JOB] Job was finished",
+		"jobID", jobID,
+		"prompt", prompt,
+		"output", result,
+		"promptLength", promptTokenCount,
+		"outputLength", outputTokenCount,
+		"promptMS", promptEval,
+		"outputMS", eval,
+		"promptTPS", 1000/promptEval,
+		"outputTPS", 1000/eval,
+		"fullPrompt", fullPrompt,
+	)
+
 	/*
 	   } else { // --- use llama.go framework
 
