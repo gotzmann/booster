@@ -644,10 +644,10 @@ func Do(jobID string, pod *Pod) {
 	if history == "" {
 		// NB! Leading space as expected by LLaMA standard
 		fullPrompt = " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
-		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
+		fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 	} else {
 		prompt = pod.Model.Prefix + prompt + pod.Model.Suffix
-		// prompt = strings.Replace(prompt, `\n`, "\n", -1)
+		prompt = strings.Replace(prompt, `\n`, "\n", -1)
 		fullPrompt = history + prompt
 	}
 
