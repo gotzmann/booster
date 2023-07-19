@@ -640,14 +640,14 @@ func Do(jobID string, pod *Pod) {
 
 	prompt := Jobs[jobID].Prompt
 	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
+	fullPrompt := pod.Model.Prefix + prompt + pod.Model.Suffix
 
-	var fullPrompt string
 	if history == "" {
 		// NB! Leading space as expected by LLaMA standard
-		fullPrompt = " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
+		fullPrompt = " " + pod.Model.Preamble + fullPrompt
 		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 	} else {
-		fullPrompt = pod.Model.Prefix + prompt + pod.Model.Suffix
+		//fullPrompt = pod.Model.Prefix + prompt + pod.Model.Suffix
 		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 		fullPrompt = history + fullPrompt
 	}
