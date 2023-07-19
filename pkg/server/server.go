@@ -731,6 +731,15 @@ func Do(jobID string, pod *Pod) {
 
 	mu.Unlock() // --
 
+	// NB! Avoid division by zero
+	var inTPS, outTPS int
+	if promptEval != 0 {
+		inTPS = 1000 / promptEval
+	}
+	if eval != 0 {
+		outTPS = 1000 / eval
+	}
+
 	log.Infow(
 		"[JOB] Job was finished",
 		"jobID", jobID,
@@ -738,8 +747,8 @@ func Do(jobID string, pod *Pod) {
 		"outLen", outputTokenCount,
 		"inMS", promptEval,
 		"outMS", eval,
-		"inTPS", 1000/promptEval,
-		"outTPS", 1000/eval,
+		"inTPS", inTPS,
+		"outTPS", outTPS,
 		"prompt", prompt,
 		"output", result,
 		// "fullPrompt", fullPrompt,
