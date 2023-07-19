@@ -723,6 +723,11 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 ////llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
                 ////    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
                 ////    last_n_repeat, alpha_frequency, alpha_presence);
+
+                // FIXME: Not sure but the code above might be the reason of ALWAYS broken generation like this:
+                // USER: test 888 - напиши сочинение на тему как я провел летние каникулы
+                // ASSISTANT: Конечно, я могу написать сочинение на эту тему! Вот пример:
+                // Как я провел ле
                 
                 if (!penalize_nl) {
                     logits[llama_token_nl()] = nl_logit;
