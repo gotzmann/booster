@@ -620,7 +620,7 @@ func Do(jobID string, pod *Pod) {
 
 		var SessionFile string
 
-		if SessionPath != "" && sessionID != "" {
+		if !pod.isGPU && SessionPath != "" && sessionID != "" {
 			SessionFile = SessionPath + "/" + sessionID
 		}
 
@@ -632,7 +632,7 @@ func Do(jobID string, pod *Pod) {
 			Sessions[sessionID] = ""
 			TokensCount[sessionID] = 0
 
-			if SessionFile != "" {
+			if !pod.isGPU && SessionFile != "" {
 				os.Remove(SessionFile)
 			}
 		}
