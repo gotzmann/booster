@@ -321,8 +321,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     llama_set_rng_seed(ctx, ::params[idx].seed);
 
-    fprintf(stderr, "\n => do_inference 01"); // DEBUG
-
     // --- SESSIONS ---
 
     //std::string path_session = "./session.data.bin";
@@ -499,18 +497,12 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     //fprintf(stderr, "%s === embd.size() = %d ===\n", __func__, (int) embd.size()); // DEBUG
 
-    fprintf(stderr, "\n => do_inference 02"); // DEBUG
-
     while (n_remain && 
         n_past < n_ctx &&
-        !stopInferenceFlags[idx]) {
-
-        fprintf(stderr, " => do_inference 03"); // DEBUG    
+        !stopInferenceFlags[idx]) { 
 
         // predict
-        if (embd.size() > 0) {
-
-            fprintf(stderr, " => do_inference 04"); // DEBUG    
+        if (embd.size() > 0) {  
 
             // Note: n_ctx - 4 here is to match the logic for commandline prompt handling via
             // --prompt or --file which uses the same value.
@@ -629,8 +621,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                     n_eval = n_batch;
                 }
 
-                fprintf(stderr, "%s === i = %d | size = %d | batch = %d \n", __func__, (int) i, (int) embd.size(), (int) n_batch); // DEBUG
-                fprintf(stderr, "%s === n_eval = %d | n_past = %d | n_threads = %d \n", __func__, (int) n_eval, (int) n_past, (int) ::params[idx].n_threads); // DEBUG
+                //fprintf(stderr, "%s === i = %d | size = %d | batch = %d \n", __func__, (int) i, (int) embd.size(), (int) n_batch); // DEBUG
+                //fprintf(stderr, "%s === n_eval = %d | n_past = %d | n_threads = %d \n", __func__, (int) n_eval, (int) n_past, (int) ::params[idx].n_threads); // DEBUG
 
                 if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
@@ -649,7 +641,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         embd.clear();
         // embd_guidance.clear(); // -- new feature
 
-        fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
+        //fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
 
         if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
 
@@ -750,8 +742,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                         id = llama_sample_token_mirostat(ctx, &candidates_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
                     
                     } else if (mirostat == 2) {
-                        
-                        fprintf(stderr, " => do_inference 06"); // DEBUG    
+                            
                         //printf("[MIROSTAT-V2]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         llama_sample_temperature(ctx, &candidates_p, temp);
@@ -782,9 +773,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             ////        const auto first_antiprompt = ::llama_tokenize(ctx, params.antiprompt.front(), false);
             ////        embd_inp.insert(embd_inp.end(), first_antiprompt.begin(), first_antiprompt.end());
             ////    }
-            ////}
-
-            fprintf(stderr, " => do_inference 08"); // DEBUG    
+            ////}    
 
             // add it to the context
             embd.push_back(id);
@@ -795,9 +784,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             // decrement remaining sampling budget
             --n_remain;
 
-        } else {
-
-            fprintf(stderr, " => do_inference 09"); // DEBUG    
+        } else { 
 
             // some user input remains from prompt or interaction, forward it to processing
             while ((int) embd_inp.size() > n_consumed) {
