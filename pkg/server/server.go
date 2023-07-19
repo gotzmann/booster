@@ -49,6 +49,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v2"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	colorable "github.com/mattn/go-colorable"
@@ -644,11 +645,11 @@ func Do(jobID string, pod *Pod) {
 	if history == "" {
 		// NB! Leading space as expected by LLaMA standard
 		fullPrompt = " " + pod.Model.Preamble + pod.Model.Prefix + prompt + pod.Model.Suffix
-		fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
+		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 	} else {
-		prompt = pod.Model.Prefix + prompt + pod.Model.Suffix
-		prompt = strings.Replace(prompt, `\n`, "\n", -1)
-		fullPrompt = history + prompt
+		fullPrompt = pod.Model.Prefix + prompt + pod.Model.Suffix
+		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
+		fullPrompt = history + fullPrompt
 	}
 
 	Jobs[jobID].FullPrompt = fullPrompt
@@ -718,6 +719,7 @@ func Do(jobID string, pod *Pod) {
 	if Jobs[jobID].Status != "stopped" {
 		Jobs[jobID].Status = "finished"
 	}
+
 	// FIXME ASAP : Log all meaninful details !!!
 	Jobs[jobID].PromptTokenCount = int64(promptTokenCount)
 	Jobs[jobID].OutputTokenCount = int64(outputTokenCount)
@@ -732,15 +734,15 @@ func Do(jobID string, pod *Pod) {
 	log.Infow(
 		"[JOB] Job was finished",
 		"jobID", jobID,
+		"inLen", promptTokenCount,
+		"outLen", outputTokenCount,
+		"inMS", promptEval,
+		"outMS", eval,
+		"inTPS", 1000/promptEval,
+		"outTPS", 1000/eval,
 		"prompt", prompt,
 		"output", result,
-		"promptLength", promptTokenCount,
-		"outputLength", outputTokenCount,
-		"promptMS", promptEval,
-		"outputMS", eval,
-		"promptTPS", 1000/promptEval,
-		"outputTPS", 1000/eval,
-		"fullPrompt", fullPrompt,
+		// "fullPrompt", fullPrompt,
 	)
 
 	/*
@@ -1025,7 +1027,7 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt, payload.Translate)
 
-	log.Infow("[JOB] New job placed to queue", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
+	log.Infow("[JOB] New job just queued", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
 	// TODO: Guard with mutex Jobs[payload.ID] access
 	// TODO: Return [model] and [session] if not empty
@@ -1056,7 +1058,7 @@ func StopJob(ctx *fiber.Ctx) error {
 			SendString("Wrong UUID4 id for request!")
 	}
 
-	mu.Lock() // -
+	mu.Lock() // --
 
 	if _, ok := Jobs[jobID]; !ok {
 		mu.Unlock()
@@ -1077,6 +1079,8 @@ func StopJob(ctx *fiber.Ctx) error {
 
 	mu.Unlock() // --
 
+	log.Infow("[JOB] Job was stopped", "jobID", jobID)
+
 	return ctx.JSON(fiber.Map{
 		"status": "stopped",
 	})
@@ -1091,14 +1095,14 @@ func GetJobStatus(ctx *fiber.Ctx) error {
 	if _, err := uuid.Parse(id); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Wrong UUID4 id for request!")
+			SendString("Wrong ID format in request!")
 	}
 
 	// TODO: Guard with mutex
 	if _, ok := Jobs[id]; !ok {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Request ID was not found!")
+			SendString("Requested ID was not found!")
 	}
 
 	// TODO: Guard with mutex
@@ -1116,13 +1120,13 @@ func GetJob(ctx *fiber.Ctx) error {
 	if _, err := uuid.Parse(jobID); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Wrong ID for request! Should be valid UUID v4")
+			SendString("Wrong ID format in request!")
 	}
 
 	if _, ok := Jobs[jobID]; !ok {
 		return ctx.
-			Status(fiber.StatusBadRequest).
-			SendString("Request ID was not found!")
+			Status(fiber.StatusNotFound).
+			SendString("Requested ID was not found!")
 	}
 
 	mu.Lock() // --
@@ -1139,8 +1143,9 @@ func GetJob(ctx *fiber.Ctx) error {
 
 	if status == "processing" {
 		output = C.GoString(C.status(C.CString(jobID)))
-		//output = strings.Trim(output, "\n ")
-		if strings.HasPrefix(output, fullPrompt) {
+		if len(output) < len(fullPrompt) {
+			output = ""
+		} else if strings.HasPrefix(output, fullPrompt) {
 			output = output[len(fullPrompt):]
 			output = strings.Trim(output, "\n ")
 		}
@@ -1168,7 +1173,7 @@ func GetHealth(ctx *fiber.Ctx) error {
 		"podCount": len(Pods),
 		// fmt.Sprintf("%.2f", float32(RunningThreads)/float32(MaxThreads)*100)
 		"cpuLoad": cpuPercent,
-		"gpuLoad": 0.0,
+		"gpuLoad": 0.0, // TODO ASAP
 	})
 }
 
