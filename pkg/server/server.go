@@ -1143,6 +1143,7 @@ func GetJob(ctx *fiber.Ctx) error {
 
 	if status == "processing" {
 		output = C.GoString(C.status(C.CString(jobID)))
+		// NB! Do show nothing if output is shorter than the whole history before
 		if len(output) < len(fullPrompt) {
 			output = ""
 		} else if strings.HasPrefix(output, fullPrompt) {
