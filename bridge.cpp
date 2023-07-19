@@ -77,13 +77,20 @@ struct gpt_params {
     int32_t n_threads     = 1;    // get_num_physical_cores();
     int32_t n_predict     = -1;   // new tokens to predict
     int32_t n_ctx         = 2048; // context size
+
     // NB! When n_batch is too big, there an error trying to pool new memory:
     // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
+    
     int32_t n_batch       = 512;  // batch size for prompt processing (must be >=32 to use BLAS)
+
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
+    int32_t n_chunks      = -1;   // max number of chunks to process (-1 = unlimited)
     int32_t n_gpu_layers  = 0;    // number of layers to store in VRAM
     int32_t main_gpu      = 0;    // the GPU that is used for scratch and small tensors
     int32_t n_probs       = 0;    // if greater than 0, output the probabilities of top n_probs tokens.
+    
+    float   rope_freq_base  = 10000.0f; // RoPE base frequency
+    float   rope_freq_scale = 1.0f;     // RoPE frequency scaling factor
     
     float   tensor_split[LLAMA_MAX_DEVICES] = {0}; // how split tensors should be distributed across GPUs
 

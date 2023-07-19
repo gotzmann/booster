@@ -89,6 +89,11 @@ extern "C" {
         int32_t  n_gpu_layers;                 // number of layers to store in VRAM
         int32_t  main_gpu;                     // the GPU that is used for scratch and small tensors
         float tensor_split[LLAMA_MAX_DEVICES]; // how to split layers across multiple GPUs
+
+        // ref: https://github.com/ggerganov/llama.cpp/pull/2054
+        float    rope_freq_base;  // RoPE base frequency
+        float    rope_freq_scale; // RoPE frequency scaling factor
+
         // called with a progress value between 0 and 1, pass NULL to disable
         llama_progress_callback progress_callback;
         // context pointer passed to the progress callback
@@ -147,6 +152,8 @@ extern "C" {
         int32_t n_p_eval;
         int32_t n_eval;
     };
+
+    LLAMA_API int llama_max_devices();
 
     LLAMA_API struct llama_context_params llama_context_default_params();
     LLAMA_API struct llama_model_quantize_params llama_model_quantize_default_params();
@@ -401,7 +408,7 @@ extern "C" {
     LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
     LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
 
-    // -- 
+    // --
 
 #ifdef __cplusplus
 }
