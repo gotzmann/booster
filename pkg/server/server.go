@@ -732,7 +732,7 @@ func Do(jobID string, pod *Pod) {
 	mu.Unlock() // --
 
 	// NB! Avoid division by zero
-	var inTPS, outTPS int
+	var inTPS, outTPS int64
 	if promptEval != 0 {
 		inTPS = 1000 / promptEval
 	}
