@@ -232,11 +232,11 @@ struct llama_context * init_context(int idx) {
     lparams.main_gpu = params[idx].main_gpu;
     lparams.n_gpu_layers = params[idx].n_gpu_layers;
 
-    //for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
-    //    lparams.tensor_split[i] = 0.0f;
-    //}
+    for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
+        lparams.tensor_split[i] = 0.0f;
+    }
 
-    //lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
+    lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
     fprintf(stderr, "== %s: n_ctx = %d\n", __func__, (int) lparams.n_ctx);
     fprintf(stderr, "== %s: n_batch = %d\n", __func__, (int) lparams.n_batch);
