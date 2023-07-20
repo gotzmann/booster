@@ -81,7 +81,7 @@ struct gpt_params {
     // NB! When n_batch is too big, there an error trying to pool new memory:
     // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
     
-    int32_t n_batch       = 512;  // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch       = 1024;  // batch size for prompt processing (must be >=32 to use BLAS)
 
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
     int32_t n_chunks      = -1;   // max number of chunks to process (-1 = unlimited)
@@ -217,7 +217,7 @@ struct llama_context * init_context(int idx) {
 
     // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
-    lparams.n_batch = isGPU ? 512 : params[idx].n_ctx;
+    lparams.n_batch = isGPU ? 1024 : params[idx].n_ctx;
 
     // -- Init GPU inference params right
 

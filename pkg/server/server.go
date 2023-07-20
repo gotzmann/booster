@@ -1155,7 +1155,8 @@ func GetJob(ctx *fiber.Ctx) error {
 		// NB! Do show nothing if output is shorter than the whole history before
 		if len(output) < len(fullPrompt) {
 			output = ""
-		} else if strings.HasPrefix(output, fullPrompt) {
+			// NB! Cut the history even if prompt is not 100% equal to history
+		} else /* if strings.HasPrefix(output, fullPrompt) */ {
 			output = output[len(fullPrompt):]
 			output = strings.Trim(output, "\n ")
 		}
