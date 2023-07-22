@@ -220,7 +220,7 @@ struct llama_context * init_context(int idx) {
 
     // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
-    lparams.n_batch = isGPU ? 1024 : params[idx].n_ctx;
+    lparams.n_batch = isGPU ? /* 512 */ params[idx].n_ctx : params[idx].n_ctx;
 
     // -- Init GPU inference params right
 
@@ -235,9 +235,9 @@ struct llama_context * init_context(int idx) {
     lparams.main_gpu = params[idx].main_gpu;
     lparams.n_gpu_layers = params[idx].n_gpu_layers;
 
-    for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
-        lparams.tensor_split[i] = 0.0f;
-    }
+    //for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
+    //    lparams.tensor_split[i] = 0.0f;
+    //}
 
     lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
@@ -406,6 +406,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     const int n_ctx = llama_n_ctx(ctx);
     promptTokenCount[jobID] = embd_inp.size();
+
+    fprintf(stderr, "!!! %s: n_ctx = llama_n_ctx(ctx) = [ %d ] tokens\n", __func__, n_ctx); // DEBUG
 
     //fprintf(stderr, "%s: N_CTX PARAMS [ %d ] tokens\n", __func__, params[idx].n_ctx);
     //fprintf(stderr, "%s: N_CTX LLAMAS [ %d ] tokens\n", __func__, n_ctx);
@@ -660,13 +662,15 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
             const float   repeat_penalty  = ::params[idx].repeat_penalty;
             const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
-  
+
+            fprintf(stderr, "%s !!! repeat_last_n = %d \n", __func__, (int) repeat_last_n); // DEBUG
+
             //const float   tfs_z           = ::params.tfs_z;
             //const float   typical_p       = ::params.typical_p;
             //const float   alpha_presence  = ::params.presence_penalty;
             //const float   alpha_frequency = ::params.frequency_penalty;
 
-            const bool    penalize_nl     = ::params[idx].penalize_nl;
+            //const bool    penalize_nl     = ::params[idx].penalize_nl;
 
             // optionally save the session on first sample (for faster prompt loading next time)
             //if (!path_session.empty() && need_to_save_session /* && !params.prompt_cache_ro */) {
@@ -704,6 +708,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
                 // float nl_logit = logits[llama_token_nl()];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
+
+                fprintf(stderr, "%s !!! last_n_repeat = %d \n", __func__, (int) last_n_repeat); // DEBUG
                 
                 // For positive logits it divided by penalty, for negative multiplied
                 // https://github.com/huggingface/transformers/pull/2303/files
