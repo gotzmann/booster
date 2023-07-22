@@ -407,7 +407,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     const int n_ctx = llama_n_ctx(ctx);
     promptTokenCount[jobID] = embd_inp.size();
 
-    fprintf(stderr, "!!! %s: n_ctx = llama_n_ctx(ctx) = [ %d ] tokens\n", __func__, n_ctx); // DEBUG
+    //fprintf(stderr, "!!! %s: n_ctx = llama_n_ctx(ctx) = [ %d ] tokens\n", __func__, n_ctx); // DEBUG
 
     //fprintf(stderr, "%s: N_CTX PARAMS [ %d ] tokens\n", __func__, params[idx].n_ctx);
     //fprintf(stderr, "%s: N_CTX LLAMAS [ %d ] tokens\n", __func__, n_ctx);
@@ -663,7 +663,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             const float   repeat_penalty  = ::params[idx].repeat_penalty;
             const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
 
-            fprintf(stderr, "%s !!! repeat_last_n = %d \n", __func__, (int) repeat_last_n); // DEBUG
+            //fprintf(stderr, "%s !!! repeat_last_n = %d \n", __func__, (int) repeat_last_n); // DEBUG
 
             //const float   tfs_z           = ::params.tfs_z;
             //const float   typical_p       = ::params.typical_p;
@@ -709,7 +709,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 // float nl_logit = logits[llama_token_nl()];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
 
-                fprintf(stderr, "%s !!! last_n_repeat = %d \n", __func__, (int) last_n_repeat); // DEBUG
+                //fprintf(stderr, "%s !!! last_n_repeat = %d \n", __func__, (int) last_n_repeat); // DEBUG
                 
                 // For positive logits it divided by penalty, for negative multiplied
                 // https://github.com/huggingface/transformers/pull/2303/files
