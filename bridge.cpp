@@ -220,7 +220,7 @@ struct llama_context * init_context(int idx) {
 
     // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
-    lparams.n_batch = isGPU ? /* 512 */ params[idx].n_ctx : params[idx].n_ctx;
+    lparams.n_batch = isGPU ? 512 : params[idx].n_ctx;
 
     // -- Init GPU inference params right
 
