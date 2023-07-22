@@ -81,13 +81,13 @@ struct gpt_params {
     // NB! When n_batch is too big, there an error trying to pool new memory:
     // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
     
-    int32_t n_batch       = 1024; // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch       = 512; // batch size for prompt processing (must be >=32 to use BLAS)
 
-    int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
-    int32_t n_chunks      = -1;   // max number of chunks to process (-1 = unlimited)
-    int32_t n_gpu_layers  = 0;    // number of layers to store in VRAM
-    int32_t main_gpu      = 0;    // the GPU that is used for scratch and small tensors
-    int32_t n_probs       = 0;    // if greater than 0, output the probabilities of top n_probs tokens.
+    int32_t n_keep        = 0;  // number of tokens to keep from initial prompt [ when context swapping happens ]
+    int32_t n_chunks      = -1; // max number of chunks to process (-1 = unlimited)
+    int32_t n_gpu_layers  = 0;  // number of layers to store in VRAM
+    int32_t main_gpu      = 0;  // the GPU that is used for scratch and small tensors
+    int32_t n_probs       = 0;  // if greater than 0, output the probabilities of top n_probs tokens.
     
     float   rope_freq_base  = 10000.0f; // RoPE base frequency
     float   rope_freq_scale = 1.0f;     // RoPE frequency scaling factor
@@ -702,7 +702,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 */
                 // --- Apply penalties
 
-                float nl_logit = logits[llama_token_nl()];
+                // float nl_logit = logits[llama_token_nl()];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
                 
                 // For positive logits it divided by penalty, for negative multiplied
@@ -732,16 +732,16 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 // ASSISTANT: Конечно, я могу написать сочинение на эту тему! Вот пример:
                 // Как я провел ле
                 
-                if (!penalize_nl) {
-                    logits[llama_token_nl()] = nl_logit;
-                }
+                // if (!penalize_nl) {
+                //     logits[llama_token_nl()] = nl_logit;
+                // }
 
                 ////if (temp <= 0) {
                 ////    printf("[GREEDY-SAMPLING]");
                 ////    // Greedy sampling
                 ////    id = llama_sample_token_greedy(ctx, &candidates_p);
                 ////} else {
-                    if (mirostat == 1) {
+                    /* if (mirostat == 1) {
                     
                         //printf("[MIROSTAT-V1]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
@@ -749,7 +749,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat(ctx, &candidates_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
                     
-                    } else if (mirostat == 2) {
+                    } else */ if (mirostat == 2) {
                             
                         //printf("[MIROSTAT-V2]");
                         static float mirostat_mu = 2.0f * mirostat_tau;
