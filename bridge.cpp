@@ -81,7 +81,7 @@ struct gpt_params {
     // NB! When n_batch is too big, there an error trying to pool new memory:
     // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
     
-    int32_t n_batch       = 1024;  // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch       = 1024; // batch size for prompt processing (must be >=32 to use BLAS)
 
     int32_t n_keep        = 0;    // number of tokens to keep from initial prompt [ when context swapping happens ]
     int32_t n_chunks      = -1;   // max number of chunks to process (-1 = unlimited)
@@ -101,7 +101,7 @@ struct gpt_params {
     float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
     float   temp              = 0.1; // 0.80f; // 1.0 = disabled
-    int32_t top_k             = 8;  // 40; // <= 0 to use vocab size
+    int32_t top_k             = 8;   // 40; // <= 0 to use vocab size
     float   top_p             = 0.4; // 0.95f; // 1.0 = disabled
 
     float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled
@@ -113,6 +113,9 @@ struct gpt_params {
     float   presence_penalty  = 0.0; // 0.0 = disabled
     float   tfs_z             = 1.0; // 1.0 = disabled
     float   typical_p         = 1.0; // 1.0 = disabled
+
+    float   alpha_presence    = 0.0f; // 0.0 = disabled
+    float   alpha_frequency   = 0.0f; // 0.0 = disabled
 
     // TODO: Look for new feature
 
@@ -704,9 +707,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 
                 // For positive logits it divided by penalty, for negative multiplied
                 // https://github.com/huggingface/transformers/pull/2303/files
-                // llama_sample_repetition_penalty(ctx, &candidates_p,
-                //    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
-                //    last_n_repeat, repeat_penalty);
+                llama_sample_repetition_penalty(ctx, &candidates_p,
+                    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
+                    last_n_repeat, repeat_penalty);
 
                 // https://github.com/ggerganov/llama.cpp/issues/331
                 // Just throwing 2c at past implementations:
@@ -720,9 +723,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 // agrees to be relatively decent results across most models.    
 
                 // TODO: Play with frequency and presence penalties    
-                ////llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
-                ////    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
-                ////    last_n_repeat, alpha_frequency, alpha_presence);
+                // llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
+                //     last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
+                //     last_n_repeat, alpha_frequency, alpha_presence);
 
                 // FIXME: Not sure but the code above might be the reason of ALWAYS broken generation like this:
                 // USER: test 888 - напиши сочинение на тему как я провел летние каникулы
