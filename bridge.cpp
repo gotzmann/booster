@@ -2,6 +2,7 @@
 
 #include "llama.h"
 #include "ggml.h"
+#include "grammar-parser.h" // TODO: Investigate about grammars
 
 #include <string>
 #include <vector>
@@ -82,6 +83,7 @@ struct gpt_params {
     // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
     
     int32_t n_batch       = 512; // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_gqa         = 1;   // grouped-query attention factor (TODO: move to hparams)
 
     int32_t n_keep        = 0;  // number of tokens to keep from initial prompt [ when context swapping happens ]
     int32_t n_chunks      = -1; // max number of chunks to process (-1 = unlimited)
@@ -89,6 +91,7 @@ struct gpt_params {
     int32_t main_gpu      = 0;  // the GPU that is used for scratch and small tensors
     int32_t n_probs       = 0;  // if greater than 0, output the probabilities of top n_probs tokens.
     
+    float   rms_norm_eps    = LLAMA_DEFAULT_RMS_EPS; // rms norm epsilon
     float   rope_freq_base  = 10000.0f; // RoPE base frequency
     float   rope_freq_scale = 1.0f;     // RoPE frequency scaling factor
     
@@ -96,7 +99,7 @@ struct gpt_params {
 
     // --- sampling parameters
 
-    int     mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    int32_t mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1; // 5.0 // target entropy
     float   mirostat_eta      = 0.1; // 0.1 // learning rate
 
@@ -151,12 +154,17 @@ struct gpt_params {
     std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
     std::string input_prefix = "";       // string to prefix user inputs with
     std::string input_suffix = "";       // string to suffix user inputs with
+    std::string grammar      = "";       // optional BNF-like grammar to constrain sampling
     std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
 
     std::string lora_adapter = "";  // lora adapter path
     std::string lora_base = "";     // base model path for the lora adapter
 
+    bool hellaswag         = false; // compute HellaSwag score over random tasks from datafile supplied in prompt
+    size_t hellaswag_tasks = 400;   // number of tasks to use when computing the HellaSwag score
+
     bool low_vram          = false; // if true, reduce VRAM usage at the cost of performance
+    bool mul_mat_q         = false; // if true, use experimental mul_mat_q kernels
     bool memory_f16        = true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
@@ -167,6 +175,7 @@ struct gpt_params {
     bool interactive_first = false; // wait for user input immediately
     bool multiline_input   = false; // reverse the usage of `\`
 
+    bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
     bool instruct          = false; // instruction mode (used for Alpaca models)
     bool penalize_nl       = true;  // consider newlines as a repeatable token
     bool perplexity        = false; // compute perplexity over the prompt
@@ -239,7 +248,7 @@ struct llama_context * init_context(int idx) {
     //    lparams.tensor_split[i] = 0.0f;
     //}
 
-    lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
+    //lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
 
     fprintf(stderr, "== %s: n_ctx = %d\n", __func__, (int) lparams.n_ctx);
     fprintf(stderr, "== %s: n_batch = %d\n", __func__, (int) lparams.n_batch);

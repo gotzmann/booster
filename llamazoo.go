@@ -40,10 +40,10 @@ const char * status(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 #cgo linux CFLAGS:   -I. -O3 -fPIC -pthread -std=c17
 #cgo linux CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17
-#cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
+#cgo linux LDFLAGS: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG
 #cgo darwin CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL
-#cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
+#cgo darwin LDFLAGS: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 */
 import "C"
 
@@ -67,7 +67,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.9.22"
+const VERSION = "0.10.3"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
