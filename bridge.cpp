@@ -2,7 +2,7 @@
 
 #include "llama.h"
 #include "ggml.h"
-#include "grammar-parser.h" // TODO: Investigate about grammars
+// #include "grammar-parser.h" // TODO: Investigate about grammars
 
 #include <string>
 #include <vector>
@@ -1033,7 +1033,7 @@ void * initContext(
     int threads, 
     int gpu, int gpuLayers, 
     int context, int predict,
-    int mirostat, float mirostat_tau, float mirostat_eta,
+    int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p, 
     float repeat_penalty, int repeat_last_n,
     int32_t seed) {

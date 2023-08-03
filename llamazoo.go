@@ -86,7 +86,7 @@ type Options struct {
 	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
 	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
 	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`
-	Mirostat      int     `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
+	Mirostat      uint32  `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
 	MirostatTAU   float32 `long:"mirostat-tau" description:"Mirostat TAU value [ 0.1 by default ]"`
 	MirostatETA   float32 `long:"mirostat-eta" description:"Mirostat ETA value [ 0.1 by default ]"`
 	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.1 by default ]"`

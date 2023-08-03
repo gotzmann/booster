@@ -19,7 +19,7 @@ void * initContext(
 	int threads,
 	int gpu, int gpuLayers,
 	int context, int predict,
-	int mirostat, float mirostat_tau, float mirostat_eta,
+	int32_t mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
 	float repeat_penalty, int repeat_last_n,
 	int32_t seed);
@@ -88,7 +88,7 @@ type Model struct {
 	ContextSize int
 	Predict     int
 
-	Mirostat    int
+	Mirostat    uint32
 	MirostatTAU float32
 	MirostatETA float32
 
@@ -241,7 +241,7 @@ func Init(
 	numa, lowVRAM int, // porblems with CGO bool on MacOS
 	model, preamble, prefix, suffix string,
 	context, predict int,
-	mirostat int, mirostatTAU float32, mirostatETA float32,
+	mirostat uint32, mirostatTAU float32, mirostatETA float32,
 	temp float32, topK int, topP float32,
 	repeatPenalty float32, repeatLastN int,
 	deadlineIn int64,
@@ -296,7 +296,7 @@ func Init(
 			C.int(threads),
 			C.int(gpu), C.int(gpuLayers),
 			C.int(context), C.int(predict),
-			C.int(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
+			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
 			C.float(repeatPenalty), C.int(repeatLastN),
 			C.int32_t(seed))
@@ -420,7 +420,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(threads),
 				C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
 				C.int(model.ContextSize), C.int(model.Predict),
-				C.int(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
+				C.int32_t(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
 				C.int32_t(-1))
