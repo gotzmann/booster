@@ -17,11 +17,12 @@ void * initContext(
 	int idx,
 	char * modelName,
 	int threads,
-	int gpu, int gpuLayers,
+	int gpu1, int gpu2,
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
 	float repeat_penalty, int repeat_last_n,
+	int gqa,
 	int32_t seed);
 int64_t doInference(
 	int idx,
@@ -79,6 +80,8 @@ type Model struct {
 	Name string // public name for humans
 	Path string // path to binary file
 
+	GQA int // gqa == 8 for LLaMA 70B
+
 	Context unsafe.Pointer // *llama.Context
 
 	Preamble string
@@ -119,10 +122,10 @@ type Config struct {
 
 	Sessions string // path to store session files
 
-	Pods      int     // pods count
-	Threads   []int64 // threads count for each pod
-	GPUs      []int64 // GPU number selector
-	GPULayers []int   // how many layers offload to Apple GPU?
+	Pods    int     // pods count
+	Threads []int64 // threads count for each pod
+	GPUs    [][]int // GPU split between pods
+	// GPULayers []int   // how many layers offload to Apple GPU?
 
 	Models []Model
 
@@ -132,13 +135,13 @@ type Config struct {
 }
 
 type Pod struct {
-	idx       int  // pod index
-	isBusy    bool // do pod instance doing some job?
-	isGPU     bool
-	Threads   int64  // how many threads in use
-	GPU       int64  // GPU index
-	GPULayers int64  // how many layers offload to Apple GPU?
-	Model     *Model // model params
+	idx     int  // pod index
+	isBusy  bool // do pod instance doing some job?
+	isGPU   bool
+	Threads int64 // how many threads in use
+	GPUs    []int // GPU split
+	// GPULayers int64  // how many layers offload to Apple GPU?
+	Model *Model // model params
 }
 
 type Job struct {
@@ -237,7 +240,8 @@ func Init(
 	host, port string,
 	zapLog *zap.SugaredLogger,
 	pods int, threads int64,
-	gpu int64, gpuLayers int64,
+	//gpus []int, // gpuLayers int64, // TODO: Use GPU split from config
+	gpu1, gpu2 int,
 	numa, lowVRAM int, // porblems with CGO bool on MacOS
 	model, preamble, prefix, suffix string,
 	context, predict int,
@@ -274,7 +278,7 @@ func Init(
 		MaxThreads += threads
 		Pods[pod] = &Pod{
 			idx:     pod,
-			isGPU:   gpuLayers > 0,
+			isGPU:   gpu1+gpu2 > 0,
 			Threads: threads,
 		}
 
@@ -290,15 +294,28 @@ func Init(
 			C.int(numa),
 			C.int(lowVRAM))
 
+		// TODO: Refactore temp huck supporting only 2 GPUs split
+
+		//gpu1 := 0
+		//gpu2 := 0
+
+		//if len(gpus) > 0 {
+		//	gpu1 = gpus[0]
+		//	if len(gpus) > 1 {
+		//		gpu2 = gpus[1]
+		//	}
+		//}
+
 		ctx := C.initContext(
 			C.int(pod),
 			C.CString(model),
 			C.int(threads),
-			C.int(gpu), C.int(gpuLayers),
+			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // TODO: Support more than 2 GPUs
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
 			C.float(repeatPenalty), C.int(repeatLastN),
+			1, // gqa
 			C.int32_t(seed))
 
 		if ctx == nil {
@@ -307,11 +324,14 @@ func Init(
 		}
 
 		Models[""][pod] = &Model{
-			Path:        model,
-			Context:     ctx,
-			Preamble:    preamble,
-			Prefix:      prefix,
-			Suffix:      suffix,
+			Path:    model,
+			Context: ctx,
+			GQA:     1, // TODO: Support any value from CLI
+
+			Preamble: preamble,
+			Prefix:   prefix,
+			Suffix:   suffix,
+
 			ContextSize: context,
 			Predict:     predict,
 
@@ -342,8 +362,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		os.Exit(0)
 	}
 
-	for conf.Pods != len(conf.GPULayers) {
-		Colorize("\n[magenta][ ERROR ][white] Please fix config! Set number of GPU layers for each pod of total %d\n\n", conf.Pods)
+	for conf.Pods != len(conf.GPUs) {
+		Colorize("\n[magenta][ ERROR ][white] Please fix config! Set GPU split for each pod\n\n")
 		os.Exit(0)
 	}
 
@@ -382,7 +402,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		MaxThreads += threads
 		Pods[pod] = &Pod{
 			idx:     pod,
-			isGPU:   conf.GPULayers[pod] > 0,
+			isGPU:   len(conf.GPUs[pod]) > 0,
 			Threads: threads,
 		}
 
@@ -414,15 +434,29 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(conf.NUMA),
 				C.int(conf.LowVRAM))
 
+			// TODO: Refactore temp huck supporting only 2 GPUs split
+
+			gpu1 := 0
+			gpu2 := 0
+
+			if len(conf.GPUs[pod]) > 0 {
+				gpu1 = conf.GPUs[pod][0]
+				if len(conf.GPUs[pod]) > 1 {
+					gpu2 = conf.GPUs[pod][1]
+				}
+			}
+
 			ctx := C.initContext(
 				C.int(pod),
 				C.CString(path),
 				C.int(threads),
-				C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
+				// C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
+				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int32_t(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
+				C.int(model.GQA),
 				C.int32_t(-1))
 
 			if ctx == nil {
@@ -436,8 +470,10 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			}
 
 			Models[model.ID][pod] = &Model{
-				ID:      model.ID,
-				Name:    model.Name,
+				ID:   model.ID,
+				Name: model.Name,
+				GQA:  model.GQA,
+
 				Path:    model.Path,
 				Context: ctx,
 

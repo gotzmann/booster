@@ -100,7 +100,8 @@ struct gpt_params {
     float   rope_freq_base  = 10000.0f; // RoPE base frequency
     float   rope_freq_scale = 1.0f;     // RoPE frequency scaling factor
     
-    float   tensor_split[LLAMA_MAX_DEVICES] = {0}; // how split tensors should be distributed across GPUs
+    // if LLAMA_CUBLAS defined, LLAMA_MAX_DEVICES = GGML_CUDA_MAX_DEVICES = 16
+    float   tensor_split[16] = {0}; // how split tensors should be distributed across GPUs
 
     // --- sampling parameters
 
@@ -211,15 +212,21 @@ std::string path_session;
 ///// std::tuple<struct llama_model *, struct llama_context *> init_from_gpt_params(int idx) {
 
 // init_context() replaces llama_init_from_gpt_params():
+
 // - it init model first    
 // - than creates context from model
 // - we init globals with those values
 // - finally return context pointer 
+
 struct llama_context * init_context(int idx) {
 
     bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
 
     auto lparams = llama_context_default_params();
+
+    if (isGPU) {
+        lparams.mul_mat_q = true; // FIXME: Experimental, move to config!
+    }
 
     // NB! [lparams] is of type llama_context_params and have no all parameters from bigger gpt_params
     //     [params]  is of type gpt_params and has n_threads parameter
@@ -254,7 +261,10 @@ struct llama_context * init_context(int idx) {
     //    lparams.tensor_split[i] = 0.0f;
     //}
 
-    //lparams.tensor_split[lparams.main_gpu] = 1.0f; // 100% VRAM load for this GPU
+    //lparams.tensor_split[0] = params[idx].tensor_split[0];
+    //lparams.tensor_split[1] = params[idx].tensor_split[1];
+
+    lparams.tensor_split = params[idx].tensor_split;
 
     fprintf(stderr, "== %s: n_ctx = %d\n", __func__, (int) lparams.n_ctx);
     fprintf(stderr, "== %s: n_batch = %d\n", __func__, (int) lparams.n_batch);
@@ -1037,18 +1047,22 @@ void * initContext(
     int idx, 
     char * modelName, 
     int threads, 
-    int gpu, int gpuLayers, 
+    int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p, 
     float repeat_penalty, int repeat_last_n,
+    int gqa,
     int32_t seed) {
     
     ::params[idx].model          = modelName;
     ::params[idx].n_threads      = threads;
+    ::params[idx].n_gqa          = gqa;
 
-    ::params[idx].main_gpu       = gpu;
-    ::params[idx].n_gpu_layers   = gpuLayers;
+    ::params[idx].main_gpu       = 0; // TODO: Main GPU depending on tensor split
+    ::params[idx].n_gpu_layers   = gpu1 + gpu2;
+    ::params[idx].tensor_split[0] = gpu1;
+    ::params[idx].tensor_split[1] = gpu2;
 
     ::params[idx].n_ctx          = context;
     ::params[idx].n_predict      = predict;

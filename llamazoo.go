@@ -67,7 +67,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.10.3"
+const VERSION = "0.11.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -98,8 +98,8 @@ type Options struct {
 	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	Dir           string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
 	Profile       bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
-	GPUs          int64   `long:"gpus" description:"Specify GPU number for each pod when there multiple GPUs available"`
-	GPULayers     int64   `long:"gpu-layers" description:"Enable GPU inference and offload NN layers for chosen GPU"`
+	GPUs          []int64 `long:"gpus" description:"Specify GPU split for each pod when there GPUs (one or more) are available"`
+	GQA           int64   `long:"gqa" description:"Grouped Query Attention (GQA) parameter for 70B model [ should be --gqa=8 ]"`
 	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
 	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
 	NUMA          bool    `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
@@ -107,6 +107,8 @@ type Options struct {
 	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
 	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
 	MaxSessions   int     `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
+
+	// TODO: different RoPE + new sampling algos
 }
 
 var (
@@ -234,7 +236,8 @@ func main() {
 			opts.Host, opts.Port,
 			log,
 			opts.Pods, opts.Threads,
-			opts.GPUs, opts.GPULayers,
+			//opts.GPUs, opts.GPULayers,
+			0, 0, // TODO: Support GPUs from command-line
 			NUMA, LowVRAM,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
