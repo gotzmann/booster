@@ -27,7 +27,7 @@ models:
     id: airoboros-7b
     name: Airoboros 7B
     path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
-    gqa: 0
+    gqa: 1
     preamble:
     prefix: "USER:"
     suffix: "ASSISTANT:"
@@ -46,7 +46,7 @@ models:
     id: wizard-7b
     name: WizardLM 7B
     path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
-    gqa: 0
+    gqa: 1
     preamble:
     prefix: "### Instruction:"
     suffix: "### Response:"
