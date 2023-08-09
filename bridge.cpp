@@ -13,6 +13,11 @@
 #include <unordered_map>
 #include <tuple>
 
+#if !defined (_WIN32)
+#include <stdio.h>
+#include <termios.h>
+#endif
+
 // FIXME ASAP - do not allow longer context when reading session file
 
 // do_inference: PROMPT [ 2386 ] tokens
@@ -174,6 +179,7 @@ struct gpt_params {
     bool embedding         = false; // get only sentence embedding
     bool interactive_first = false; // wait for user input immediately
     bool multiline_input   = false; // reverse the usage of `\`
+    bool simple_io         = false; // improves compatibility with subprocesses and limited consoles
 
     bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
     bool instruct          = false; // instruction mode (used for Alpaca models)
@@ -661,7 +667,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
             // --- out of user input, sample next token
 
-            const int     mirostat        = ::params[idx].mirostat;
+            const int32_t mirostat        = ::params[idx].mirostat;
             const float   mirostat_tau    = ::params[idx].mirostat_tau;
             const float   mirostat_eta    = ::params[idx].mirostat_eta;
 
@@ -679,7 +685,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             //const float   alpha_presence  = ::params.presence_penalty;
             //const float   alpha_frequency = ::params.frequency_penalty;
 
-            //const bool    penalize_nl     = ::params[idx].penalize_nl;
+            ////const bool    penalize_nl     = ::params[idx].penalize_nl;
 
             // optionally save the session on first sample (for faster prompt loading next time)
             //if (!path_session.empty() && need_to_save_session /* && !params.prompt_cache_ro */) {
