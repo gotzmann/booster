@@ -1,11 +1,8 @@
-# --- server settings
+# --- settings
 
 id: "mac-m1-pro"
 host: localhost
 port: 8080
-pods: 3
-threads: [ 1, 8, 4 ]
-gpus: [ [ 50, 50 ], [ 0, 0 ], [ 0, 0 ] ]
 log: llamazoo.log
 deadline: 180
 numa: 0
@@ -13,18 +10,26 @@ lowvram: 0
 sessions: "/home/sessions"
 maxsessions: 100
 
-# --- working modes
+# --- pods
 
-modes:
-  default: airoboros-13b
-  fast: wizardlm-7b
+  -
+    threads: 6
+    gpus: [ 0, 0 ]
+    model: wizard
+    mode:
 
-# --- available models
+  -
+    threads: 1
+    gpus: [ 50, 50 ]
+    model: airoboros
+    mode:
+
+# --- models
 
 models:
 
   - 
-    id: airoboros-7b
+    id: airoboros
     name: Airoboros 7B
     path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
     gqa: 1
@@ -43,7 +48,7 @@ models:
     mirostateta: 0.1      
 
   -
-    id: wizard-7b
+    id: wizard
     name: WizardLM 7B
     path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
     gqa: 1
