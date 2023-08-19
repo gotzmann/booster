@@ -122,7 +122,7 @@ type Config struct {
 
 	Sessions string // path to store session files
 
-	Pods    int     // pods count
+	Pods    []Pod   // pods count
 	Threads []int64 // threads count for each pod
 	GPUs    [][]int // GPU split between pods
 	// GPULayers []int   // how many layers offload to Apple GPU?
@@ -135,13 +135,17 @@ type Config struct {
 }
 
 type Pod struct {
-	idx     int  // pod index
-	isBusy  bool // do pod instance doing some job?
-	isGPU   bool
-	Threads int64 // how many threads in use
-	GPUs    []int // GPU split
-	// GPULayers int64  // how many layers offload to Apple GPU?
-	Model *Model // model params
+	idx int // pod index
+
+	Threads int64  // how many threads in use [ set with config ]
+	GPUs    []int  // GPU split [ set with config ]
+	Model   string // model name [ set with config ]
+	Mode    string // mode [ set with config ]
+
+	isBusy bool // do pod instance doing some job?
+	isGPU  bool // pod doing some math with GPU
+
+	model *Model // model instance for real use
 }
 
 type Job struct {
@@ -192,7 +196,7 @@ var (
 	ctx    *llama.Context
 	params *llama.ModelParams
 
-	DefaultModel string // it's empty string "" for simple CLI mode and some unique key when working with configs
+	//DefaultModel string // it's empty string "" for simple CLI mode and some unique key when working with configs
 
 	// NB! All vars below are int64 to be used as atomic counters
 	MaxThreads     int64 // used for PROD mode // TODO: detect hardware abilities automatically
@@ -211,11 +215,12 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	Pods        []*Pod              // There N pods with some threads within as described in config
-	Modes       map[string]string   // Each unique model might have some special [ mode ] assigned to it
-	Models      map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
-	Sessions    map[string]string   // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
-	TokensCount map[string]int      // Store tokens within each session ID => COUNT to prevent growth over context limit
+	Pods  []*Pod            // There N pods with some threads within as described in config
+	Modes map[string]string // Each unique model might have some special [ mode ] assigned to it
+	//Models      map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
+	Models      []*Model          // Each unique model identified by key has N instances ready to run in pods
+	Sessions    map[string]string // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
+	TokensCount map[string]int    // Store tokens within each session ID => COUNT to prevent growth over context limit
 
 	log      *zap.SugaredLogger
 	deadline int64
@@ -263,13 +268,14 @@ func Init(
 	params.CtxSize = uint32(context)
 	Pods = make([]*Pod, pods)
 	Modes = map[string]string{"default": ""}
-	Models = make(map[string][]*Model)
+	//Models = make(map[string][]*Model)
+	Models = make([]*Model, 1) // TODO: N models
 	SessionPath = sessionPath
 
 	// model from CLI will have empty name by default
-	if _, ok := Models[""]; !ok {
-		Models[""] = make([]*Model, pods)
-	}
+	//if _, ok := Models[""]; !ok {
+	//	Models[""] = make([]*Model, pods)
+	//}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -277,9 +283,16 @@ func Init(
 
 		MaxThreads += threads
 		Pods[pod] = &Pod{
-			idx:     pod,
-			isGPU:   gpu1+gpu2 > 0,
+			idx: pod,
+
+			isBusy: false,
+			isGPU:  gpu1+gpu2 > 0,
+
+			Model: model,
+			Mode:  "",
+
 			Threads: threads,
+			GPUs:    []int{gpu1, gpu2},
 		}
 
 		// Check if file exists to prevent CGO panic
@@ -323,7 +336,7 @@ func Init(
 			os.Exit(0)
 		}
 
-		Models[""][pod] = &Model{
+		Models /*[""]*/ [pod] = &Model{
 			Path:    model,
 			Context: ctx,
 			GQA:     1, // TODO: Support any value from CLI
@@ -357,29 +370,29 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 
 	// -- some validations TODO: move to better place
 
-	if conf.Pods != len(conf.Threads) {
-		Colorize("\n[magenta][ ERROR ][white] Please fix config! Treads array should have numbers for each pod of total %d\n\n", conf.Pods)
-		os.Exit(0)
-	}
+	//if conf.Pods != len(conf.Threads) {
+	//	Colorize("\n[magenta][ ERROR ][white] Please fix config! Treads array should have numbers for each pod of total %d\n\n", conf.Pods)
+	//	os.Exit(0)
+	//}
 
-	for conf.Pods != len(conf.GPUs) {
-		Colorize("\n[magenta][ ERROR ][white] Please fix config! Set GPU split for each pod\n\n")
-		os.Exit(0)
-	}
+	//for conf.Pods != len(conf.GPUs) {
+	//	Colorize("\n[magenta][ ERROR ][white] Please fix config! Set GPU split for each pod\n\n")
+	//	os.Exit(0)
+	//}
 
-	defaultModelSet := false
-	for mode, model := range conf.Modes {
-		if mode == "default" {
-			defaultModelSet = true
-			DefaultModel = model
-		}
-	}
+	//defaultModelSet := false
+	//for mode, model := range conf.Modes {
+	//	if mode == "default" {
+	//		defaultModelSet = true
+	//		DefaultModel = model
+	//	}
+	//}
 
-	if !defaultModelSet {
-		Colorize("\n[magenta][ ERROR ][white] Default model is not set with config [ modes ] section!\n\n")
-		log.Infof("[ERROR] Default model is not set with config [ modes ] section!")
-		os.Exit(0)
-	}
+	//if !defaultModelSet {
+	//	Colorize("\n[magenta][ ERROR ][white] Default model is not set with config [ modes ] section!\n\n")
+	//	log.Infof("[ERROR] Default model is not set with config [ modes ] section!")
+	//	os.Exit(0)
+	//}
 
 	// -- init golbal settings
 
@@ -389,28 +402,45 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	NUMA = conf.NUMA == 1
 	LowVRAM = conf.LowVRAM == 1
 	//DefaultModel = conf.DefaultModel
-	Pods = make([]*Pod, conf.Pods)
-	Modes = conf.Modes // make(map[string]string)
-	Models = make(map[string][]*Model)
-	defaultModelFound := false
+	Pods = make([]*Pod, len(conf.Pods))
+	//Modes = conf.Modes // make(map[string]string)
+	//Models = make(map[string][]*Model)
+	Models = make([]*Model, len(conf.Models))
+	//defaultModelFound := false
 	SessionPath = conf.Sessions
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
-	for pod, threads := range conf.Threads {
+	//for pod, threads := range conf.Threads {
+	for idx, pod := range conf.Pods {
 
-		MaxThreads += threads
-		Pods[pod] = &Pod{
-			idx:     pod,
-			isGPU:   len(conf.GPUs[pod]) > 0,
-			Threads: threads,
+		MaxThreads += pod.Threads
+
+		isGPU := false
+		for _, layers := range pod.GPUs {
+			if layers > 0 {
+				isGPU = true
+			}
+		}
+
+		Pods[idx] = &Pod{
+			idx: idx,
+
+			isBusy: false,
+			isGPU:  isGPU,
+
+			Threads: pod.Threads,
+			GPUs:    pod.GPUs,
+
+			Model: pod.Model,
+			Mode:  pod.Mode,
 		}
 
 		for _, model := range conf.Models {
 
-			if model.ID == DefaultModel {
-				defaultModelFound = true
-			}
+			//if model.ID == DefaultModel {
+			//	defaultModelFound = true
+			//}
 
 			// --- Allow user home dir resolve with tilde ~
 			// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
@@ -439,17 +469,17 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			gpu1 := 0
 			gpu2 := 0
 
-			if len(conf.GPUs[pod]) > 0 {
-				gpu1 = conf.GPUs[pod][0]
-				if len(conf.GPUs[pod]) > 1 {
-					gpu2 = conf.GPUs[pod][1]
+			if len(pod.GPUs) > 0 {
+				gpu1 = pod.GPUs[0]
+				if len(pod.GPUs) > 1 {
+					gpu2 = pod.GPUs[1]
 				}
 			}
 
 			ctx := C.initContext(
-				C.int(pod),
+				C.int(idx),
 				C.CString(path),
-				C.int(threads),
+				C.int(pod.Threads),
 				// C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
 				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),
@@ -465,11 +495,11 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			}
 
 			// Each model might be running an all pods, thus need to have N*M contexts available
-			if _, ok := Models[model.ID]; !ok {
-				Models[model.ID] = make([]*Model, conf.Pods)
-			}
+			//if _, ok := Models[model.ID]; !ok {
+			//	Models[model.ID] = make([]*Model, len(conf.Pods))
+			//}
 
-			Models[model.ID][pod] = &Model{
+			Models /*[model.ID]*/ [idx] = &Model{
 				ID:   model.ID,
 				Name: model.Name,
 				GQA:  model.GQA,
@@ -498,11 +528,11 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		}
 	}
 
-	if !defaultModelFound {
-		Colorize("\n[magenta][ ERROR ][white] Default model file is not found!\n\n")
-		log.Infof("[ERROR] Default model file is not found!")
-		os.Exit(0)
-	}
+	//if !defaultModelFound {
+	//	Colorize("\n[magenta][ ERROR ][white] Default model file is not found!\n\n")
+	//	log.Infof("[ERROR] Default model file is not found!")
+	//	os.Exit(0)
+	//}
 }
 
 // --- init and run Fiber server
@@ -583,18 +613,17 @@ func Engine(app *fiber.App) {
 			//	Jobs[jobID].Model = model
 			//}
 
-			// TODO: replace len(Pods) for defined value
 			var pod *Pod
-			var idx int
-			//for i := 0; i < len(Pods); i++ {
-			for idx, pod = range Pods {
+			//var idx int
+			for idx := range Pods {
+				pod = Pods[idx]
 				if pod.isBusy {
 					continue
 				}
 				pod.isBusy = true
 				// "load" the model into pod
-				model := Jobs[jobID].Model
-				pod.Model = Models[model][idx]
+				//model := Jobs[jobID].Model
+				pod.model = Models /*[model]*/ [idx]
 				break
 			}
 
@@ -663,7 +692,7 @@ func Do(jobID string, pod *Pod) {
 		// -- null the session when near the context limit (allow up to 1/2 of max predict size)
 		// TODO: We need a better (smart) context data handling here
 
-		if (TokensCount[sessionID] + (pod.Model.Predict / 2) + 4) > pod.Model.ContextSize {
+		if (TokensCount[sessionID] + (pod.model.Predict / 2) + 4) > pod.model.ContextSize {
 
 			Sessions[sessionID] = ""
 			TokensCount[sessionID] = 0
@@ -676,11 +705,11 @@ func Do(jobID string, pod *Pod) {
 
 	prompt := Jobs[jobID].Prompt
 	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
-	fullPrompt := pod.Model.Prefix + prompt + pod.Model.Suffix
+	fullPrompt := pod.model.Prefix + prompt + pod.model.Suffix
 
 	if history == "" {
 		// NB! Leading space as expected by LLaMA standard
-		fullPrompt = " " + pod.Model.Preamble + fullPrompt
+		fullPrompt = " " + pod.model.Preamble + fullPrompt
 		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 	} else {
 		//fullPrompt = pod.Model.Prefix + prompt + pod.Model.Suffix
@@ -723,7 +752,7 @@ func Do(jobID string, pod *Pod) {
 	// llama_load_session_file_internal : model hparams didn't match from session file!
 	// do_inference: error: failed to load session file './session.data.bin'
 
-	outputTokenCount := C.doInference(C.int(pod.idx), pod.Model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
+	outputTokenCount := C.doInference(C.int(pod.idx), pod.model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
 	result := C.GoString(C.status(C.CString(jobID)))
 	promptTokenCount := C.getPromptTokenCount(C.CString(jobID))
 
@@ -1025,13 +1054,13 @@ func NewJob(ctx *fiber.Ctx) error {
 		}
 	}
 
-	if payload.Model != "" {
-		if _, ok := Models[payload.Model]; !ok {
-			return ctx.
-				Status(fiber.StatusBadRequest).
-				SendString("Wrong model name!")
-		}
-	}
+	//if payload.Model != "" {
+	//	if _, ok := Models[payload.Model]; !ok {
+	//		return ctx.
+	//			Status(fiber.StatusBadRequest).
+	//			SendString("Wrong model name!")
+	//	}
+	//}
 
 	if _, err := uuid.Parse(payload.ID); err != nil {
 		return ctx.
@@ -1056,19 +1085,19 @@ func NewJob(ctx *fiber.Ctx) error {
 	//			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", params.CtxSize))
 	//	}
 
-	if payload.Model != "" {
-		// FIXME: Refactor ASAP
-		/////if _, ok := Pods[payload.Model]; !ok {
-		/////	return ctx.
-		/////		Status(fiber.StatusBadRequest).
-		/////		SendString(fmt.Sprintf("Model with name '%s' is not found!", payload.Model))
-		/////}
-	} else {
-		payload.Model = DefaultModel
-	}
+	//if payload.Model != "" {
+	// FIXME: Refactor ASAP
+	/////if _, ok := Pods[payload.Model]; !ok {
+	/////	return ctx.
+	/////		Status(fiber.StatusBadRequest).
+	/////		SendString(fmt.Sprintf("Model with name '%s' is not found!", payload.Model))
+	/////}
+	//} else {
+	//	payload.Model = DefaultModel
+	//}
 
 	// FIXME ASAP : Use payload Model and Mode selectors !!!
-	payload.Model = DefaultModel
+	payload.Model = "" // TODO: DefaultModel
 
 	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt, payload.Translate)
 
