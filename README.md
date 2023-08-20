@@ -32,21 +32,21 @@ That's how LLaMAZoo was born.
 
 ## How to Run?
 
-You shold go through three steps:
+You shold go through steps below:
 
-1) Build the server from sources
+1) Build the server from sources [ pure CPU inference as example ]
 
 ```shell
 make clean && make
 ```
 
-2) Download the model
+2) Download the model [ Vicuna 13B v1.3 quantized for Q4KM format as example ]
 
 ```shell
 wget https://huggingface.co/TheBloke/vicuna-13b-v1.3.0-GGML/resolve/main/vicuna-13b-v1.3.0.ggmlv3.q4_K_M.bin
 ```
 
-3) Set config file
+3) Set config file [ config.yaml as example ] 
 
 ```shell
 id: "server"
@@ -81,8 +81,17 @@ models:
     mirostateta: 0.1
 ```    
 
-When all is done, go try it for yourself:
+4) When all is done, go try it for yourself:
 
 ```shell
 ./llama --server --debug
+```
+
+5) Now POST JSON with unique ID and your question to `localhost:8080/jobs`
+
+```shell
+{
+    "id": "5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6",
+    "prompt": "Who are you?"
+}
 ```
