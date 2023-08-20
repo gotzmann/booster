@@ -36,9 +36,50 @@ You shold go through three steps:
 
 1) Build the server from sources
 
+```shell
+make clean && make
+```
+
 2) Download the model
 
+```shell
+wget https://huggingface.co/TheBloke/vicuna-13b-v1.3.0-GGML/resolve/main/vicuna-13b-v1.3.0.ggmlv3.q4_K_M.bin
+```
+
 3) Set config file
+
+```shell
+id: "server"
+host: localhost
+port: 8080
+log: llamazoo.log
+deadline: 180
+
+pods: 
+
+  -
+    threads: 6
+    gpus: [ 0 ]
+    model: vicuna
+    mode: 
+
+models:
+
+  -
+    id: vicuna
+    name: Vicuna v1.3
+    path: /vicuna-13b-v1.3.0.ggmlv3.q4_K_M.bin
+    gqa: 1
+    preamble: "You are a virtual assistant. Please help user."
+    prefix: "\nUSER: "
+    suffix: "\nASSISTANT:"
+    contextsize: 2048
+    predict: 1024
+    temp: 0.1
+    mirostat: 2
+    mirostattau: 0.1
+    mirostateta: 0.1
+```    
 
 When all is done, go try it for yourself:
 
