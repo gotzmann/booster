@@ -81,7 +81,7 @@ models:
     mirostateta: 0.1
 ```    
 
-4) When all is done, go try it for yourself:
+4) When all is done, start the server with debug enabled to be sure it working
 
 ```shell
 ./llama --server --debug
@@ -95,3 +95,5 @@ models:
     "prompt": "Who are you?"
 }
 ```
+
+6) See instructions within `llamazoo.service` file on how to create daemond service out of LLaMAZoo server.
