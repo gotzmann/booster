@@ -1,13 +1,14 @@
-# make clean && CUDA_PATH=/usr/local/cuda-12.0 LLAMA_CUBLAS=1 LLAMA_CUDA_DMMV_X=64 LLAMA_CUDA_DMMV_Y=2 make amd64 && ./llamazoo --server --debug
+# How to remove older files?
+# make clean
 
-# LLAMA_METAL := true
-# LLAMA_NO_ACCELERATE := true
+# How to build for Mac Apple Silicon with Metal GPU support?
+# LLAMA_METAL=1 make
 
-# LLAMA_CUBLAS := ON
-# LLAMA_CUDA_DMMV_X := 64
-# LLAMA_CUDA_DMMV_Y := 2
+# Hot to build for AMD / ARM with CUDA support?
+# LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.0 make
 
-default: llamazoo
+# How to run server with debug output?
+# ./llamazoo --server --debug
 
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot train-text-from-scratch convert-llama2c-to-ggml simple server embd-input-test llama-bench
@@ -15,7 +16,7 @@ BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot train-tex
 # Binaries only useful for tests
 TEST_TARGETS = tests/test-llama-grammar tests/test-grammar-parser tests/test-double-float tests/test-grad0 tests/test-opt tests/test-quantize-fns tests/test-quantize-perf tests/test-sampling tests/test-tokenizer-0
 
-#default: $(BUILD_TARGETS)
+default: llamazoo
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -418,30 +419,9 @@ build-info.h: $(wildcard .git/index) scripts/build-info.sh
 		rm $@.tmp; \
 	fi
 
-# https://github.com/ggerganov/llama.cpp/pull/1827
-# Are you setting LLAMA_CUDA_DMMV_X (default 32) and LLAMA_CUDA_DMMV_Y (default 1) at compile time? 
-# These values determine how much data the GPU processes at once for the computationally most expensive operations 
-# and setting higher values is beneficial on fast GPUs (but make sure they are powers of 2). 
-# On my RTX 3090 setting LLAMA_CUDA_DMMV_X=64 LLAMA_CUDA_DMMV_Y=2 increases performance by 20%.	
-
-# CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
-# build LLaMAZoo for the current platform and all popular others
-llamazoo: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
-	CGO_ENABLED=1 CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
-#	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o llamazoo.exe llamazoo.go 
-#	GOOS=darwin GOARCH=arm64 go build -o llamazoo-darwin-arm64 llamazoo.go
-#	GOOS=linux GOARCH=amd64 go build -o llamazoo-linux-amd64 llamazoo.go 
-#	GOOS=linux GOARCH=arm64 go build -o llamazoo-linux-arm64 llamazoo.go  
-
-arm64: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
-	CGO_ENABLED=1 CGO_CFLAGS_ALLOW='-mf.*' go build llamazoo.go
-#	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o llamazoo.exe llamazoo.go 
-#	GOOS=darwin GOARCH=arm64 go build -o llamazoo-darwin-arm64 llamazoo.go
-#	GOOS=linux GOARCH=amd64 go build -o llamazoo-linux-amd64 llamazoo.go 
-#	GOOS=linux GOARCH=arm64 go build -o llamazoo-linux-arm64 llamazoo.go  
-
-amd64: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
-	CGO_ENABLED=1 go build llamazoo.go
+# build LLaMAZoo for the current platform and all popular others [ ggml-metal.o / ggml-cuda.o ]
+llamazoo: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
+	CGO_ENABLED=1 go build llamazoo.go 
 
 #
 # Tests
