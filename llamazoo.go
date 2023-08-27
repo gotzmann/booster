@@ -1,5 +1,7 @@
 package main
 
+// TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]
+// TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
 // TODO: Option to disable params.use_mmap
@@ -186,21 +188,6 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// --- Do all we need in case of graceful shutdown or unexpected panic
-
-	defer func() {
-		signal.Stop(signalChan)
-		logger.Sync()
-		reason := recover()
-		if reason != nil {
-			Colorize("\n[light_magenta][ ERROR ][white] %s\n\n", reason)
-			log.Error("%s", reason)
-			os.Exit(0)
-		}
-		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo was stopped. Arrivederci!\n\n")
-		log.Info("[STOP] LLaMAZoo was stopped. Arrivederci!")
-	}()
-
 	// --- Listen for OS signals in background
 
 	go func() {
@@ -227,6 +214,21 @@ func main() {
 				log.Infof("[STOP] Wait while [ %d ] requests will be finished...", pending)
 			}
 		}
+	}()
+
+	// --- Do all we need in case of graceful shutdown or unexpected panic
+
+	defer func() {
+		signal.Stop(signalChan)
+		reason := recover()
+		if reason != nil {
+			Colorize("\n[light_magenta][ ERROR ][white] %s\n\n", reason)
+			log.Error("%s", reason)
+			os.Exit(0)
+		}
+		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo was stopped. Arrivederci!\n\n")
+		log.Info("[STOP] LLaMAZoo was stopped. Arrivederci!")
+		logger.Sync()
 	}()
 
 	// if config was read from file and thus has meaningful settings, go init from there. otherwise use CLI settings
