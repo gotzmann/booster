@@ -27,10 +27,10 @@ package main
 #include <stdint.h>
 const char * status(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
-#cgo linux MK_CPPFLAGS = -I. -Icommon -DNDEBUG -DLOG_DISABLE_LOGS -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
-#cgo linux MK_CFLAGS   = -O3 -std=c17   -fPIC -D_GNU_SOURCE -march=native -mtune=native
-#cgo linux MK_CXXFLAGS = -O3 -std=c++17 -fPIC -D_GNU_SOURCE -march=native -mtune=native
-#cgo linux MK_LDFLAGS  = bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L$(CUDA_PATH)/targets/x86_64-linux/lib
+#cgo linux CPPFLAGS = -I. -Icommon -DNDEBUG -DLOG_DISABLE_LOGS -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
+#cgo linux CFLAGS   = -O3 -std=c17   -fPIC -D_GNU_SOURCE -march=native -mtune=native
+#cgo linux CXXFLAGS = -O3 -std=c++17 -fPIC -D_GNU_SOURCE -march=native -mtune=native
+#cgo linux LDFLAGS  = bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L$(CUDA_PATH)/targets/x86_64-linux/lib
 #cgo linux NVCCFLAGS = --forward-unknown-to-host-compiler -use_fast_math -arch=native -DGGML_CUDA_DMMV_X=32 -DGGML_CUDA_MMV_Y=1 -DK_QUANTS_PER_ITERATION=2
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG -mcpu=native
 #cgo darwin CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
