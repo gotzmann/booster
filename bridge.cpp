@@ -20,7 +20,7 @@
 #endif
 
 // TODO: Remove, it should be declared once at llama.h / llama.cpp
-// static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
+static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
 // FIXME ASAP - do not allow longer context when reading session file
 
@@ -572,14 +572,142 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     std::vector<llama_token> embd;
 
-    // do one empty run to warm up the model
-    //{
-    //    const std::vector<llama_token> tmp = { llama_token_bos(), };
-    //    llama_eval(ctx, tmp.data(), tmp.size(), 0, params.n_threads);
-    //    llama_reset_timings(ctx);
-    //}
 
-    //fprintf(stderr, "%s === embd.size() = %d ===\n", __func__, (int) embd.size()); // DEBUG
+
+    //---------------------------------
+    // Tokenize the prompt :
+    //---------------------------------
+
+    std::vector<llama_token> tokens_list;
+    tokens_list = ::llama_tokenize( ctx , text /*params.prompt*/ , true );
+
+    const int max_context_size     = llama_n_ctx( ctx );
+    const int max_tokens_list_size = max_context_size - 4 ;
+
+    if ( (int)tokens_list.size() > max_tokens_list_size )
+    {
+    //    fprintf( stderr , "%s: error: prompt too long (%d tokens, max %d)\n" ,
+    //         __func__ , (int)tokens_list.size() , max_tokens_list_size );
+    //    return 1;
+        return 0; // TODO: Return real errors
+    }
+
+    //---------------------------------
+    // Main prediction loop :
+    //---------------------------------
+
+    // The LLM keeps a contextual cache memory of previous token evaluation.
+    // Usually, once this cache is full, it is required to recompute a compressed context based on previous
+    // tokens (see "infinite text generation via context swapping" in the main example), but in this minimalist
+    // example, we will just stop the loop once this cache is full or once an end of stream is detected.
+
+    while ( llama_get_kv_cache_token_count( ctx ) < max_context_size ) 
+    {
+        //---------------------------------
+        // Evaluate the tokens :
+        //---------------------------------
+
+        if ( llama_eval( ctx , tokens_list.data() , int(tokens_list.size()) , llama_get_kv_cache_token_count( ctx ) , params[idx].n_threads ) )
+        {
+            fprintf( stderr,  "%s : failed to eval\n" , __func__ );
+            //return 1;
+            return 0; // TODO: Return real errors
+        }
+
+        tokens_list.clear();
+
+        //---------------------------------
+        // Select the best prediction :
+        //---------------------------------
+
+        llama_token new_token_id = 0;
+
+        auto logits  = llama_get_logits( ctx );
+        auto n_vocab = llama_n_vocab( ctx ); // the size of the LLM vocabulary (in tokens)
+
+        std::vector<llama_token_data> candidates;
+        candidates.reserve( n_vocab );
+
+        for( llama_token token_id = 0 ; token_id < n_vocab ; token_id++ )
+        {
+            candidates.emplace_back( llama_token_data{ token_id , logits[ token_id ] , 0.0f } );
+        }
+
+        llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
+
+        // Select it using the "Greedy sampling" method :
+        new_token_id = llama_sample_token_greedy( ctx , &candidates_p );
+
+
+        // is it an end of stream ?
+        if ( new_token_id == llama_token_eos(ctx) )
+        {
+            //fprintf(stderr, " [end of text]\n");
+            break;
+        }
+
+        // Print the new token :
+        //printf( "%s" , llama_token_to_str( ctx , new_token_id ) );
+        //fflush( stdout );
+
+        // Push this new token for next evaluation :
+        tokens_list.push_back( new_token_id );
+
+        // GOTZ
+        mutex.lock();
+        //for (auto id : embd) {
+            //printf(" [ %d ] ", id); // DEBUG
+            ////printf("%s", llama_token_to_str(ctx, id));
+            // FIXME: Experimental Code
+            //printf(" [ LOCK ] "); // DEBUG
+            //unique_lock<std::shared_mutex> lk(mutex);
+            
+            // FIXME: id vs embd_inp[id]
+            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, embd_inp[id]);
+            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, new_token_id);
+            
+            //printf(" [ UNLOCK ] "); // DEBUG
+        //}
+        mutex.unlock();
+        fflush(stdout);
+
+    } // wend of main loop
+
+    //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
+    const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
+    const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
+
+    //fprintf(stderr, "%s:        load time = %8.2f ms\n", __func__, llama_t_load_us(ctx) / 1000.0);
+    //fprintf(stderr, "%s:      sample time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_sample_us(ctx), n_sample, 1e-3 * llama_t_sample_us(ctx) / n_sample);
+    //fprintf(stderr, "%s: prompt eval time = %8.2f ms / %5d tokens (%8.2f ms per token)\n", __func__, 1e-3 * llama_t_p_eval_us(ctx), n_p_eval, 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval);
+    //fprintf(stderr, "%s:        eval time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_eval_us(ctx),   n_eval,   1e-3 * llama_t_eval_us(ctx) / n_eval);
+    //fprintf(stderr, "%s:       total time = %8.2f ms\n", __func__, (t_end_us - llama_t_start_us(ctx))/1000.0);
+
+    // TODO: Sum all timings
+    // compute average time needed for processing one token
+    //const int32_t avg_compute_time = //1e-3 * llama_t_sample_us(ctx) / n_sample + 
+                                     //1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
+    //                                 1e-3 * llama_t_eval_us(ctx) / n_eval;
+
+    mutex.lock();
+    promptEvals[jobID] = 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval;
+    timings[jobID] = 1e-3 * llama_t_eval_us(ctx) / n_eval; // avg_compute_time;
+    mutex.unlock();
+
+    return n_p_eval + n_eval;
+
+    // TODO: Do we need to free resources here?
+    //llama_free( ctx );
+    //llama_free_model( model );
+    //llama_backend_free();
+    //return 0;
+
+
+
+
+
+
 
     while (n_remain && 
         n_past < n_ctx &&
@@ -588,41 +716,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         // predict
         if (embd.size() > 0) {  
 
-            // Note: n_ctx - 4 here is to match the logic for commandline prompt handling via
-            // --prompt or --file which uses the same value.
-            //auto max_embd_size = n_ctx - 4;
-
-            // Ensure the input doesn't exceed the context size by truncating embd if necessary.
-            //if ((int) embd.size() > max_embd_size) {
-                //auto skipped_tokens = embd.size() - max_embd_size;
-                //console_set_color(con_st, CONSOLE_COLOR_ERROR);
-                //printf("<<input too long: skipped %zu token%s>>", skipped_tokens, skipped_tokens != 1 ? "s" : "");
-                //console_set_color(con_st, CONSOLE_COLOR_DEFAULT);
-                //fflush(stdout);
-            //    embd.resize(max_embd_size);
-            //}
-
-            // TODO: Investigate about infinite context here
-
-            // infinite text generation via context swapping
-            // if we run out of context:
-            // - take the n_keep first tokens from the original prompt (via n_past)
-            // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
-/*            
-            if (n_past + (int) embd.size() > n_ctx) {
-
-                const int n_left = n_past - ::params[idx].n_keep;
-
-                // always keep the first token - BOS
-                n_past = std::max(1, params[idx].n_keep);
-
-                // insert n_left/2 tokens at the start of embd from last_n_tokens
-                embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left/2 - embd.size(), last_n_tokens.end() - embd.size());
-
-                // stop saving session if we run out of context
-                path_session.clear();
-            } 
-*/
             // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
             if (!isGPU && n_session_consumed < (int) session_tokens.size()) {
 
@@ -650,49 +743,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
 
-            // -- NEW feature
-/*
-            if (ctx_guidance) {
-                int input_size = 0;
-                llama_token* input_buf = NULL;
-
-                if (n_past_guidance < (int) guidance_inp.size()) {
-                    // Guidance context should have the same data with these modifications:
-                    //
-                    // * Replace the initial prompt
-                    // * Shift everything by guidance_offset
-                    embd_guidance = guidance_inp;
-                    if (embd.begin() + original_prompt_len < embd.end()) {
-                        embd_guidance.insert(
-                            embd_guidance.end(),
-                            embd.begin() + original_prompt_len,
-                            embd.end()
-                        );
-                    }
-
-                    input_buf = embd_guidance.data();
-                    input_size = embd_guidance.size();
-                    //fprintf(stderr, "\n---------------------\n");
-                    //for (int i = 0; i < (int) embd_guidance.size(); i++) {
-                        //fprintf(stderr, "%s", llama_token_to_str(ctx, embd_guidance[i]));
-                    //}
-                    //fprintf(stderr, "\n---------------------\n");
-                } else {
-                    input_buf = embd.data();
-                    input_size = embd.size();
-                }
-
-                for (int i = 0; i < input_size; i += params.n_batch) {
-                    int n_eval = std::min(input_size - i, params.n_batch);
-                    if (llama_eval(ctx_guidance, input_buf + i, n_eval, n_past_guidance, params.n_threads)) {
-                        fprintf(stderr, "%s : failed to eval\n", __func__);
-                        return 1;
-                    }
-
-                    n_past_guidance += n_eval;
-                }
-            }
-*/
             // -- new
 
             // NB! The token count of your prompt plus max_tokens cannot exceed the model’s context length. 
@@ -704,9 +754,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 if (n_eval > n_batch) {
                     n_eval = n_batch;
                 }
-
-                //fprintf(stderr, "%s === i = %d | size = %d | batch = %d \n", __func__, (int) i, (int) embd.size(), (int) n_batch); // DEBUG
-                //fprintf(stderr, "%s === n_eval = %d | n_past = %d | n_threads = %d \n", __func__, (int) n_eval, (int) n_past, (int) ::params[idx].n_threads); // DEBUG
 
                 if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
@@ -748,15 +795,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             //const float   typical_p       = ::params.typical_p;
             //const float   alpha_presence  = ::params.presence_penalty;
             //const float   alpha_frequency = ::params.frequency_penalty;
-
             ////const bool    penalize_nl     = ::params[idx].penalize_nl;
-
-            // optionally save the session on first sample (for faster prompt loading next time)
-            //if (!path_session.empty() && need_to_save_session /* && !params.prompt_cache_ro */) {
-            //    need_to_save_session = false;
-            //    fprintf(stderr, "\n%s: optionally save the session on first sample [ %d tokens ] \n", __func__, (int) session_tokens.size());
-            //    llama_save_session_file(ctx, /*path_session*/sessionFile.c_str(), session_tokens.data(), session_tokens.size());
-            //}
 
             llama_token id = 0;
 
@@ -778,11 +817,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 }
 
                 llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
-/* new feature
-                if (ctx_guidance) {
-                    llama_sample_classifier_free_guidance(ctx, &candidates_p, ctx_guidance, params.cfg_scale, params.cfg_smooth_factor);
-                }
-*/
+
                 // --- Apply penalties
 
                 // float nl_logit = logits[llama_token_nl()];
@@ -796,27 +831,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                     last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
                     last_n_repeat, repeat_penalty);
 
-                // https://github.com/ggerganov/llama.cpp/issues/331
-                // Just throwing 2c at past implementations:
-                // OpenAI uses 2 variables for this - they have a presence penalty and a frequency penalty. 
-                // The current implementation of rep pen in llama.cpp is equivalent to a presence penalty, 
-                // adding an additional penalty based on frequency of tokens in the penalty window might be worth exploring too.
-                // KoboldAI instead uses a group of 3 values, what we call "Repetition Penalty", a "Repetition Penalty Slope" and 
-                // a "Repetition Penalty Range". This is the repetition penalty value applied as a sigmoid interpolation between 
-                // the Repetition Penalty value (at the most recent token) and 1.0 (at the end of the Repetition Penalty Range). 
-                // The defaults we use for this are 1.1 rep pen, 1024 range and 0.7 slope which provides what our community 
-                // agrees to be relatively decent results across most models.    
-
-                // TODO: Play with frequency and presence penalties    
-                // llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
-                //     last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
-                //     last_n_repeat, alpha_frequency, alpha_presence);
-
-                // FIXME: Not sure but the code above might be the reason of ALWAYS broken generation like this:
-                // USER: test 888 - напиши сочинение на тему как я провел летние каникулы
-                // ASSISTANT: Конечно, я могу написать сочинение на эту тему! Вот пример:
-                // Как я провел ле
-                
+        
                 // if (!penalize_nl) {
                 //     logits[llama_token_nl()] = nl_logit;
                 // }
@@ -856,17 +871,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
                 last_n_tokens.erase(last_n_tokens.begin());
                 last_n_tokens.push_back(id);
-            }
-
-            // replace end of text token with newline token when in interactive mode
-            ////if (id == llama_token_eos() && params.interactive && !params.instruct) {
-            ////    id = llama_token_newline.front();
-            ////    if (params.antiprompt.size() != 0) {
-            ////        // tokenize and inject first reverse prompt
-            ////        const auto first_antiprompt = ::llama_tokenize(ctx, params.antiprompt.front(), false);
-            ////        embd_inp.insert(embd_inp.end(), first_antiprompt.begin(), first_antiprompt.end());
-            ////    }
-            ////}    
+            } 
 
             // add it to the context
             embd.push_back(id);
@@ -909,107 +914,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         mutex.unlock();
         fflush(stdout);
 
-        // in interactive mode, and not currently processing queued inputs;
-        // check if we should prompt the user for more
-        /* if (params.interactive && (int) embd_inp.size() <= n_consumed) {
-
-            // check for reverse prompt
-            if (params.antiprompt.size()) {
-                std::string last_output;
-                for (auto id : last_n_tokens) {
-                    last_output += llama_token_to_str(ctx, id);
-                }
-
-                is_antiprompt = false;
-                // Check if each of the reverse prompts appears at the end of the output.
-                for (std::string & antiprompt : params.antiprompt) {
-                    if (last_output.find(antiprompt.c_str(), last_output.length() - antiprompt.length(), antiprompt.length()) != std::string::npos) {
-                        is_interacting = true;
-                        is_antiprompt = true;
-                        set_console_color(con_st, CONSOLE_COLOR_USER_INPUT);
-                        fflush(stdout);
-                        break;
-                    }
-                }
-            }
-
-            if (n_past > 0 && is_interacting) {
-                // potentially set color to indicate we are taking user input
-                set_console_color(con_st, CONSOLE_COLOR_USER_INPUT);
-
-                if (params.instruct) {
-                    printf("\n> ");
-                }
-
-                std::string buffer;
-                if (!params.input_prefix.empty()) {
-                    buffer += params.input_prefix;
-                    printf("%s", buffer.c_str());
-                }
-
-                std::string line;
-                bool another_line = true;
-                do {
-#if defined(_WIN32)
-                    std::wstring wline;
-                    if (!std::getline(std::wcin, wline)) {
-                        // input stream is bad or EOF received
-                        return 0;
-                    }
-                    win32_utf8_encode(wline, line);
-#else
-                    if (!std::getline(std::cin, line)) {
-                        // input stream is bad or EOF received
-                        return 0;
-                    }
-#endif
-                    if (!line.empty()) {
-                        if (line.back() == '\\') {
-                            line.pop_back(); // Remove the continue character
-                        } else {
-                            another_line = false;
-                        }
-                        buffer += line + '\n'; // Append the line to the result
-                    }
-                } while (another_line);
-
-                // done taking input, reset color
-                set_console_color(con_st, CONSOLE_COLOR_DEFAULT);
-
-                // Add tokens to embd only if the input buffer is non-empty
-                // Entering a empty line lets the user pass control back
-                if (buffer.length() > 1) {
-                    // append input suffix if any
-                    if (!params.input_suffix.empty()) {
-                        buffer += params.input_suffix;
-                        printf("%s", params.input_suffix.c_str());
-                    }
-
-                    // instruct mode: insert instruction prefix
-                    if (params.instruct && !is_antiprompt) {
-                        n_consumed = embd_inp.size();
-                        embd_inp.insert(embd_inp.end(), inp_pfx.begin(), inp_pfx.end());
-                    }
-
-                    auto line_inp = ::llama_tokenize(ctx, buffer, false);
-                    embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
-
-                    // instruct mode: insert response suffix
-                    if (params.instruct) {
-                        embd_inp.insert(embd_inp.end(), inp_sfx.begin(), inp_sfx.end());
-                    }
-
-                    n_remain -= line_inp.size();
-                }
-
-                input_echo = false; // do not echo this again
-            }
-
-            if (n_past > 0) {
-                is_interacting = false;
-            }
-        } */
-
         // end of text token
         if (!embd.empty() && embd.back() == llama_token_eos(ctx)) {
             ////if (params.instruct) {
@@ -1034,8 +938,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     }
 
     //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
-    const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
-    const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
+    /////const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
+    /////const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
 
     //fprintf(stderr, "%s:        load time = %8.2f ms\n", __func__, llama_t_load_us(ctx) / 1000.0);
     //fprintf(stderr, "%s:      sample time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_sample_us(ctx), n_sample, 1e-3 * llama_t_sample_us(ctx) / n_sample);
@@ -1089,7 +993,6 @@ int64_t timingCPP(const std::string & jobID) {
     return res;
 }
 
-/*
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
     const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
@@ -1103,7 +1006,6 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 
     return std::string(result.data(), result.size());
 }
-*/
 
 extern "C" { // ------------------------------------------------------
 
