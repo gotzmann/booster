@@ -26,7 +26,7 @@ bridge.o: bridge.cpp
 BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot train-text-from-scratch convert-llama2c-to-ggml simple save-load-state server embd-input-test gguf llama-bench baby-llama beam-search speculative tests/test-c.o
 
 # Binaries only useful for tests
-TEST_TARGETS = tests/test-llama-grammar tests/test-grammar-parser tests/test-double-float tests/test-grad0 tests/test-opt tests/test-quantize-fns tests/test-quantize-perf tests/test-sampling tests/test-tokenizer-0-llama tests/test-tokenizer-0-falcon tests/test-tokenizer-1
+TEST_TARGETS = tests/test-llama-grammar tests/test-grammar-parser tests/test-double-float tests/test-grad0 tests/test-opt tests/test-quantize-fns tests/test-quantize-perf tests/test-sampling tests/test-tokenizer-0-llama tests/test-tokenizer-0-falcon tests/test-tokenizer-1-llama
 
 # Code coverage output files
 COV_TARGETS = *.gcno tests/*.gcno *.gcda tests/*.gcda *.gcov tests/*.gcov lcov-report gcovr-report
@@ -73,7 +73,7 @@ test: $(TEST_TARGETS)
 			./$$test_target $(CURDIR)/models/ggml-vocab-llama.gguf; \
 		elif [ "$$test_target" = "tests/test-tokenizer-0-falcon" ]; then \
 			continue; \
-		elif [ "$$test_target" = "tests/test-tokenizer-1" ]; then \
+		elif [ "$$test_target" = "tests/test-tokenizer-1-llama" ]; then \
 			continue; \
 		else \
 			echo "Running test $$test_target..."; \
@@ -432,7 +432,6 @@ ifdef LLAMA_HIPBLAS
 	HIPFLAGS    += -DGGML_CUDA_DMMV_X=$(LLAMA_CUDA_DMMV_X)
 	HIPFLAGS    += -DGGML_CUDA_MMV_Y=$(LLAMA_CUDA_MMV_Y)
 	HIPFLAGS    += -DK_QUANTS_PER_ITERATION=$(LLAMA_CUDA_KQUANTS_ITER)
-	HIPFLAGS    += -DCC_TURING=1000000000
 ifdef LLAMA_CUDA_FORCE_DMMV
 	HIPFLAGS 	+= -DGGML_CUDA_FORCE_DMMV
 endif # LLAMA_CUDA_FORCE_DMMV
@@ -631,7 +630,7 @@ tests/test-tokenizer-0-falcon: tests/test-tokenizer-0-falcon.cpp build-info.h gg
 tests/test-tokenizer-0-llama: tests/test-tokenizer-0-llama.cpp build-info.h ggml.o llama.o common.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
-tests/test-tokenizer-1: tests/test-tokenizer-1.cpp build-info.h ggml.o llama.o common.o $(OBJS)
+tests/test-tokenizer-1-llama: tests/test-tokenizer-1-llama.cpp build-info.h ggml.o llama.o common.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
 
 tests/test-c.o: tests/test-c.c llama.h
