@@ -1,5 +1,6 @@
 package main
 
+// TODO: Remove gqa / n_gqa everywhere
 // TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go

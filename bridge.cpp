@@ -18,6 +18,9 @@
 #include <termios.h>
 #endif
 
+// TODO: Remove, it should be declared once at llama.h / llama.cpp
+static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
+
 // FIXME ASAP - do not allow longer context when reading session file
 
 // do_inference: PROMPT [ 2386 ] tokens
@@ -88,15 +91,18 @@ struct gpt_params {
     // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
     
     int32_t n_batch       = 512; // batch size for prompt processing (must be >=32 to use BLAS)
-    int32_t n_gqa         = 1;   // grouped-query attention factor (TODO: move to hparams)
+    //int32_t n_gqa         = 1;   // grouped-query attention factor (TODO: move to hparams)
 
-    int32_t n_keep        = 0;  // number of tokens to keep from initial prompt [ when context swapping happens ]
-    int32_t n_chunks      = -1; // max number of chunks to process (-1 = unlimited)
-    int32_t n_gpu_layers  = 0;  // number of layers to store in VRAM
-    int32_t main_gpu      = 0;  // the GPU that is used for scratch and small tensors
-    int32_t n_probs       = 0;  // if greater than 0, output the probabilities of top n_probs tokens.
+    int32_t n_keep             = 0;  // number of tokens to keep from initial prompt [ when context swapping happens ]
+    int32_t n_draft            = 16; // number of tokens to draft during speculative decoding
+    int32_t n_chunks           = -1; // max number of chunks to process (-1 = unlimited)
+    int32_t n_gpu_layers       = -1; // number of layers to store in VRAM (-1 - use default)
+    int32_t n_gpu_layers_draft = -1; // number of layers to store in VRAM for the draft model (-1 - use default)
+    int32_t main_gpu           = 0;  // the GPU that is used for scratch and small tensors
+    int32_t n_probs            = 0;  // if greater than 0, output the probabilities of top n_probs tokens.
     
-    float   rms_norm_eps    = LLAMA_DEFAULT_RMS_EPS; // rms norm epsilon
+    //float   rms_norm_eps    = LLAMA_DEFAULT_RMS_EPS; // rms norm epsilon
+    int32_t n_beams         = 0;    // if non-zero then use beam search of given width.
     float   rope_freq_base  = 10000.0f; // RoPE base frequency
     float   rope_freq_scale = 1.0f;     // RoPE frequency scaling factor
     
@@ -155,34 +161,43 @@ struct gpt_params {
 
     // ---
 
-    std::string model  = "";             // model path
-    std::string prompt = "";
+    std::string model             = "";  // model path
+    std::string model_draft       = "";  // draft model for speculative decoding
+    std::string prompt            = "";
     std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
-    std::string input_prefix = "";       // string to prefix user inputs with
-    std::string input_suffix = "";       // string to suffix user inputs with
-    std::string grammar      = "";       // optional BNF-like grammar to constrain sampling
+    std::string input_prefix      = "";  // string to prefix user inputs with
+    std::string input_suffix      = "";  // string to suffix user inputs with
+    std::string grammar           = "";  // optional BNF-like grammar to constrain sampling
+    std::string logdir            = "";  // directory in which to save YAML log files
+
     std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
 
-    std::string lora_adapter = "";  // lora adapter path
-    std::string lora_base = "";     // base model path for the lora adapter
+    std::string lora_adapter = ""; // lora adapter path
+    std::string lora_base = "";    // base model path for the lora adapter
+
+    int  ppl_stride      = 0; // stride for perplexity calculations. If left at 0, the pre-existing approach will be used.
+    int  ppl_output_type = 0; // = 0 -> ppl output is as usual, = 1 -> ppl output is num_tokens, ppl, one per line
 
     bool hellaswag         = false; // compute HellaSwag score over random tasks from datafile supplied in prompt
     size_t hellaswag_tasks = 400;   // number of tasks to use when computing the HellaSwag score
 
     bool low_vram          = false; // if true, reduce VRAM usage at the cost of performance
-    bool mul_mat_q         = false; // if true, use experimental mul_mat_q kernels
+    bool mul_mat_q         = true;  // if true, use mul_mat_q kernels instead of cuBLAS
     bool memory_f16        = true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
     bool interactive       = false; // interactive mode
     bool prompt_cache_all  = false; // save user input and generations to prompt cache
+    bool prompt_cache_ro   = false; // open the prompt cache read-only and do not update it
 
     bool embedding         = false; // get only sentence embedding
+    bool escape            = false; // escape "\n", "\r", "\t", "\'", "\"", and "\\"
     bool interactive_first = false; // wait for user input immediately
     bool multiline_input   = false; // reverse the usage of `\`
     bool simple_io         = false; // improves compatibility with subprocesses and limited consoles
 
     bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
+    bool ignore_eos        = false; // ignore generated EOS tokens
     bool instruct          = false; // instruction mode (used for Alpaca models)
     bool penalize_nl       = true;  // consider newlines as a repeatable token
     bool perplexity        = false; // compute perplexity over the prompt
@@ -254,7 +269,7 @@ struct llama_context * init_context(int idx) {
     // int32_t main_gpu;                        // the GPU that is used for scratch and small tensors
     // float   tensor_split[LLAMA_MAX_DEVICES]; // how to split layers across multiple GPUs
 
-    lparams.n_gqa = params[idx].n_gqa;
+    //lparams.n_gqa = params[idx].n_gqa;
 
     lparams.main_gpu = params[idx].main_gpu;
     lparams.n_gpu_layers = params[idx].n_gpu_layers;
@@ -846,7 +861,11 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             // FIXME: Experimental Code
             //printf(" [ LOCK ] "); // DEBUG
             //unique_lock<std::shared_mutex> lk(mutex);
-            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+            
+            // FIXME: id vs embd_inp[id]
+            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, embd_inp[id]);
+            
             //printf(" [ UNLOCK ] "); // DEBUG
         }
         mutex.unlock();
@@ -954,7 +973,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         } */
 
         // end of text token
-        if (!embd.empty() && embd.back() == llama_token_eos()) {
+        if (!embd.empty() && embd.back() == llama_token_eos(ctx)) {
             ////if (params.instruct) {
             ////    is_interacting = true;
             ////} else {
@@ -1032,6 +1051,20 @@ int64_t timingCPP(const std::string & jobID) {
     return res;
 }
 
+static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
+    std::vector<char> result(8, 0);
+    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+
+    return std::string(result.data(), result.size());
+}
+
 extern "C" { // ------------------------------------------------------
 
 void init(char * sessionPath, bool numa, bool lowVRAM) {
@@ -1054,12 +1087,12 @@ void * initContext(
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p, 
     float repeat_penalty, int repeat_last_n,
-    int gqa,
+    //int gqa,
     int32_t seed) {
     
     ::params[idx].model          = modelName;
     ::params[idx].n_threads      = threads;
-    ::params[idx].n_gqa          = gqa;
+    //::params[idx].n_gqa          = gqa;
 
     ::params[idx].main_gpu       = 0; // TODO: Main GPU depending on tensor split
     ::params[idx].n_gpu_layers   = gpu1 + gpu2;

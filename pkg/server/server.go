@@ -22,7 +22,6 @@ void * initContext(
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
 	float repeat_penalty, int repeat_last_n,
-	int gqa,
 	int32_t seed);
 int64_t doInference(
 	int idx,
@@ -328,7 +327,6 @@ func Init(
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
 			C.float(repeatPenalty), C.int(repeatLastN),
-			1, // gqa
 			C.int32_t(seed))
 
 		if ctx == nil {
@@ -486,7 +484,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int32_t(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
-				C.int(model.GQA),
+				//C.int(model.GQA),
 				C.int32_t(-1))
 
 			if ctx == nil {
