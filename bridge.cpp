@@ -313,71 +313,10 @@ struct llama_context * init_context(int idx) {
     }
 
     contexts[idx] = lctx;
-/*
-    // TODO: Experiment with LORAs
-    if (!params[idx].lora_adapter.empty()) {
-        int err = llama_model_apply_lora_from_file(model,
-                                             params[idx].lora_adapter.c_str(),
-                                             params[idx].lora_base.empty() ? NULL : params[idx].lora_base.c_str(),
-                                             params[idx].n_threads);
-        if (err != 0) {
-            fprintf(stderr, "%s: error: failed to apply lora adapter\n", __func__);
-            llama_free(lctx);
-            llama_free_model(model);
-            // return std::make_tuple(nullptr, nullptr);
-            return NULL;
-        }
-    }
-*/
+
     // return std::make_tuple(model, lctx);
     return lctx;
 }
-
-/*
-// TODO: not great allocating this every time
-std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool add_bos) {
-    // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
-    std::vector<llama_token> res(text.size() + (int)add_bos);
-    int n = llama_tokenize(ctx, text.c_str(), res.data(), res.size(), add_bos);
-    //assert(n >= 0);
-    res.resize(n);
-    return res;
-}
-*/
-/*
-// common.cpp :: llama_tokenize
-std::vector<llama_token> llama_tokenize(
-        struct llama_context * ctx,
-           const std::string & text,
-                        bool   add_bos) {
-    // upper limit for the number of tokens
-    int n_tokens = text.length() + add_bos;
-    std::vector<llama_token> result(n_tokens);
-    n_tokens = llama_tokenize(ctx, text.c_str(), result.data(), result.size(), add_bos);
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_tokenize(ctx, text.c_str(), result.data(), result.size(), add_bos);
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
-    }
-    return result;
-}
-
-// common.cpp :: llama_token_to_piece
-std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token) {
-    std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
-    }
-
-    return std::string(result.data(), result.size());
-}*/
 
 // Process prompt and compute output, return total number of tokens processed
 // idx - index of pod / context / params to do processing within
@@ -448,61 +387,18 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         }
     }
 
-    // FIXME: Expertimental features 
-    
-    // If there active session that going to grow over the context limit soon,
-    // we are better to drop it off and start re-evaluating from the scratch
-
-    //if (session_tokens.size() > (params[idx].n_ctx - params[idx].n_predict)) {
-        // stop saving session if we run out of context
-    //    path_session.clear();
-    //}
-
-    // --- END SESSIONS ---
-
-    // --- OLDER 
-    //bool add_bos = true;
-    //std::vector<llama_token> embd_inp(text.size() + (int)add_bos);
-    //int n = llama_tokenize(ctx, text.c_str(), embd_inp.data(), embd_inp.size(), add_bos);
-    //embd_inp.resize(n);
-
     // tokenize the prompt
     std::vector<llama_token> embd_inp;
+    embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
 
-    // --- NEWER
-    //if (params.interactive_first || params.instruct || !params.prompt.empty() || session_tokens.empty()) {
-    //if (session_tokens.empty()) {
-        //params[idx].prompt = text;
-        // Add a space in front of the first character to match OG llama tokenizer behavior
-        //params[idx].prompt.insert(0, 1, ' ');
-        //embd_inp = ::llama_tokenize(ctx, params[idx].prompt, true);
-        //embd_inp = ::llama_tokenize(ctx, ' ' + text, true);
-        embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
-    //} else {
-    //    embd_inp = session_tokens;
-    //    embd_inp = ::llama_tokenize(ctx, text, true); // No leading space if session continues
-    //}
+    // TODO? Add a space in front of the first character to match OG llama tokenizer behavior
+    // params.prompt.insert(0, 1, ' ');
+
+    // determine newline token
+    // auto llama_token_newline = ::llama_tokenize(ctx, "\n", false);
 
     const int n_ctx = llama_n_ctx(ctx);
     promptTokenCount[jobID] = embd_inp.size();
-
-    //fprintf(stderr, "!!! %s: n_ctx = llama_n_ctx(ctx) = [ %d ] tokens\n", __func__, n_ctx); // DEBUG
-
-    //fprintf(stderr, "%s: N_CTX PARAMS [ %d ] tokens\n", __func__, params[idx].n_ctx);
-    //fprintf(stderr, "%s: N_CTX LLAMAS [ %d ] tokens\n", __func__, n_ctx);
-    //fprintf(stderr, "%s: PROMPT [ %d ] tokens\n", __func__, (int) embd_inp.size());
-    //fprintf(stderr, "%s: SESSION [ %d ] tokens\n", __func__, (int) session_tokens.size());
-
-    //if (embd_inp.size() > (n_ctx - 1)) {
-    //    fprintf(stderr, "%s: ERROR !!! TOKENIZE > N_CTX\n", __func__);
-    //    return 0; // FIXME: We do need to handle the error of extra large input
-    //}
-
-    // FIXME: Expereimenting with long session files and context swap
-
-    // do_inference: attempting to load saved session from './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
-    // llama_load_session_file_internal : token count in session file exceeded capacity! 2154 > 2048
-    // do_inference: error: failed to load session file './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
 
     // FIXME: Process the longer context properly and return some meaningful HTTP code to the front-end
 
@@ -571,15 +467,16 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     int n_remain           = ::params[idx].n_predict;
 
     std::vector<llama_token> embd;
+    std::vector<llama_token> embd_guidance; // TODO: Investigate
 
-
+/*
 
     //---------------------------------
     // Tokenize the prompt :
     //---------------------------------
 
     std::vector<llama_token> tokens_list;
-    tokens_list = ::llama_tokenize( ctx , text /*params.prompt*/ , true );
+    tokens_list = ::llama_tokenize( ctx , text , true );
 
     const int max_context_size     = llama_n_ctx( ctx );
     const int max_tokens_list_size = max_context_size - 4 ;
@@ -656,18 +553,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         // GOTZ
         mutex.lock();
         //for (auto id : embd) {
-            //printf(" [ %d ] ", id); // DEBUG
-            ////printf("%s", llama_token_to_str(ctx, id));
-            // FIXME: Experimental Code
-            //printf(" [ LOCK ] "); // DEBUG
-            //unique_lock<std::shared_mutex> lk(mutex);
-            
-            // FIXME: id vs embd_inp[id]
-            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
-            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, embd_inp[id]);
             jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, new_token_id);
-            
-            //printf(" [ UNLOCK ] "); // DEBUG
         //}
         mutex.unlock();
         fflush(stdout);
@@ -678,18 +564,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
     const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
 
-    //fprintf(stderr, "%s:        load time = %8.2f ms\n", __func__, llama_t_load_us(ctx) / 1000.0);
-    //fprintf(stderr, "%s:      sample time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_sample_us(ctx), n_sample, 1e-3 * llama_t_sample_us(ctx) / n_sample);
-    //fprintf(stderr, "%s: prompt eval time = %8.2f ms / %5d tokens (%8.2f ms per token)\n", __func__, 1e-3 * llama_t_p_eval_us(ctx), n_p_eval, 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval);
-    //fprintf(stderr, "%s:        eval time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_eval_us(ctx),   n_eval,   1e-3 * llama_t_eval_us(ctx) / n_eval);
-    //fprintf(stderr, "%s:       total time = %8.2f ms\n", __func__, (t_end_us - llama_t_start_us(ctx))/1000.0);
-
-    // TODO: Sum all timings
-    // compute average time needed for processing one token
-    //const int32_t avg_compute_time = //1e-3 * llama_t_sample_us(ctx) / n_sample + 
-                                     //1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
-    //                                 1e-3 * llama_t_eval_us(ctx) / n_eval;
-
     mutex.lock();
     promptEvals[jobID] = 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval;
     timings[jobID] = 1e-3 * llama_t_eval_us(ctx) / n_eval; // avg_compute_time;
@@ -697,20 +571,11 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
     return n_p_eval + n_eval;
 
-    // TODO: Do we need to free resources here?
-    //llama_free( ctx );
-    //llama_free_model( model );
-    //llama_backend_free();
-    //return 0;
-
-
-
-
-
+*/
 
 
     while (n_remain && 
-        n_past < n_ctx &&
+        n_past < (n_ctx - 4) &&
         !stopInferenceFlags[idx]) { 
 
         // predict
@@ -743,10 +608,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
 
-            // -- new
-
-            // NB! The token count of your prompt plus max_tokens cannot exceed the model’s context length. 
-            // Most models have a context length of 2048 tokens
+            // if (ctx_guidance) { ... } // TODO: Investigate
 
             for (int i = 0; i < (int) embd.size(); i += n_batch) {
 
@@ -770,7 +632,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         }
 
         embd.clear();
-        // embd_guidance.clear(); // -- new feature
+        //embd_guidance.clear(); // -- new feature
 
         //fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
 
@@ -778,18 +640,16 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
             // --- out of user input, sample next token
 
-            const int32_t mirostat        = ::params[idx].mirostat;
-            const float   mirostat_tau    = ::params[idx].mirostat_tau;
-            const float   mirostat_eta    = ::params[idx].mirostat_eta;
-
             const float   temp            = ::params[idx].temp;
             const int32_t top_k           = ::params[idx].top_k <= 0 ? llama_n_vocab(ctx) : ::params[idx].top_k;
             const float   top_p           = ::params[idx].top_p;
 
+            const int32_t mirostat        = ::params[idx].mirostat;
+            const float   mirostat_tau    = ::params[idx].mirostat_tau;
+            const float   mirostat_eta    = ::params[idx].mirostat_eta;
+
             const float   repeat_penalty  = ::params[idx].repeat_penalty;
             const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
-
-            //fprintf(stderr, "%s !!! repeat_last_n = %d \n", __func__, (int) repeat_last_n); // DEBUG
 
             //const float   tfs_z           = ::params.tfs_z;
             //const float   typical_p       = ::params.typical_p;
@@ -818,56 +678,57 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
                 llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
 
+                // if (ctx_guidance) {
+                //     llama_sample_classifier_free_guidance(ctx, &candidates_p, ctx_guidance, params.cfg_scale);
+                // }
+
                 // --- Apply penalties
 
-                // float nl_logit = logits[llama_token_nl()];
+                float nl_logit = logits[llama_token_nl(ctx)];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
 
-                //fprintf(stderr, "%s !!! last_n_repeat = %d \n", __func__, (int) last_n_repeat); // DEBUG
-                
-                // For positive logits it divided by penalty, for negative multiplied
-                // https://github.com/huggingface/transformers/pull/2303/files
                 llama_sample_repetition_penalty(ctx, &candidates_p,
                     last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
                     last_n_repeat, repeat_penalty);
+                //llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
+                //    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
+                //    last_n_repeat, alpha_frequency, alpha_presence);
+                //if (!penalize_nl) {
+                //    logits[llama_token_nl()] = nl_logit;
+                //}
 
-        
-                // if (!penalize_nl) {
-                //     logits[llama_token_nl()] = nl_logit;
-                // }
+                //if (grammar != NULL) {
+                //    llama_sample_grammar(ctx, &candidates_p, grammar);
+                //}
 
-                ////if (temp <= 0) {
-                ////    printf("[GREEDY-SAMPLING]");
-                ////    // Greedy sampling
-                ////    id = llama_sample_token_greedy(ctx, &candidates_p);
-                ////} else {
-                    /* if (mirostat == 1) {
-                    
-                        //printf("[MIROSTAT-V1]");
+                //if (temp <= 0) {
+                    // Greedy sampling
+                //    id = llama_sample_token_greedy(ctx, &candidates_p);
+                //} else {
+                    if (mirostat == 1) {
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         const int mirostat_m = 100;
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat(ctx, &candidates_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
-                    
-                    } else */ if (mirostat == 2) {
-                            
-                        //printf("[MIROSTAT-V2]");
+                    } else if (mirostat == 2) {
                         static float mirostat_mu = 2.0f * mirostat_tau;
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat_v2(ctx, &candidates_p, mirostat_tau, mirostat_eta, &mirostat_mu);
-
-                    } else { // --- Temperature sampling
-
-                        //printf("[TEMP-SAMPLING]");
+                    } else {
+                        // Temperature sampling
                         llama_sample_top_k(ctx, &candidates_p, top_k, 1);
-                        ////llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
-                        ////llama_sample_typical(ctx, &candidates_p, typical_p, 1);
+                        //llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
+                        //llama_sample_typical(ctx, &candidates_p, typical_p, 1);
                         llama_sample_top_p(ctx, &candidates_p, top_p, 1);
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token(ctx, &candidates_p);
                     }
-                ////}
+                //}
                 // printf("`%d`", candidates_p.size);
+
+                //if (grammar != NULL) {
+                //    llama_grammar_accept_token(ctx, grammar, id);
+                //}
 
                 last_n_tokens.erase(last_n_tokens.begin());
                 last_n_tokens.push_back(id);
@@ -875,9 +736,6 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
             // add it to the context
             embd.push_back(id);
-
-            // echo this to console
-            ////input_echo = true;
 
             // decrement remaining sampling budget
             --n_remain;
@@ -890,7 +748,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
                 last_n_tokens.erase(last_n_tokens.begin());
                 last_n_tokens.push_back(embd_inp[n_consumed]);
                 ++n_consumed;
-                if ((int) embd.size() >= ::params[idx].n_batch) {
+                if ((int) embd.size() >= n_batch) {
                     break;
                 }
             }
@@ -898,48 +756,24 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
         mutex.lock();
         for (auto id : embd) {
-            //printf(" [ %d ] ", id); // DEBUG
-            ////printf("%s", llama_token_to_str(ctx, id));
-            // FIXME: Experimental Code
-            //printf(" [ LOCK ] "); // DEBUG
-            //unique_lock<std::shared_mutex> lk(mutex);
-            
-            // FIXME: id vs embd_inp[id]
-            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
-            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, embd_inp[id]);
-            jobs[jobID] = jobs[jobID] + llama_token_to_piece(ctx, id);
-            
-            //printf(" [ UNLOCK ] "); // DEBUG
+            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
         }
         mutex.unlock();
-        fflush(stdout);
 
         // end of text token
         if (!embd.empty() && embd.back() == llama_token_eos(ctx)) {
-            ////if (params.instruct) {
-            ////    is_interacting = true;
-            ////} else {
-                // TODO: Some handler / special token for this case?
-                //fprintf(stderr, " [END]\n");
                 break;
-            ////}
         }
-
-        // In interactive mode, respect the maximum number of tokens and drop back to user input when reached.
-        ////if (params.interactive && n_remain <= 0 && params.n_predict != -1) {
-        ////    n_remain = params.n_predict;
-        ////    is_interacting = true;
-        ////}
     }
 
-    if (!isGPU && !sessionFile.empty() /* && params.prompt_cache_all && !params.prompt_cache_ro */) {
-        fprintf(stderr, "\n%s: saving final output [ %d tokens ] to session file '%s'\n", __func__, (int) session_tokens.size(), /*path_session*/sessionFile.c_str());
-        llama_save_session_file(ctx, /*path_session*/sessionFile.c_str(), session_tokens.data(), session_tokens.size());
+    if (!isGPU && !sessionFile.empty()) {
+        fprintf(stderr, "\n%s: saving final output [ %d tokens ] to session file '%s'\n", __func__, (int) session_tokens.size(), sessionFile.c_str());
+        llama_save_session_file(ctx, sessionFile.c_str(), session_tokens.data(), session_tokens.size());
     }
 
     //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
-    /////const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
-    /////const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
+    const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
+    const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
 
     //fprintf(stderr, "%s:        load time = %8.2f ms\n", __func__, llama_t_load_us(ctx) / 1000.0);
     //fprintf(stderr, "%s:      sample time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_sample_us(ctx), n_sample, 1e-3 * llama_t_sample_us(ctx) / n_sample);
