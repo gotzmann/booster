@@ -1,5 +1,5 @@
 # How to remove older files and build fresh executable?
-# make clean && make <platform>
+# make clean && LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.2 make <platform>
 
 # How to run server with debug output?
 # ./llamazoo --server --debug
@@ -11,8 +11,6 @@ llamazoo: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 # How to build for GPU platrorm with CUDA support?
-cuda: LLAMA_CUBLAS=1
-cuda: CUDA_PATH=/usr/local/cuda-12.2
 cuda: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go	
 
