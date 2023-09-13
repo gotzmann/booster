@@ -18,24 +18,6 @@ package main
 // Perplexity for all models https://github.com/ggerganov/llama.cpp/discussions/406
 // GPTQ vs RTN Perplexity https://github.com/qwopqwop200/GPTQ-for-LLaMa
 
-// https://kofo.dev/build-tags-in-golang
-
-// invalid flag in #cgo CFLAGS: -mfma -mf16c
-// argument unused during compilation: -mavx -mavx2  -msse3
-
-// find / -name vector 2>/dev/null
-
-// void * initFromParams(char * modelName, int threads);
-// void doInference(void * ctx, char * jobID, char * prompt);
-// const char * status(char * jobID);
-
-// #cgo LDFLAGS: bridge.o ggml.o llama.o -lstdc++ -framework Accelerate
-// cgo darwin LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
-
-// #cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/l>
-
-// #cgo linux LDFLAGS: bridge.o ggml.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm
-
 /*
 #include <stdlib.h>
 #include <stdint.h>
