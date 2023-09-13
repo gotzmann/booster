@@ -1,24 +1,20 @@
-# How to remove older files?
-# make clean
-
-# How to build for Mac Apple Silicon with Metal GPU support?
-# LLAMA_METAL=1 make
-
-# Hot to build for AMD / ARM with CUDA support?
-# LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.0 make
+# How to remove older files and build fresh executable?
+# make clean && make <platform>
 
 # How to run server with debug output?
 # ./llamazoo --server --debug
 
 default: llamazoo
 
-# build LLaMAZoo for the current platform and all popular others [ ggml-metal.o / ggml-cuda.o ]
 llamazoo: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
+# Hot to build for AMD / ARM with CUDA support?
+# LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.0 make
 cuda: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
-	LLAMA_CUBLAS=1 CGO_ENABLED=1 go build llamazoo.go	
+	LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.0 CGO_ENABLED=1 go build llamazoo.go	
 
+# How to build for Mac Apple Silicon with Metal GPU support?
 mac: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 

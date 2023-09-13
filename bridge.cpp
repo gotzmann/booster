@@ -684,7 +684,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
                 // --- Apply penalties
 
-                float nl_logit = logits[llama_token_nl(ctx)];
+                //float nl_logit = logits[llama_token_nl(ctx)];
                 auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
 
                 llama_sample_repetition_penalty(ctx, &candidates_p,
