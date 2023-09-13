@@ -1,5 +1,6 @@
 // Various helper functions and utilities
 
+#include "common.h"
 #include "llama.h"
 #include "ggml.h"
 // #include "grammar-parser.h" // TODO: Investigate about grammars
@@ -19,7 +20,7 @@
 #endif
 
 // TODO: Remove, it should be declared once at llama.h / llama.cpp
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
+// static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
 // FIXME ASAP - do not allow longer context when reading session file
 
@@ -79,7 +80,7 @@ void show() {
     freopen(TTY_DEVICE, "w", stdout);
     freopen(TTY_DEVICE, "w", stderr);
 }
-
+/*
 struct gpt_params {
 
     uint32_t seed         = -1;   // RNG seed
@@ -207,7 +208,7 @@ struct gpt_params {
     bool numa              = false; // attempt optimizations that help on some NUMA systems
     bool export_cgraph     = false; // export the computation graph
     bool verbose_prompt    = false; // print prompt tokens before generation
-};
+};*/
 
 // --- Global params for all pods. Do anyone needs more than 8 pods per machine?
 
@@ -332,6 +333,7 @@ struct llama_context * init_context(int idx) {
     return lctx;
 }
 
+/*
 // TODO: not great allocating this every time
 std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool add_bos) {
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
@@ -341,6 +343,41 @@ std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::s
     res.resize(n);
     return res;
 }
+*/
+/*
+// common.cpp :: llama_tokenize
+std::vector<llama_token> llama_tokenize(
+        struct llama_context * ctx,
+           const std::string & text,
+                        bool   add_bos) {
+    // upper limit for the number of tokens
+    int n_tokens = text.length() + add_bos;
+    std::vector<llama_token> result(n_tokens);
+    n_tokens = llama_tokenize(ctx, text.c_str(), result.data(), result.size(), add_bos);
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_tokenize(ctx, text.c_str(), result.data(), result.size(), add_bos);
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+    return result;
+}
+
+// common.cpp :: llama_token_to_piece
+std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token) {
+    std::vector<char> result(8, 0);
+    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+
+    return std::string(result.data(), result.size());
+}*/
 
 // Process prompt and compute output, return total number of tokens processed
 // idx - index of pod / context / params to do processing within
@@ -864,7 +901,8 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             
             // FIXME: id vs embd_inp[id]
             //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
-            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, embd_inp[id]);
+            //jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, embd_inp[id]);
+            jobs[jobID] = jobs[jobID] + llama_token_to_piece(ctx, id);
             
             //printf(" [ UNLOCK ] "); // DEBUG
         }
@@ -1051,6 +1089,7 @@ int64_t timingCPP(const std::string & jobID) {
     return res;
 }
 
+/*
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
     const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
@@ -1064,6 +1103,7 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 
     return std::string(result.data(), result.size());
 }
+*/
 
 extern "C" { // ------------------------------------------------------
 

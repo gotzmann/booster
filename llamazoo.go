@@ -42,11 +42,11 @@ package main
 const char * status(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 #cgo linux CFLAGS:   -I. -O3 -fPIC -pthread -std=c17
-#cgo linux CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17
-#cgo linux LDFLAGS: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
+#cgo linux CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17
+#cgo linux LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG -mcpu=native
-#cgo darwin CXXFLAGS: -I. -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
-#cgo darwin LDFLAGS: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
+#cgo darwin CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
+#cgo darwin LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 */
 import "C"
 
@@ -70,7 +70,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.12.0"
+const VERSION = "0.13.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -101,14 +101,14 @@ type Options struct {
 	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	Dir           string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
 	Profile       bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
-	GQA           int64   `long:"gqa" description:"Grouped Query Attention (GQA) parameter for 70B model [ should be --gqa=8 ]"`
-	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
-	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
-	NUMA          bool    `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
-	LowVRAM       bool    `long:"low-vram" description:"Reduces VRAM usage at the cost of performance"`
-	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
-	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
-	MaxSessions   int     `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
+	// GQA           int64   `long:"gqa" description:"Grouped Query Attention (GQA) parameter for 70B model [ should be --gqa=8 ]"`
+	UseAVX      bool   `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
+	UseNEON     bool   `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
+	NUMA        bool   `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
+	LowVRAM     bool   `long:"low-vram" description:"Reduces VRAM usage at the cost of performance"`
+	Ignore      bool   `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
+	Sessions    string `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
+	MaxSessions int    `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
 
 	// Pods []Pod   `long:"pods" description:"Maximum pods of parallel execution allowed in Server mode [ obsolete ]"`
 

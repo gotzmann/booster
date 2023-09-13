@@ -13,10 +13,10 @@
 default: llamazoo
 
 # build LLaMAZoo for the current platform and all popular others [ ggml-metal.o / ggml-cuda.o ]
-llamazoo: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
+llamazoo: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
-mac: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
+mac: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 bridge.o: bridge.cpp
