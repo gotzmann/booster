@@ -4,6 +4,8 @@
 # How to run server with debug output?
 # ./llamazoo --server --debug
 
+# nvcc --list-gpu-arch
+
 default: llamazoo
 
 # How to build for regular platform with just CPU support
@@ -361,7 +363,7 @@ endif #LLAMA_CUDA_NVCC
 ifdef CUDA_DOCKER_ARCH
 	NVCCFLAGS += -Wno-deprecated-gpu-targets -arch=$(CUDA_DOCKER_ARCH)
 else
-	NVCCFLAGS += -arch=native
+	NVCCFLAGS += -arch=all
 endif # CUDA_DOCKER_ARCH
 ifdef LLAMA_CUDA_FORCE_DMMV
 	NVCCFLAGS += -DGGML_CUDA_FORCE_DMMV
