@@ -17,7 +17,7 @@ llamazoo: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 cuda: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
-	CGO_ENABLED=1 go build llamazoo.go	
+	LLAMA_CUBLAS=1 CGO_ENABLED=1 go build llamazoo.go	
 
 mac: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
