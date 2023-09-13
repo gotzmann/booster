@@ -5,6 +5,8 @@
 # ./llamazoo --server --debug
 
 # nvcc --list-gpu-arch
+# https://developer.nvidia.com/cuda-gpus
+# NVCCFLAGS += -arch=sm_86
 
 default: llamazoo
 
@@ -363,7 +365,7 @@ endif #LLAMA_CUDA_NVCC
 ifdef CUDA_DOCKER_ARCH
 	NVCCFLAGS += -Wno-deprecated-gpu-targets -arch=$(CUDA_DOCKER_ARCH)
 else
-	NVCCFLAGS += -arch=all
+	NVCCFLAGS += -arch=sm_86
 endif # CUDA_DOCKER_ARCH
 ifdef LLAMA_CUDA_FORCE_DMMV
 	NVCCFLAGS += -DGGML_CUDA_FORCE_DMMV
