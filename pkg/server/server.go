@@ -79,8 +79,6 @@ type Model struct {
 	Name string // public name for humans
 	Path string // path to binary file
 
-	GQA int // gqa == 8 for LLaMA 70B
-
 	Context unsafe.Pointer // *llama.Context
 
 	Preamble string
@@ -337,7 +335,6 @@ func Init(
 		Models /*[""]*/ [pod] = &Model{
 			Path:    model,
 			Context: ctx,
-			GQA:     1, // TODO: Support any value from CLI
 
 			Preamble: preamble,
 			Prefix:   prefix,
@@ -484,7 +481,6 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int32_t(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
-				//C.int(model.GQA),
 				C.int32_t(-1))
 
 			if ctx == nil {
@@ -497,10 +493,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			//	Models[model.ID] = make([]*Model, len(conf.Pods))
 			//}
 
-			Models /*[model.ID]*/ [idx] = &Model{
+			Models[idx] = &Model{
 				ID:   model.ID,
 				Name: model.Name,
-				GQA:  model.GQA,
 
 				Path:    model.Path,
 				Context: ctx,

@@ -69,7 +69,6 @@ models:
     id: vicuna
     name: Vicuna v1.3
     path: /vicuna-13b-v1.3.0.ggmlv3.q4_K_M.bin
-    gqa: 1
     preamble: "You are a virtual assistant. Please help user."
     prefix: "\nUSER: "
     suffix: "\nASSISTANT:"

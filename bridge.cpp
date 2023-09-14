@@ -268,8 +268,6 @@ struct llama_context * init_context(int idx) {
     // int32_t main_gpu;                        // the GPU that is used for scratch and small tensors
     // float   tensor_split[LLAMA_MAX_DEVICES]; // how to split layers across multiple GPUs
 
-    //lparams.n_gqa = params[idx].n_gqa;
-
     lparams.main_gpu = params[idx].main_gpu;
     lparams.n_gpu_layers = params[idx].n_gpu_layers;
 
@@ -738,12 +736,10 @@ void * initContext(
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p, 
     float repeat_penalty, int repeat_last_n,
-    //int gqa,
     int32_t seed) {
     
     ::params[idx].model          = modelName;
     ::params[idx].n_threads      = threads;
-    //::params[idx].n_gqa          = gqa;
 
     ::params[idx].main_gpu       = 0; // TODO: Main GPU depending on tensor split
     ::params[idx].n_gpu_layers   = gpu1 + gpu2;
