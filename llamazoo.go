@@ -30,6 +30,8 @@ package main
 // CXXFLAGS: -I. -Icommon -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include  -O3 -std=c++17 -fPIC -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -Wcast-qual -Wno-unused-function -Wno-multichar -Wno-format-truncation -Wno-array-bounds -pthread -march=native -mtune=native
 // LDFLAGS:  -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
 
+// #cgo darwin LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
+
 /*
 #include <stdlib.h>
 #include <stdint.h>
@@ -37,10 +39,10 @@ const char * status(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 #cgo linux CFLAGS:   -std=c17   -O3 -I.           -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include
 #cgo linux CXXFLAGS: -std=c++17 -O3 -I. -Icommon  -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include
-#cgo linux LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
+#cgo linux LDFLAGS: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG -mcpu=native
 #cgo darwin CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
-#cgo darwin LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
+#cgo darwin LDFLAGS: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 */
 import "C"
 

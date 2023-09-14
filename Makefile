@@ -11,15 +11,15 @@
 default: llamazoo
 
 # How to build for regular platform with just CPU support
-llamazoo: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
+llamazoo: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 # How to build for GPU platrorm with CUDA support?
-cuda: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
+cuda: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go	
 
 # How to build for Apple Silicon with CPU + Metal support?
-mac: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
+mac: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 bridge.o: bridge.cpp

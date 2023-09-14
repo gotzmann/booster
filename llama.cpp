@@ -13,9 +13,9 @@
 #ifdef GGML_USE_METAL
 #  include "ggml-metal.h"
 #endif
-#ifdef GGML_USE_MPI
-#  include "ggml-mpi.h"
-#endif
+//#ifdef GGML_USE_MPI
+//#  include "ggml-mpi.h"
+//#endif
 #ifdef GGML_USE_K_QUANTS
 #  ifndef QK_K
 #    ifdef GGML_QKK_64

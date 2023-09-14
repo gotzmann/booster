@@ -488,7 +488,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int32_t(-1))
 
 			if ctx == nil {
-				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model %s\n\n", model.ID)
+				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model [ %s ]\n\n", model.ID)
 				os.Exit(0)
 			}
 
@@ -706,8 +706,9 @@ func Do(jobID string, pod *Pod) {
 	fullPrompt := pod.model.Prefix + prompt + pod.model.Suffix
 
 	if history == "" {
+		// FIXME: GGUF inserts real BOS now
 		// NB! Leading space as expected by LLaMA standard
-		fullPrompt = " " + pod.model.Preamble + fullPrompt
+		fullPrompt = /*" " +*/ pod.model.Preamble + fullPrompt
 		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 	} else {
 		//fullPrompt = pod.Model.Prefix + prompt + pod.Model.Suffix
@@ -758,6 +759,11 @@ func Do(jobID string, pod *Pod) {
 	//Colorize("\n=== FULL PROMPT ===\n%s\n", fullPrompt)
 	//Colorize("\n=== RESULT ===\n%s\n", result)
 
+	// LLaMA(cpp) tokenizer might add leading space
+	if len(result) > 0 && len(fullPrompt) > 0 && fullPrompt[0] != ' ' && result[0] == ' ' {
+		result = result[1:]
+	}
+
 	// Save exact result as history for future session work if storage enabled
 	if sessionID != "" {
 		mu.Lock() // --
@@ -766,11 +772,23 @@ func Do(jobID string, pod *Pod) {
 		mu.Unlock() // --
 	}
 
-	if strings.HasPrefix(result, fullPrompt) {
-		result = result[len(fullPrompt):]
-	}
-	result = strings.Trim(result, "\n ")
+	//if strings.HasPrefix(result, fullPrompt) {
+	//	result = result[len(fullPrompt):]
+	//}
+	//result = strings.Trim(result, "\n ")
 	//Colorize("\n=== RESULT AFTER ===\n%s\n", result)
+
+	// NB! Do show nothing if output is shorter than the whole history before
+	if len(result) <= len(fullPrompt) {
+		//mt.Printf("\n===> ZEROING")
+		result = ""
+	} else {
+		result = result[len(fullPrompt):]
+		result = strings.Trim(result, "\n ")
+	}
+
+	//fmt.Printf("\n\nRESULT: [[[%s]]]", result)
+	//fmt.Printf("\n\nPROMPT: [[[%s]]]", fullPrompt)
 
 	now = time.Now().UnixMilli()
 	promptEval := int64(C.promptEval(C.CString(jobID)))
@@ -1215,14 +1233,25 @@ func GetJob(ctx *fiber.Ctx) error {
 
 	if status == "processing" {
 		output = C.GoString(C.status(C.CString(jobID)))
+
+		// LLaMA(cpp) tokenizer might add leading space
+		if len(output) > 0 && len(fullPrompt) > 0 && fullPrompt[0] != ' ' && output[0] == ' ' {
+			output = output[1:]
+		}
+
+		//fmt.Printf("\n\nOUTPUT: [[[%s]]]", output)
+		//fmt.Printf("\n\nPROMPT: [[[%s]]]", fullPrompt)
+
 		// NB! Do show nothing if output is shorter than the whole history before
-		if len(output) < len(fullPrompt) {
+		if len(output) <= len(fullPrompt) {
 			output = ""
-			// NB! Cut the history even if prompt is not 100% equal to history
-		} else /* if strings.HasPrefix(output, fullPrompt) */ {
+		} else {
 			output = output[len(fullPrompt):]
 			output = strings.Trim(output, "\n ")
 		}
+
+		//fmt.Printf("\n\nOUTPUT: [[[%s]]]", output)
+		//fmt.Printf("\n\nPROMPT: [[[%s]]]", fullPrompt)
 	}
 
 	return ctx.JSON(fiber.Map{

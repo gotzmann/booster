@@ -1,15 +1,13 @@
 // Various helper functions and utilities
 
-#include "common.h"
+//#include "common.h"
 #include "llama.h"
 #include "ggml.h"
-// #include "grammar-parser.h" // TODO: Investigate about grammars
 
 #include <string>
 #include <vector>
 #include <random>
 #include <thread>
-//#include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
 #include <tuple>
@@ -19,8 +17,147 @@
 #include <termios.h>
 #endif
 
-// TODO: Remove, it should be declared once at llama.h / llama.cpp
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
+#if defined(__APPLE__) && defined(__MACH__)
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#endif
+
+// --- Some (possibly be wrong) observations
+
+// Temp is used both for mirostat and TopK-TopP sampling, but it better to keep lower temp for mirostat
+
+// Mirostat is more chatty and fluid, looks like real human being. At the same time is jumps wild between topics
+// It favors bigger models and becomes crazy on smaller ones like 7B
+// Mirostat v2 looks better than v1
+// Results with tau = 5 norm, better with lower values down to 1.0 and wild bad up to 9.0
+// Not sure how eta plays here
+
+// TopK over 40 (up to 100) might produce crazy irrelevant results. But usually it safe to lower about 10-20
+// Seems like TopP sweet spot is arount 0.95
+// Not sure about Temp, but any value around 0.5 .. 0.8 is good enough (lower == more steady output, higher = more creative)
+
+// RepeatPenalty is good around 1.1 and bad around 1.0 (switched off). 
+// Not sure why bad values above 1.1 are shuffling and muffling the output completely (with mirostat at least)
+
+struct gpt_params {
+    uint32_t seed                           = -1;   // RNG seed
+    int32_t n_threads                       = 1;    // get_num_physical_cores();
+    int32_t n_predict                       = -1;   // new tokens to predict
+    int32_t n_ctx                           = 4096; // 512;  // context size
+    int32_t n_batch                         = 512;  // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_keep                          = 0;    // number of tokens to keep from initial prompt
+    int32_t n_draft                         = 16;   // number of tokens to draft during speculative decoding
+    int32_t n_chunks                        = -1;   // max number of chunks to process (-1 = unlimited)
+    int32_t n_gpu_layers                    = -1;   // number of layers to store in VRAM (-1 - use default)
+    int32_t n_gpu_layers_draft              = -1;   // number of layers to store in VRAM for the draft model (-1 - use default)
+    int32_t main_gpu                        = 0;    // the GPU that is used for scratch and small tensors
+    float   tensor_split[ 8 /*LLAMA_MAX_DEVICES*/ ] = {0};  // how split tensors should be distributed across GPUs
+    int32_t n_probs                         = 0;    // if greater than 0, output the probabilities of top n_probs tokens.
+    int32_t n_beams                         = 0;    // if non-zero then use beam search of given width.
+    float   rope_freq_base                  = 10000.0f; // RoPE base frequency
+    float   rope_freq_scale                 = 1.0f;     // RoPE frequency scaling factor
+
+    // sampling parameters
+    int32_t top_k             = 8;     // 40;    // <= 0 to use vocab size
+    float   top_p             = 0.1;   // 95f; // 1.0 = disabled
+    float   tfs_z             = 1.00f; // 1.0 = disabled
+    float   typical_p         = 1.00f; // 1.0 = disabled
+    float   temp              = 0.1;   // 0.80f; // 1.0 = disabled
+    float   repeat_penalty    = 1.10f; // 1.0 = disabled
+    int32_t repeat_last_n     = -1;    // 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
+    float   frequency_penalty = 0.00f; // 0.0 = disabled
+    float   presence_penalty  = 0.00f; // 0.0 = disabled
+    int32_t mirostat          = 2;     // 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    float   mirostat_tau      = 0.1;   // 5.00f; // target entropy
+    float   mirostat_eta      = 0.1;   // 0.10f; // learning rate
+
+    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
+
+    // Classifier-Free Guidance
+    // https://arxiv.org/abs/2306.17806
+    std::string cfg_negative_prompt;       // string to help guidance
+    float       cfg_scale         = 1.f;   // How strong is guidance
+
+    std::string model             = "models/7B/ggml-model-f16.gguf"; // model path
+    std::string model_draft       = "";                              // draft model for speculative decoding
+    std::string model_alias       = "unknown"; // model alias
+    std::string prompt            = "";
+    std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
+    std::string input_prefix      = "";  // string to prefix user inputs with
+    std::string input_suffix      = "";  // string to suffix user inputs with
+    std::string grammar           = "";  // optional BNF-like grammar to constrain sampling
+    std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
+    std::string logdir            = "";  // directory in which to save YAML log files
+
+    std::string lora_adapter = "";  // lora adapter path
+    std::string lora_base    = "";  // base model path for the lora adapter
+
+    int  ppl_stride        = 0;     // stride for perplexity calculations. If left at 0, the pre-existing approach will be used.
+    int  ppl_output_type   = 0;     // = 0 -> ppl output is as usual, = 1 -> ppl output is num_tokens, ppl, one per line
+                                    //                                       (which is more convenient to use for plotting)
+                                    //
+    bool hellaswag         = false; // compute HellaSwag score over random tasks from datafile supplied in prompt
+    size_t hellaswag_tasks = 400;   // number of tasks to use when computing the HellaSwag score
+
+    bool low_vram          = false; // if true, reduce VRAM usage at the cost of performance
+    bool mul_mat_q         = true;  // if true, use mul_mat_q kernels instead of cuBLAS
+    bool memory_f16        = true;  // use f16 instead of f32 for memory kv
+    bool random_prompt     = false; // do not randomize prompt if none provided
+    bool use_color         = false; // use color to distinguish generations and inputs
+    bool interactive       = false; // interactive mode
+    bool prompt_cache_all  = false; // save user input and generations to prompt cache
+    bool prompt_cache_ro   = false; // open the prompt cache read-only and do not update it
+
+    bool embedding         = false; // get only sentence embedding
+    bool escape            = false; // escape "\n", "\r", "\t", "\'", "\"", and "\\"
+    bool interactive_first = false; // wait for user input immediately
+    bool multiline_input   = false; // reverse the usage of `\`
+    bool simple_io         = false; // improves compatibility with subprocesses and limited consoles
+
+    bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
+    bool ignore_eos        = false; // ignore generated EOS tokens
+    bool instruct          = false; // instruction mode (used for Alpaca models)
+    bool penalize_nl       = true;  // consider newlines as a repeatable token
+    bool perplexity        = false; // compute perplexity over the prompt
+    bool use_mmap          = true;  // use mmap for faster loads
+    bool use_mlock         = false; // use mlock to keep model in memory
+    bool mem_test          = false; // compute maximum memory usage
+    bool numa              = false; // attempt optimizations that help on some NUMA systems
+    bool export_cgraph     = false; // export the computation graph
+    bool verbose_prompt    = false; // print prompt tokens before generation
+};
+
+std::vector<llama_token> llama_tokenize(
+        struct llama_context * ctx,
+           const std::string & text,
+                        bool   add_bos) {
+    // upper limit for the number of tokens
+    int n_tokens = text.length() + add_bos;
+    std::vector<llama_token> result(n_tokens);
+    n_tokens = llama_tokenize(ctx, text.c_str(), result.data(), result.size(), add_bos);
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_tokenize(ctx, text.c_str(), result.data(), result.size(), add_bos);
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+    return result;
+}
+
+static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
+    std::vector<char> result(8, 0);
+    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+
+    return std::string(result.data(), result.size());
+}
 
 // FIXME ASAP - do not allow longer context when reading session file
 
@@ -80,135 +217,6 @@ void show() {
     freopen(TTY_DEVICE, "w", stdout);
     freopen(TTY_DEVICE, "w", stderr);
 }
-/*
-struct gpt_params {
-
-    uint32_t seed         = -1;   // RNG seed
-    int32_t n_threads     = 1;    // get_num_physical_cores();
-    int32_t n_predict     = -1;   // new tokens to predict
-    int32_t n_ctx         = 2048; // context size
-
-    // NB! When n_batch is too big, there an error trying to pool new memory:
-    // ggml_new_tensor_impl: not enough space in the scratch memory pool (needed 588521472, available 536870912)
-    
-    int32_t n_batch       = 512; // batch size for prompt processing (must be >=32 to use BLAS)
-    //int32_t n_gqa         = 1;   // grouped-query attention factor (TODO: move to hparams)
-
-    int32_t n_keep             = 0;  // number of tokens to keep from initial prompt [ when context swapping happens ]
-    int32_t n_draft            = 16; // number of tokens to draft during speculative decoding
-    int32_t n_chunks           = -1; // max number of chunks to process (-1 = unlimited)
-    int32_t n_gpu_layers       = -1; // number of layers to store in VRAM (-1 - use default)
-    int32_t n_gpu_layers_draft = -1; // number of layers to store in VRAM for the draft model (-1 - use default)
-    int32_t main_gpu           = 0;  // the GPU that is used for scratch and small tensors
-    int32_t n_probs            = 0;  // if greater than 0, output the probabilities of top n_probs tokens.
-    
-    //float   rms_norm_eps    = LLAMA_DEFAULT_RMS_EPS; // rms norm epsilon
-    int32_t n_beams         = 0;    // if non-zero then use beam search of given width.
-    float   rope_freq_base  = 10000.0f; // RoPE base frequency
-    float   rope_freq_scale = 1.0f;     // RoPE frequency scaling factor
-    
-    // if LLAMA_CUBLAS defined, LLAMA_MAX_DEVICES = GGML_CUDA_MAX_DEVICES = 16
-    float   tensor_split[16] = {0}; // how split tensors should be distributed across GPUs
-
-    // --- sampling parameters
-
-    int32_t mirostat          = 2;   // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 0.1; // 5.0 // target entropy
-    float   mirostat_eta      = 0.1; // 0.1 // learning rate
-
-    float   temp              = 0.1; // 0.80f; // 1.0 = disabled
-    int32_t top_k             = 8;   // 40; // <= 0 to use vocab size
-    float   top_p             = 0.4; // 0.95f; // 1.0 = disabled
-
-    float   repeat_penalty    = 1.1; // 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = -1;  // 64; // last n tokens to penalize (0 = disable penalty, -1 = context size)
-
-    // TODO: Expreriment with those parameters and allow to set them from CLI and configs
-
-    float   frequency_penalty = 0.0; // 0.0 = disabled
-    float   presence_penalty  = 0.0; // 0.0 = disabled
-    float   tfs_z             = 1.0; // 1.0 = disabled
-    float   typical_p         = 1.0; // 1.0 = disabled
-
-    float   alpha_presence    = 0.0f; // 0.0 = disabled
-    float   alpha_frequency   = 0.0f; // 0.0 = disabled
-
-    // TODO: Look for new feature
-
-    // Classifier-Free Guidance
-    // https://arxiv.org/abs/2306.17806
-    std::string cfg_negative_prompt;       // string to help guidance
-    float       cfg_scale         = 1.f;   // How strong is guidance
-    float       cfg_smooth_factor = 1.f;   // Smooth factor between old and new logits
-
-    std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
-
-    // --- Some (possibly be wrong) observations
-
-    // Temp is used both for mirostat and TopK-TopP sampling, but it better to keep lower temp for mirostat
-
-    // Mirostat is more chatty and fluid, looks like real human being. At the same time is jumps wild between topics
-    // It favors bigger models and becomes crazy on smaller ones like 7B
-    // Mirostat v2 looks better than v1
-    // Results with tau = 5 norm, better with lower values down to 1.0 and wild bad up to 9.0
-    // Not sure how eta plays here
-
-    // TopK over 40 (up to 100) might produce crazy irrelevant results. But usually it safe to lower about 10-20
-    // Seems like TopP sweet spot is arount 0.95
-    // Not sure about Temp, but any value around 0.5 .. 0.8 is good enough (lower == more steady output, higher = more creative)
-
-    // RepeatPenalty is good around 1.1 and bad around 1.0 (switched off). 
-    // Not sure why bad values above 1.1 are shuffling and muffling the output completely (with mirostat at least)
-
-    // ---
-
-    std::string model             = "";  // model path
-    std::string model_draft       = "";  // draft model for speculative decoding
-    std::string prompt            = "";
-    std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
-    std::string input_prefix      = "";  // string to prefix user inputs with
-    std::string input_suffix      = "";  // string to suffix user inputs with
-    std::string grammar           = "";  // optional BNF-like grammar to constrain sampling
-    std::string logdir            = "";  // directory in which to save YAML log files
-
-    std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
-
-    std::string lora_adapter = ""; // lora adapter path
-    std::string lora_base = "";    // base model path for the lora adapter
-
-    int  ppl_stride      = 0; // stride for perplexity calculations. If left at 0, the pre-existing approach will be used.
-    int  ppl_output_type = 0; // = 0 -> ppl output is as usual, = 1 -> ppl output is num_tokens, ppl, one per line
-
-    bool hellaswag         = false; // compute HellaSwag score over random tasks from datafile supplied in prompt
-    size_t hellaswag_tasks = 400;   // number of tasks to use when computing the HellaSwag score
-
-    bool low_vram          = false; // if true, reduce VRAM usage at the cost of performance
-    bool mul_mat_q         = true;  // if true, use mul_mat_q kernels instead of cuBLAS
-    bool memory_f16        = true;  // use f16 instead of f32 for memory kv
-    bool random_prompt     = false; // do not randomize prompt if none provided
-    bool use_color         = false; // use color to distinguish generations and inputs
-    bool interactive       = false; // interactive mode
-    bool prompt_cache_all  = false; // save user input and generations to prompt cache
-    bool prompt_cache_ro   = false; // open the prompt cache read-only and do not update it
-
-    bool embedding         = false; // get only sentence embedding
-    bool escape            = false; // escape "\n", "\r", "\t", "\'", "\"", and "\\"
-    bool interactive_first = false; // wait for user input immediately
-    bool multiline_input   = false; // reverse the usage of `\`
-    bool simple_io         = false; // improves compatibility with subprocesses and limited consoles
-
-    bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
-    bool ignore_eos        = false; // ignore generated EOS tokens
-    bool instruct          = false; // instruction mode (used for Alpaca models)
-    bool penalize_nl       = true;  // consider newlines as a repeatable token
-    bool perplexity        = false; // compute perplexity over the prompt
-    bool use_mmap          = true;  // use mmap for faster loads
-    bool use_mlock         = false; // use mlock to keep model in memory
-    bool mem_test          = false; // compute maximum memory usage
-    bool numa              = false; // attempt optimizations that help on some NUMA systems
-    bool export_cgraph     = false; // export the computation graph
-    bool verbose_prompt    = false; // print prompt tokens before generation
-};*/
 
 // --- Global params for all pods. Do anyone needs more than 8 pods per machine?
 
@@ -223,16 +231,6 @@ bool stopInferenceFlags[8];
 // Directory where session data files will be held. Emtpy string if sessions are disabled
 
 std::string path_session;
-
-///// struct llama_context * init_context(int idx /*const gpt_params & params*/) {
-///// std::tuple<struct llama_model *, struct llama_context *> init_from_gpt_params(int idx) {
-
-// init_context() replaces llama_init_from_gpt_params():
-
-// - it init model first    
-// - than creates context from model
-// - we init globals with those values
-// - finally return context pointer 
 
 struct llama_context * init_context(int idx) {
 
@@ -323,8 +321,9 @@ struct llama_context * init_context(int idx) {
 int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & sessionID, const std::string & text) {
 
     stopInferenceFlags[idx] = false;
-    
     bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
+    // llama_token BOS = llama_token_bos(ctx); 
+    // llama_token EOS = llama_token_eos(ctx);
 
     llama_reset_timings(ctx);
 
@@ -390,12 +389,14 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     // tokenize the prompt
     std::vector<llama_token> embd_inp;
     embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
+    // embd_inp = ::llama_tokenize(ctx, text, false); // leading space IS already there thanks Go preprocessing
 
-    // TODO? Add a space in front of the first character to match OG llama tokenizer behavior
-    // params.prompt.insert(0, 1, ' ');
-
-    // determine newline token
-    // auto llama_token_newline = ::llama_tokenize(ctx, "\n", false);
+    // DEBUG
+    //fprintf(stderr, "\n\nTOKENS: [ ");
+    //for(int i = 0; i < embd_inp.size(); i++) {
+    //    fprintf(stderr, "%d, ", embd_inp.data()[i]);
+    //}
+    //fprintf(stderr, " ]");
 
     const int n_ctx = llama_n_ctx(ctx);
     promptTokenCount[jobID] = embd_inp.size();
@@ -443,21 +444,9 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
         session_tokens.resize(embd_inp.size() - 1);
     }
 
-    // number of tokens to keep when resetting context
-    //if (params[idx].n_keep < 0 || params[idx].n_keep > (int) embd_inp.size() /* || params[idx].instruct */) {
-    //    params[idx].n_keep = (int)embd_inp.size();
-    //}
-
-    // determine newline token
-    //auto llama_token_newline = ::llama_tokenize(ctx, "\n", false);
-
     // TODO: replace with ring-buffer
     std::vector<llama_token> last_n_tokens(n_ctx);
     std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
-
-    //bool is_antiprompt        = false;
-    //bool input_echo           = true;
-    //bool need_to_save_session = !path_session.empty() && n_matching_session_tokens < embd_inp.size();
 
     int n_past             = 0;
     int n_consumed         = 0;
@@ -469,110 +458,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     std::vector<llama_token> embd;
     std::vector<llama_token> embd_guidance; // TODO: Investigate
 
-/*
-
-    //---------------------------------
-    // Tokenize the prompt :
-    //---------------------------------
-
-    std::vector<llama_token> tokens_list;
-    tokens_list = ::llama_tokenize( ctx , text , true );
-
-    const int max_context_size     = llama_n_ctx( ctx );
-    const int max_tokens_list_size = max_context_size - 4 ;
-
-    if ( (int)tokens_list.size() > max_tokens_list_size )
-    {
-    //    fprintf( stderr , "%s: error: prompt too long (%d tokens, max %d)\n" ,
-    //         __func__ , (int)tokens_list.size() , max_tokens_list_size );
-    //    return 1;
-        return 0; // TODO: Return real errors
-    }
-
-    //---------------------------------
-    // Main prediction loop :
-    //---------------------------------
-
-    // The LLM keeps a contextual cache memory of previous token evaluation.
-    // Usually, once this cache is full, it is required to recompute a compressed context based on previous
-    // tokens (see "infinite text generation via context swapping" in the main example), but in this minimalist
-    // example, we will just stop the loop once this cache is full or once an end of stream is detected.
-
-    while ( llama_get_kv_cache_token_count( ctx ) < max_context_size ) 
-    {
-        //---------------------------------
-        // Evaluate the tokens :
-        //---------------------------------
-
-        if ( llama_eval( ctx , tokens_list.data() , int(tokens_list.size()) , llama_get_kv_cache_token_count( ctx ) , params[idx].n_threads ) )
-        {
-            fprintf( stderr,  "%s : failed to eval\n" , __func__ );
-            //return 1;
-            return 0; // TODO: Return real errors
-        }
-
-        tokens_list.clear();
-
-        //---------------------------------
-        // Select the best prediction :
-        //---------------------------------
-
-        llama_token new_token_id = 0;
-
-        auto logits  = llama_get_logits( ctx );
-        auto n_vocab = llama_n_vocab( ctx ); // the size of the LLM vocabulary (in tokens)
-
-        std::vector<llama_token_data> candidates;
-        candidates.reserve( n_vocab );
-
-        for( llama_token token_id = 0 ; token_id < n_vocab ; token_id++ )
-        {
-            candidates.emplace_back( llama_token_data{ token_id , logits[ token_id ] , 0.0f } );
-        }
-
-        llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
-
-        // Select it using the "Greedy sampling" method :
-        new_token_id = llama_sample_token_greedy( ctx , &candidates_p );
-
-
-        // is it an end of stream ?
-        if ( new_token_id == llama_token_eos(ctx) )
-        {
-            //fprintf(stderr, " [end of text]\n");
-            break;
-        }
-
-        // Print the new token :
-        //printf( "%s" , llama_token_to_str( ctx , new_token_id ) );
-        //fflush( stdout );
-
-        // Push this new token for next evaluation :
-        tokens_list.push_back( new_token_id );
-
-        // GOTZ
-        mutex.lock();
-        //for (auto id : embd) {
-            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, new_token_id);
-        //}
-        mutex.unlock();
-        fflush(stdout);
-
-    } // wend of main loop
-
-    //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
-    const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
-    const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
-
-    mutex.lock();
-    promptEvals[jobID] = 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval;
-    timings[jobID] = 1e-3 * llama_t_eval_us(ctx) / n_eval; // avg_compute_time;
-    mutex.unlock();
-
-    return n_p_eval + n_eval;
-
-*/
-
+    // -- MAIN LOOP --
 
     while (n_remain && 
         n_past < (n_ctx - 4) &&
@@ -636,7 +522,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 
         //fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
 
-        if ((int) embd_inp.size() <= n_consumed /*&& !is_interacting*/) {
+        if ((int) embd_inp.size() <= n_consumed) {
 
             // --- out of user input, sample next token
 
@@ -754,9 +640,12 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
             }
         }
 
+        // -- update LLaMAZoo job text buffer
         mutex.lock();
         for (auto id : embd) {
+            //if (id == BOS || id == EOS) { fprintf(stderr, "\n\n... SKIPPING BOS or EOS ..."); continue; };
             jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
+            //fprintf(stderr, "\n\n... ADDING [[[%s]]] ...", llama_token_to_str(ctx, id).c_str());
         }
         mutex.unlock();
 
@@ -825,20 +714,6 @@ int64_t timingCPP(const std::string & jobID) {
     int64_t res = timings[jobID];
     mutex.unlock_shared();
     return res;
-}
-
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
-    std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
-    }
-
-    return std::string(result.data(), result.size());
 }
 
 extern "C" { // ------------------------------------------------------
