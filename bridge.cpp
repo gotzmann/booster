@@ -79,13 +79,11 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 // Suspend stdout / stderr messaging
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
-// FIXME: Redirect C++ stderr into log file 
 void hide() {
     freopen(NULL_DEVICE, "w", stdout);
     freopen(NULL_DEVICE, "w", stderr);
 }    
 
-// FIXME: Doesn't work for MacOS ?
 void show() {
     freopen(TTY_DEVICE, "w", stdout);
     freopen(TTY_DEVICE, "w", stderr);
