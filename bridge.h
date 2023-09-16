@@ -1,5 +1,6 @@
 #include "llama.h"
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 #if !defined (_WIN32)
