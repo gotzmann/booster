@@ -49,7 +49,7 @@ struct gpt_params {
     int32_t n_gpu_layers                    = -1;   // number of layers to store in VRAM (-1 - use default)
     int32_t n_gpu_layers_draft              = -1;   // number of layers to store in VRAM for the draft model (-1 - use default)
     int32_t main_gpu                        = 0;    // the GPU that is used for scratch and small tensors
-    float   tensor_split[ 8 /*LLAMA_MAX_DEVICES*/ ] = {0};  // how split tensors should be distributed across GPUs
+    float   tensor_split[ 4 /*LLAMA_MAX_DEVICES*/ ] = {0};  // how split tensors should be distributed across GPUs
     int32_t n_probs                         = 0;    // if greater than 0, output the probabilities of top n_probs tokens.
     int32_t n_beams                         = 0;    // if non-zero then use beam search of given width.
     float   rope_freq_base                  = 10000.0f; // RoPE base frequency
@@ -137,7 +137,6 @@ LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
 std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool   add_bos);
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
-// FIXME: Redirect C++ stderr into log file 
 void hide();
 void show();
 
@@ -154,7 +153,7 @@ int64_t promptEvalCPP(const std::string & jobID);
 int64_t getPromptTokenCountCPP(const std::string & jobID);
 int64_t timingCPP(const std::string & jobID);
 
-extern "C" {
+extern "C" { // -----    
 
 void init(char * sessionPath);
 void * initContext(
@@ -179,4 +178,4 @@ int64_t promptEval(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 int64_t timing(char * jobID);   
 
-} // -- extern "C"     
+} // ------- extern "C"
