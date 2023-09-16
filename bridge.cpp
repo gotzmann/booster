@@ -22,6 +22,67 @@
 #include <sys/sysctl.h>
 #endif
 
+extern "C" {
+    
+    // llama.h
+    // -- Helpers for bridge.cpp                        
+
+    LLAMA_API void reset_logits(struct llama_context * ctx);
+    LLAMA_API int llama_n_sample(const struct llama_context * ctx);
+    LLAMA_API int llama_n_eval(const struct llama_context * ctx);
+    LLAMA_API int llama_n_p_eval(const struct llama_context * ctx);
+    LLAMA_API int llama_t_sample_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_load_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_start_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
+    LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
+
+    // --
+
+}
+/*
+// llama.cpp
+// -- Helpers for bridge.cpp
+
+void reset_logits(struct llama_context * ctx) {
+    ctx->logits.reserve(llama_n_vocab(ctx) );
+}
+
+int llama_n_sample(const struct llama_context * ctx) {
+    return ctx->n_sample;
+}
+
+int llama_n_eval(const struct llama_context * ctx) {
+    return ctx->n_eval;
+}
+
+int llama_n_p_eval(const struct llama_context * ctx) {
+    return ctx->n_p_eval;
+}
+
+int llama_t_sample_us(const struct llama_context * ctx) {
+    return ctx->t_sample_us;
+}
+
+int llama_t_load_us(const struct llama_context * ctx) {
+    return ctx->t_load_us;
+}
+
+int llama_t_start_us(const struct llama_context * ctx) {
+    return ctx->t_start_us;
+}
+
+int llama_t_p_eval_us(const struct llama_context * ctx) {
+    return ctx->t_p_eval_us;
+}
+
+int llama_t_eval_us(const struct llama_context * ctx) {
+    return ctx->t_eval_us;
+}
+*/
+
+// --
+
 // --- Some (possibly be wrong) observations
 
 // Temp is used both for mirostat and TopK-TopP sampling, but it better to keep lower temp for mirostat
@@ -121,13 +182,12 @@ struct gpt_params {
     bool perplexity        = false; // compute perplexity over the prompt
     bool use_mmap          = true;  // use mmap for faster loads
     bool use_mlock         = false; // use mlock to keep model in memory
-    bool mem_test          = false; // compute maximum memory usage
     bool numa              = false; // attempt optimizations that help on some NUMA systems
     bool export_cgraph     = false; // export the computation graph
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
 
-std::vector<llama_token> llama_tokenize(
+static std::vector<llama_token> llama_tokenize(
         struct llama_context * ctx,
            const std::string & text,
                         bool   add_bos) {
@@ -207,13 +267,13 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 #endif
 
 // FIXME: Redirect C++ stderr into log file 
-void hide() {
+static void hide() {
     freopen(NULL_DEVICE, "w", stdout);
     freopen(NULL_DEVICE, "w", stderr);
 }    
 
 // FIXME: Doesn't work for MacOS ?
-void show() {
+static void show() {
     freopen(TTY_DEVICE, "w", stdout);
     freopen(TTY_DEVICE, "w", stderr);
 }
@@ -232,7 +292,7 @@ bool stopInferenceFlags[8];
 
 std::string path_session;
 
-struct llama_context * init_context(int idx) {
+static struct llama_context * init_context(int idx) {
 
     bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
 
@@ -316,7 +376,7 @@ struct llama_context * init_context(int idx) {
 
 // Process prompt and compute output, return total number of tokens processed
 // idx - index of pod / context / params to do processing within
-int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & sessionID, const std::string & text) {
+static int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & sessionID, const std::string & text) {
 
     stopInferenceFlags[idx] = false;
     bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
@@ -690,7 +750,7 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-const char * statusCPP(const std::string & jobID) {
+static const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
     const char * res = jobs[jobID].c_str();
     mutex.unlock_shared();
@@ -698,7 +758,7 @@ const char * statusCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-int64_t promptEvalCPP(const std::string & jobID) {
+static int64_t promptEvalCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = promptEvals[jobID];
     mutex.unlock_shared();
@@ -706,7 +766,7 @@ int64_t promptEvalCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-int64_t getPromptTokenCountCPP(const std::string & jobID) {
+static int64_t getPromptTokenCountCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = promptTokenCount[jobID];
     mutex.unlock_shared();
@@ -714,7 +774,7 @@ int64_t getPromptTokenCountCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-int64_t timingCPP(const std::string & jobID) {
+static int64_t timingCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = timings[jobID];
     mutex.unlock_shared();
@@ -723,7 +783,7 @@ int64_t timingCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void init(char * sessionPath, bool numa, bool lowVRAM) {
+static void init(char * sessionPath, bool numa, bool lowVRAM) {
     ::path_session = sessionPath;
     //if (numa) {
     //    ggml_numa_init();
@@ -734,7 +794,7 @@ void init(char * sessionPath, bool numa, bool lowVRAM) {
     // TODO: before server exit: llama_backend_free();
 }
 
-void * initContext(
+static void * initContext(
     int idx, 
     char * modelName, 
     int threads, 
@@ -776,40 +836,39 @@ void * initContext(
     return res;
 }
 
-int64_t doInference(int idx, void * ctx, char * jobID, char * sessionID, char * prompt) {
+static int64_t doInference(int idx, void * ctx, char * jobID, char * sessionID, char * prompt) {
     std::string id = jobID;
     std::string text = prompt;
     std::string session = sessionID;
     return do_inference(idx, (struct llama_context *)ctx, id, session, text);
 }
 
-void stopInference(int idx) {
+static void stopInference(int idx) {
     ::stopInferenceFlags[idx] = true;
 }
 
 // return current result of processing
-const char * status(char * jobID) {
+static const char * status(char * jobID) {
     std::string id = jobID;
     return statusCPP(id);
 }
 
 // return average PROMPT token processing timing from context
-int64_t promptEval(char * jobID) {
+static int64_t promptEval(char * jobID) {
     std::string id = jobID;
     return promptEvalCPP(id);
 }
 
 // return average PROMPT token processing timing from context
-int64_t getPromptTokenCount(char * jobID) {
+static int64_t getPromptTokenCount(char * jobID) {
     std::string id = jobID;
     return getPromptTokenCountCPP(id);
 }
 
 // return average OUTPUT token processing timing from context
-int64_t timing(char * jobID) {
+static int64_t timing(char * jobID) {
     std::string id = jobID;
     return timingCPP(id);
 }
 
 }  // ------------------------------------------------------
-

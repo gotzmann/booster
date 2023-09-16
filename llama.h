@@ -528,20 +528,6 @@ extern "C" {
 
     LLAMA_API void llama_dump_timing_info_yaml(FILE * stream, const struct llama_context * ctx);
 
-    // -- Helpers for bridge.cpp                        
-
-    LLAMA_API void reset_logits(struct llama_context * ctx);
-    LLAMA_API int llama_n_sample(const struct llama_context * ctx);
-    LLAMA_API int llama_n_eval(const struct llama_context * ctx);
-    LLAMA_API int llama_n_p_eval(const struct llama_context * ctx);
-    LLAMA_API int llama_t_sample_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_load_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_start_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
-    LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
-
-    // --
-
 #ifdef __cplusplus
 }
 #endif
@@ -554,7 +540,9 @@ extern "C" {
 
 struct ggml_tensor;
 
-const std::vector<std::pair<std::string, struct ggml_tensor *>>& llama_internal_get_tensor_map(struct llama_context * ctx);
+const std::vector<std::pair<std::string, struct ggml_tensor *>> & llama_internal_get_tensor_map(
+    struct llama_context * ctx
+);
 
 #endif // LLAMA_API_INTERNAL
 
