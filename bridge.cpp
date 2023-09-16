@@ -543,16 +543,12 @@ int64_t do_inference(
     total time = %8.2f ms\n", (timings.t_end_ms - timings.t_start_ms));
 */
 
-    //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
-    //const int32_t n_eval   = std::max(1, /*llama_n_eval(ctx)*/ timings.n_eval);
-    //const int32_t n_p_eval = std::max(1, /*llama_n_p_eval(ctx)*/ timings.n_p_eval);
-
     mutex.lock();
-    promptEvals[jobID] = /*1e-3 * llama_t_p_eval_us(ctx)*/ timings.t_p_eval_ms / timings.n_p_eval /* / n_p_eval*/;
-    ::timings[jobID] = /*1e-3 * llama_t_eval_us(ctx)*/ timings.t_eval_ms / timings.n_eval; // avg_compute_time;
+    promptEvals[jobID] = timings.t_p_eval_ms / timings.n_p_eval;
+    ::timings[jobID] = timings.t_eval_ms / timings.n_eval;
     mutex.unlock();
 
-    return timings.n_p_eval + timings.n_eval /*n_p_eval + n_eval*/;
+    return timings.n_p_eval + timings.n_eval;
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c

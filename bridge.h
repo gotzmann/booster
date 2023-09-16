@@ -125,16 +125,6 @@ struct gpt_params {
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
 
-LLAMA_API void reset_logits(struct llama_context * ctx);
-LLAMA_API int llama_n_sample(const struct llama_context * ctx);
-LLAMA_API int llama_n_eval(const struct llama_context * ctx);
-LLAMA_API int llama_n_p_eval(const struct llama_context * ctx);
-LLAMA_API int llama_t_sample_us(const struct llama_context * ctx);
-LLAMA_API int llama_t_load_us(const struct llama_context * ctx);
-LLAMA_API int llama_t_start_us(const struct llama_context * ctx);
-LLAMA_API int llama_t_p_eval_us(const struct llama_context * ctx);
-LLAMA_API int llama_t_eval_us(const struct llama_context * ctx);
-
 std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool   add_bos);
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
