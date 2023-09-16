@@ -531,28 +531,28 @@ int64_t do_inference(
         llama_save_session_file(ctx, sessionFile.c_str(), session_tokens.data(), session_tokens.size());
     }
 
+    const llama_timings timings = llama_get_timings(ctx);
+/*
+    load time = %8.2f ms\n", timings.t_load_ms);
+    sample time = %8.2f ms / %5d runs   (%8.2f ms per token, %8.2f tokens per second)\n",
+            timings.t_sample_ms, timings.n_sample, timings.t_sample_ms / timings.n_sample, 1e3 / timings.t_sample_ms * timings.n_sample);
+    prompt eval time = %8.2f ms / %5d tokens (%8.2f ms per token, %8.2f tokens per second)\n",
+            timings.t_p_eval_ms, timings.n_p_eval, timings.t_p_eval_ms / timings.n_p_eval, 1e3 / timings.t_p_eval_ms * timings.n_p_eval);
+    eval time = %8.2f ms / %5d runs   (%8.2f ms per token, %8.2f tokens per second)\n",
+            timings.t_eval_ms, timings.n_eval, timings.t_eval_ms / timings.n_eval, 1e3 / timings.t_eval_ms * timings.n_eval);
+    total time = %8.2f ms\n", (timings.t_end_ms - timings.t_start_ms));
+*/
+
     //const int32_t n_sample = std::max(1, llama_n_sample(ctx));
-    const int32_t n_eval   = std::max(1, llama_n_eval(ctx));
-    const int32_t n_p_eval = std::max(1, llama_n_p_eval(ctx));
-
-    //fprintf(stderr, "%s:        load time = %8.2f ms\n", __func__, llama_t_load_us(ctx) / 1000.0);
-    //fprintf(stderr, "%s:      sample time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_sample_us(ctx), n_sample, 1e-3 * llama_t_sample_us(ctx) / n_sample);
-    //fprintf(stderr, "%s: prompt eval time = %8.2f ms / %5d tokens (%8.2f ms per token)\n", __func__, 1e-3 * llama_t_p_eval_us(ctx), n_p_eval, 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval);
-    //fprintf(stderr, "%s:        eval time = %8.2f ms / %5d runs   (%8.2f ms per run)\n",   __func__, 1e-3 * llama_t_eval_us(ctx),   n_eval,   1e-3 * llama_t_eval_us(ctx) / n_eval);
-    //fprintf(stderr, "%s:       total time = %8.2f ms\n", __func__, (t_end_us - llama_t_start_us(ctx))/1000.0);
-
-    // TODO: Sum all timings
-    // compute average time needed for processing one token
-    //const int32_t avg_compute_time = //1e-3 * llama_t_sample_us(ctx) / n_sample + 
-                                     //1e-3 * llama_t_p_eval_us(ctx) / n_p_eval + 
-    //                                 1e-3 * llama_t_eval_us(ctx) / n_eval;
+    //const int32_t n_eval   = std::max(1, /*llama_n_eval(ctx)*/ timings.n_eval);
+    //const int32_t n_p_eval = std::max(1, /*llama_n_p_eval(ctx)*/ timings.n_p_eval);
 
     mutex.lock();
-    promptEvals[jobID] = 1e-3 * llama_t_p_eval_us(ctx) / n_p_eval;
-    timings[jobID] = 1e-3 * llama_t_eval_us(ctx) / n_eval; // avg_compute_time;
+    promptEvals[jobID] = /*1e-3 * llama_t_p_eval_us(ctx)*/ timings.t_p_eval_ms / timings.n_p_eval /* / n_p_eval*/;
+    ::timings[jobID] = /*1e-3 * llama_t_eval_us(ctx)*/ timings.t_eval_ms / timings.n_eval; // avg_compute_time;
     mutex.unlock();
 
-    return n_p_eval + n_eval;
+    return timings.n_p_eval + timings.n_eval /*n_p_eval + n_eval*/;
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
@@ -582,7 +582,7 @@ int64_t getPromptTokenCountCPP(const std::string & jobID) {
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 int64_t timingCPP(const std::string & jobID) {
     mutex.lock_shared();
-    int64_t res = timings[jobID];
+    int64_t res = ::timings[jobID];
     mutex.unlock_shared();
     return res;
 }

@@ -251,14 +251,8 @@ func Init(
 	params.CtxSize = uint32(context)
 	Pods = make([]*Pod, pods)
 	Modes = map[string]string{"default": ""}
-	//Models = make(map[string][]*Model)
 	Models = make([]*Model, 1) // TODO: N models
 	SessionPath = sessionPath
-
-	// model from CLI will have empty name by default
-	//if _, ok := Models[""]; !ok {
-	//	Models[""] = make([]*Model, pods)
-	//}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -367,12 +361,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	ServerMode = LLAMA_CPP
 	Host = conf.Host
 	Port = conf.Port
-	//DefaultModel = conf.DefaultModel
 	Pods = make([]*Pod, len(conf.Pods))
-	//Modes = conf.Modes // make(map[string]string)
-	//Models = make(map[string][]*Model)
 	Models = make([]*Model, len(conf.Models))
-	//defaultModelFound := false
 	SessionPath = conf.Sessions
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
@@ -403,10 +393,6 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		}
 
 		for _, model := range conf.Models {
-
-			//if model.ID == DefaultModel {
-			//	defaultModelFound = true
-			//}
 
 			// --- Allow user home dir resolve with tilde ~
 			// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
@@ -456,11 +442,6 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			// Each model might be running an all pods, thus need to have N*M contexts available
-			//if _, ok := Models[model.ID]; !ok {
-			//	Models[model.ID] = make([]*Model, len(conf.Pods))
-			//}
-
 			Models[idx] = &Model{
 				ID:   model.ID,
 				Name: model.Name,
@@ -488,12 +469,6 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			}
 		}
 	}
-
-	//if !defaultModelFound {
-	//	Colorize("\n[magenta][ ERROR ][white] Default model file is not found!\n\n")
-	//	log.Infof("[ERROR] Default model file is not found!")
-	//	os.Exit(0)
-	//}
 }
 
 // --- init and run Fiber server
@@ -569,13 +544,8 @@ func Engine(app *fiber.App) {
 			}
 
 			Jobs[jobID].Status = "processing"
-			//if model == "" {
-			//	model = DefaultModel
-			//	Jobs[jobID].Model = model
-			//}
 
 			var pod *Pod
-			//var idx int
 			for idx := range Pods {
 				pod = Pods[idx]
 				if pod.isBusy {
@@ -583,8 +553,7 @@ func Engine(app *fiber.App) {
 				}
 				pod.isBusy = true
 				// "load" the model into pod
-				//model := Jobs[jobID].Model
-				pod.model = Models /*[model]*/ [idx]
+				pod.model = Models[idx]
 				break
 			}
 
@@ -633,6 +602,7 @@ func Do(jobID string, pod *Pod) {
 
 	sessionID := Jobs[jobID].SessionID
 	Jobs[jobID].pod = pod
+	Jobs[jobID].Model = pod.model.ID
 	Jobs[jobID].StartedAt = now
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
 	// TODO: Play with prompt without leading space

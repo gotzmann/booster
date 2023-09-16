@@ -233,17 +233,21 @@ func main() {
 		go func() {
 			for {
 
-				Colorize("\n[magenta]============== JOBS ==============\n")
+				Colorize("\n[magenta]======================================== [ JOBS ] ========================================\n")
 
 				for _, job := range server.Jobs {
 
 					var output string
 					output = C.GoString(C.status(C.CString(job.ID)))
+					// FIXME: Avoid LLaMA v2 leading space
+					if len(output) > 0 && output[0] == ' ' {
+						output = output[1:]
+					}
 
-					Colorize("\n[light_magenta]%s [ %s ] | [yellow]%s | [ %d + %d ] tokens | [ %d + %d ] ms. per token [light_blue]| %s\n",
+					Colorize("\n[light_magenta]%s [light_green][ %s ] [dark_gray][ %s ] [dark_gray]%d => %d tokens | %d => %d ms.[light_blue]\n%s\n",
 						job.ID,
-						job.Model,
 						job.Status,
+						job.Model,
 						C.getPromptTokenCount(C.CString(job.ID)),
 						job.OutputTokenCount,
 						job.PromptEval,
