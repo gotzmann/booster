@@ -701,15 +701,11 @@ func Do(jobID string, pod *Pod) {
 	fullPrompt := pod.model.Prefix + prompt + pod.model.Suffix
 
 	if history == "" {
-		// FIXME: GGUF inserts real BOS now
-		// NB! Leading space as expected by LLaMA standard
-		fullPrompt = /*" " +*/ pod.model.Preamble + fullPrompt
-		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
+		fullPrompt = pod.model.Preamble + fullPrompt
 	} else {
-		//fullPrompt = pod.Model.Prefix + prompt + pod.Model.Suffix
-		// fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 		fullPrompt = history + fullPrompt
 	}
+	//fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
 
 	Jobs[jobID].FullPrompt = fullPrompt
 

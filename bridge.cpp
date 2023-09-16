@@ -388,14 +388,21 @@ int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jo
     std::vector<llama_token> embd_inp;
     embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
     // embd_inp = ::llama_tokenize(ctx, text, false); // leading space IS already there thanks Go preprocessing
+/*
+    // -- DEBUG
+    fprintf(stderr, "\n\nTOKENS: [ ");
+    for(int i = 0; i < embd_inp.size(); i++) {
+        fprintf(stderr, "%d, ", embd_inp.data()[i]);
+    }
+    fprintf(stderr, "]");
 
-    // DEBUG
-    //fprintf(stderr, "\n\nTOKENS: [ ");
-    //for(int i = 0; i < embd_inp.size(); i++) {
-    //    fprintf(stderr, "%d, ", embd_inp.data()[i]);
-    //}
-    //fprintf(stderr, " ]");
-
+    // -- DEBUG
+    fprintf(stderr, "\n\nPARTS: [ ");
+    for(int i = 0; i < embd_inp.size(); i++) {
+        fprintf(stderr, "<%s>, ", llama_token_to_str(ctx, embd_inp.data()[i]).c_str());
+    }
+    fprintf(stderr, "]");
+*/
     const int n_ctx = llama_n_ctx(ctx);
     promptTokenCount[jobID] = embd_inp.size();
 
@@ -762,9 +769,9 @@ void * initContext(
     
     ::params[idx].seed           = seed;
     
-    //hide();
+    hide();
     auto res = init_context(idx);
-    //show();
+    show();
 
     return res;
 }
