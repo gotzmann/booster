@@ -18,20 +18,6 @@ package main
 // Perplexity for all models https://github.com/ggerganov/llama.cpp/discussions/406
 // GPTQ vs RTN Perplexity https://github.com/qwopqwop200/GPTQ-for-LLaMa
 
-// WAS
-
-// #cgo linux CFLAGS:   -I. -O3 -fPIC -pthread -std=c17
-// #cgo linux CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17
-// #cgo linux LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
-
-// UBUNTU CUDA
-
-// CFLAGS:   -I. -Icommon -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include  -O3 -std=c17   -fPIC -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith -Wmissing-prototypes -Werror=implicit-int -Wno-unused-function -pthread -march=native -mtune=native
-// CXXFLAGS: -I. -Icommon -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include  -O3 -std=c++17 -fPIC -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -Wcast-qual -Wno-unused-function -Wno-multichar -Wno-format-truncation -Wno-array-bounds -pthread -march=native -mtune=native
-// LDFLAGS:  -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
-
-// #cgo darwin LDFLAGS: bridge.o common.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
-
 /*
 #include <stdlib.h>
 #include <stdint.h>
@@ -66,7 +52,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.14.0"
+const VERSION = "0.15.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -97,26 +83,17 @@ type Options struct {
 	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	Dir           string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
 	Profile       bool    `long:"profile" description:"Profe CPU performance while running and store results to cpu.pprof file"`
-	// GQA           int64   `long:"gqa" description:"Grouped Query Attention (GQA) parameter for 70B model [ should be --gqa=8 ]"`
-	UseAVX      bool   `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
-	UseNEON     bool   `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
-	NUMA        bool   `long:"numa" description:"Attempt optimizations that help on some systems with NUMA"`
-	LowVRAM     bool   `long:"low-vram" description:"Reduces VRAM usage at the cost of performance"`
-	Ignore      bool   `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
-	Sessions    string `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
-	MaxSessions int    `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
-
-	// Pods []Pod   `long:"pods" description:"Maximum pods of parallel execution allowed in Server mode [ obsolete ]"`
-
-	// TODO: different RoPE + new sampling algos
+	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
+	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
+	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
+	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
+	MaxSessions   int     `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
 }
 
 var (
 	doPrint bool = true
 	doLog   bool = false
 	conf    server.Config
-	NUMA    int // need this to convert from boolean opts.NUMA due to problems with C.Bool() on MacOS
-	LowVRAM int // same story
 )
 
 func main() {
@@ -238,7 +215,7 @@ func main() {
 			/*opts.Pods*/ 1, opts.Threads, // TODO: Support N pods
 			//opts.GPUs, opts.GPULayers,
 			0, 0, // TODO: Support GPUs from command-line
-			NUMA, LowVRAM,
+			//NUMA, LowVRAM,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
 			int(opts.Context), int(opts.Predict),
@@ -330,14 +307,6 @@ func parseOptions() *Options {
 		opts.Port = "8080"
 	}
 
-	if opts.NUMA {
-		NUMA = 1
-	}
-
-	if opts.LowVRAM {
-		LowVRAM = 1
-	}
-
 	if opts.Context == 0 {
 		opts.Context = 2048
 	}
@@ -345,10 +314,6 @@ func parseOptions() *Options {
 	if opts.Predict == 0 {
 		opts.Predict = 1024
 	}
-
-	//if opts.Mirostat == 0 {
-	//	opts.Mirostat = 0
-	//}
 
 	if opts.MirostatTAU == 0 {
 		opts.MirostatTAU = 0.1

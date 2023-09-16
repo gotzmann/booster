@@ -4,15 +4,10 @@ package server
 // https://github.com/golang/go/wiki/cgo
 // https://pkg.go.dev/cmd/cgo
 
-// FIXME: unknown type name 'bool' => char numa, bool low_vram,
-
 /*
 #include <stdlib.h>
 #include <stdint.h>
-void * init(
-	char * sessionPath,
-	int numa,
-	int low_vram);
+void * init(char * sessionPath);
 void * initContext(
 	int idx,
 	char * modelName,
@@ -114,9 +109,6 @@ type Config struct {
 	NEON bool
 	CUDA bool
 
-	NUMA    int // should be bool, but there problems with CGO bools on MacOS
-	LowVRAM int // the same
-
 	Sessions string // path to store session files
 
 	Pods    []Pod   // pods count
@@ -200,9 +192,6 @@ var (
 	RunningThreads int64
 	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
 
-	NUMA    bool
-	LowVRAM bool
-
 	// FIXME TODO ASAP : Remove extra sessions from disk to prevent full disk DDoS
 	SessionPath string // path to store session files
 	MaxSessions int    // how many sessions allowed per server, remove extra session files
@@ -244,7 +233,6 @@ func Init(
 	pods int, threads int64,
 	//gpus []int, // gpuLayers int64, // TODO: Use GPU split from config
 	gpu1, gpu2 int,
-	numa, lowVRAM int, // porblems with CGO bool on MacOS
 	model, preamble, prefix, suffix string,
 	context, predict int,
 	mirostat uint32, mirostatTAU float32, mirostatETA float32,
@@ -257,8 +245,6 @@ func Init(
 	ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
-	NUMA = numa == 1
-	LowVRAM = lowVRAM == 1
 	log = zapLog
 	deadline = deadlineIn
 	RunningPods = 0
@@ -299,22 +285,9 @@ func Init(
 			os.Exit(0)
 		}
 
-		C.init(
-			C.CString(sessionPath),
-			C.int(numa),
-			C.int(lowVRAM))
+		C.init(C.CString(sessionPath))
 
 		// TODO: Refactore temp huck supporting only 2 GPUs split
-
-		//gpu1 := 0
-		//gpu2 := 0
-
-		//if len(gpus) > 0 {
-		//	gpu1 = gpus[0]
-		//	if len(gpus) > 1 {
-		//		gpu2 = gpus[1]
-		//	}
-		//}
 
 		ctx := C.initContext(
 			C.int(pod),
@@ -394,8 +367,6 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	ServerMode = LLAMA_CPP
 	Host = conf.Host
 	Port = conf.Port
-	NUMA = conf.NUMA == 1
-	LowVRAM = conf.LowVRAM == 1
 	//DefaultModel = conf.DefaultModel
 	Pods = make([]*Pod, len(conf.Pods))
 	//Modes = conf.Modes // make(map[string]string)
@@ -454,10 +425,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			C.init(
-				C.CString(SessionPath),
-				C.int(conf.NUMA),
-				C.int(conf.LowVRAM))
+			C.init(C.CString(SessionPath))
 
 			// TODO: Refactore temp huck supporting only 2 GPUs split
 

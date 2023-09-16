@@ -1,6 +1,6 @@
 // Various helper functions and utilities
 
-//#include "common.h"
+#include "bridge.h"
 #include "llama.h"
 #include "ggml.h"
 
@@ -22,6 +22,7 @@
 #include <sys/sysctl.h>
 #endif
 
+/*
 extern "C" {
     
     // llama.h
@@ -39,49 +40,7 @@ extern "C" {
 
     // --
 
-}
-/*
-// llama.cpp
-// -- Helpers for bridge.cpp
-
-void reset_logits(struct llama_context * ctx) {
-    ctx->logits.reserve(llama_n_vocab(ctx) );
-}
-
-int llama_n_sample(const struct llama_context * ctx) {
-    return ctx->n_sample;
-}
-
-int llama_n_eval(const struct llama_context * ctx) {
-    return ctx->n_eval;
-}
-
-int llama_n_p_eval(const struct llama_context * ctx) {
-    return ctx->n_p_eval;
-}
-
-int llama_t_sample_us(const struct llama_context * ctx) {
-    return ctx->t_sample_us;
-}
-
-int llama_t_load_us(const struct llama_context * ctx) {
-    return ctx->t_load_us;
-}
-
-int llama_t_start_us(const struct llama_context * ctx) {
-    return ctx->t_start_us;
-}
-
-int llama_t_p_eval_us(const struct llama_context * ctx) {
-    return ctx->t_p_eval_us;
-}
-
-int llama_t_eval_us(const struct llama_context * ctx) {
-    return ctx->t_eval_us;
-}
-*/
-
-// --
+}*/
 
 // --- Some (possibly be wrong) observations
 
@@ -99,7 +58,7 @@ int llama_t_eval_us(const struct llama_context * ctx) {
 
 // RepeatPenalty is good around 1.1 and bad around 1.0 (switched off). 
 // Not sure why bad values above 1.1 are shuffling and muffling the output completely (with mirostat at least)
-
+/*
 struct gpt_params {
     uint32_t seed                           = -1;   // RNG seed
     int32_t n_threads                       = 1;    // get_num_physical_cores();
@@ -112,7 +71,7 @@ struct gpt_params {
     int32_t n_gpu_layers                    = -1;   // number of layers to store in VRAM (-1 - use default)
     int32_t n_gpu_layers_draft              = -1;   // number of layers to store in VRAM for the draft model (-1 - use default)
     int32_t main_gpu                        = 0;    // the GPU that is used for scratch and small tensors
-    float   tensor_split[ 8 /*LLAMA_MAX_DEVICES*/ ] = {0};  // how split tensors should be distributed across GPUs
+    float   tensor_split[ 8 / *LLAMA_MAX_DEVICES* / ] = {0};  // how split tensors should be distributed across GPUs
     int32_t n_probs                         = 0;    // if greater than 0, output the probabilities of top n_probs tokens.
     int32_t n_beams                         = 0;    // if non-zero then use beam search of given width.
     float   rope_freq_base                  = 10000.0f; // RoPE base frequency
@@ -185,9 +144,9 @@ struct gpt_params {
     bool numa              = false; // attempt optimizations that help on some NUMA systems
     bool export_cgraph     = false; // export the computation graph
     bool verbose_prompt    = false; // print prompt tokens before generation
-};
+};*/
 
-static std::vector<llama_token> llama_tokenize(
+std::vector<llama_token> llama_tokenize(
         struct llama_context * ctx,
            const std::string & text,
                         bool   add_bos) {
@@ -205,7 +164,7 @@ static std::vector<llama_token> llama_tokenize(
     return result;
 }
 
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
+std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
     const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
     if (n_tokens < 0) {
@@ -239,8 +198,6 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 // https://github.com/tsixta/tsmap
 // https://github.com/kshk123/hashMap
 
-bool low_vram; // global setting
-
 std::unordered_map<std::string, std::string> jobs;
 
 // Map of vectors storing PROMPT token evaluation timings [ in milliseconds ]
@@ -258,6 +215,7 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 // Suspend stdout / stderr messaging
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
+/*
 #ifdef _WIN32
 #define NULL_DEVICE "NUL:"
 #define TTY_DEVICE "COM1:"
@@ -265,15 +223,15 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 #define NULL_DEVICE "/dev/null"
 #define TTY_DEVICE "/dev/tty"
 #endif
-
+*/
 // FIXME: Redirect C++ stderr into log file 
-static void hide() {
+void hide() {
     freopen(NULL_DEVICE, "w", stdout);
     freopen(NULL_DEVICE, "w", stderr);
 }    
 
 // FIXME: Doesn't work for MacOS ?
-static void show() {
+void show() {
     freopen(TTY_DEVICE, "w", stdout);
     freopen(TTY_DEVICE, "w", stderr);
 }
@@ -292,7 +250,7 @@ bool stopInferenceFlags[8];
 
 std::string path_session;
 
-static struct llama_context * init_context(int idx) {
+struct llama_context * init_context(int idx) {
 
     bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
 
@@ -307,12 +265,6 @@ static struct llama_context * init_context(int idx) {
 
     lparams.n_ctx        = params[idx].n_ctx;
     lparams.seed         = params[idx].seed;
-    //lparams.f16_kv     = params.memory_f16;
-    //lparams.use_mmap   = params.use_mmap;
-    //lparams.use_mlock  = params.use_mlock;
-    //lparams.logits_all = params.perplexity;
-    //lparams.embedding  = params.embedding;
-    lparams.low_vram     = ::low_vram;
 
     // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
@@ -345,12 +297,6 @@ static struct llama_context * init_context(int idx) {
     //fprintf(stderr, "\n== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
     //fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
 
-    ///// llama_context * lctx = llama_init_from_file(params[idx].model.c_str(), lparams);
-
-    // FIXME ^^^
-    // bridge.cpp:161:28: warning: 'llama_init_from_file' is deprecated: please use llama_load_model_from_file 
-    // combined with llama_new_context_with_model instead [-Wdeprecated-declarations]
-
     llama_model * model  = llama_load_model_from_file(params[idx].model.c_str(), lparams);
     if (model == NULL) {
         fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params[idx].model.c_str());
@@ -376,7 +322,12 @@ static struct llama_context * init_context(int idx) {
 
 // Process prompt and compute output, return total number of tokens processed
 // idx - index of pod / context / params to do processing within
-static int64_t do_inference(int idx, struct llama_context * ctx, const std::string & jobID, const std::string & sessionID, const std::string & text) {
+int64_t do_inference(
+    int idx, 
+    struct llama_context * ctx, 
+    const std::string & jobID, 
+    const std::string & sessionID, 
+    const std::string & text) {
 
     stopInferenceFlags[idx] = false;
     bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
@@ -750,7 +701,7 @@ static int64_t do_inference(int idx, struct llama_context * ctx, const std::stri
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-static const char * statusCPP(const std::string & jobID) {
+const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
     const char * res = jobs[jobID].c_str();
     mutex.unlock_shared();
@@ -758,7 +709,7 @@ static const char * statusCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-static int64_t promptEvalCPP(const std::string & jobID) {
+int64_t promptEvalCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = promptEvals[jobID];
     mutex.unlock_shared();
@@ -766,7 +717,7 @@ static int64_t promptEvalCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-static int64_t getPromptTokenCountCPP(const std::string & jobID) {
+int64_t getPromptTokenCountCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = promptTokenCount[jobID];
     mutex.unlock_shared();
@@ -774,7 +725,7 @@ static int64_t getPromptTokenCountCPP(const std::string & jobID) {
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
-static int64_t timingCPP(const std::string & jobID) {
+int64_t timingCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = timings[jobID];
     mutex.unlock_shared();
@@ -783,18 +734,12 @@ static int64_t timingCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-static void init(char * sessionPath, bool numa, bool lowVRAM) {
-    ::path_session = sessionPath;
-    //if (numa) {
-    //    ggml_numa_init();
-    //}
-    ::low_vram = lowVRAM;
-    //llama_init_backend(numa); 
-    llama_backend_init(numa);
-    // TODO: before server exit: llama_backend_free();
+void init(char * sessionPath) {
+    ::path_session = sessionPath; 
+    llama_backend_init(false); // NUMA = false
 }
 
-static void * initContext(
+void * initContext(
     int idx, 
     char * modelName, 
     int threads, 
@@ -836,37 +781,44 @@ static void * initContext(
     return res;
 }
 
-static int64_t doInference(int idx, void * ctx, char * jobID, char * sessionID, char * prompt) {
+int64_t doInference(
+    int idx, 
+    void * ctx, 
+    char * jobID, 
+    char * sessionID, 
+    char * prompt) {
+    
     std::string id = jobID;
     std::string text = prompt;
     std::string session = sessionID;
+    
     return do_inference(idx, (struct llama_context *)ctx, id, session, text);
 }
 
-static void stopInference(int idx) {
+void stopInference(int idx) {
     ::stopInferenceFlags[idx] = true;
 }
 
 // return current result of processing
-static const char * status(char * jobID) {
+const char * status(char * jobID) {
     std::string id = jobID;
     return statusCPP(id);
 }
 
 // return average PROMPT token processing timing from context
-static int64_t promptEval(char * jobID) {
+int64_t promptEval(char * jobID) {
     std::string id = jobID;
     return promptEvalCPP(id);
 }
 
 // return average PROMPT token processing timing from context
-static int64_t getPromptTokenCount(char * jobID) {
+int64_t getPromptTokenCount(char * jobID) {
     std::string id = jobID;
     return getPromptTokenCountCPP(id);
 }
 
 // return average OUTPUT token processing timing from context
-static int64_t timing(char * jobID) {
+int64_t timing(char * jobID) {
     std::string id = jobID;
     return timingCPP(id);
 }
