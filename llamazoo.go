@@ -1,5 +1,8 @@
 package main
 
+// TODO: Hardcode RANDOM seed for ALL generations
+// TODO: Rename --mirostat-lr N: Set the Mirostat learning rate, parameter eta (default: 0.1).
+// TODO: Rename --mirostat-ent N: Set the Mirostat target entropy, parameter tau (default: 5.0).
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
 // TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording

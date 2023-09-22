@@ -927,24 +927,24 @@ enum e_model {
 
 static const size_t kB = 1024;
 static const size_t MB = kB*kB;
+static const size_t GB = kB*kB*kB;
 
-// default hparams (LLaMA 7B)
 struct llama_hparams {
-    uint32_t n_vocab     = 32000;
-    uint32_t n_ctx_train = 2048;  // the context size used during training
-    uint32_t n_ctx       = 512;   // the context size used during inference
-    uint32_t n_embd      = 4096;
-    uint32_t n_head      = 32;
-    uint32_t n_head_kv   = 32;
-    uint32_t n_layer     = 32;
-    uint32_t n_rot       = 64;
-    uint32_t n_ff        = 11008;
+    uint32_t n_vocab;
+    uint32_t n_ctx_train; // context size the model was trained on
+    uint32_t n_ctx;       // context size used during inference
+    uint32_t n_embd;
+    uint32_t n_head;
+    uint32_t n_head_kv;
+    uint32_t n_layer;
+    uint32_t n_rot;
+    uint32_t n_ff;
 
-    float f_norm_eps     = 1e-5;
-    float f_norm_rms_eps = 1e-5;
+    float f_norm_eps;
+    float f_norm_rms_eps;
 
-    float rope_freq_base  = 10000.0f;
-    float rope_freq_scale = 1.0f;
+    float rope_freq_base;
+    float rope_freq_scale;
 
     bool operator!=(const llama_hparams & other) const {
         return static_cast<bool>(memcmp(this, &other, sizeof(llama_hparams))); // NOLINT
@@ -1075,7 +1075,7 @@ struct llama_model {
 
     std::string name = "n/a";
 
-    llama_hparams hparams;
+    llama_hparams hparams = {};
     llama_vocab   vocab;
 
     struct ggml_tensor * tok_embeddings;
@@ -1280,6 +1280,7 @@ struct llama_model_loader {
     int n_created = 0;
 
     int64_t n_elements = 0;
+    size_t  n_bytes    = 0;
 
     bool use_mmap = false;
 
@@ -1312,6 +1313,7 @@ struct llama_model_loader {
             const char * name = gguf_get_tensor_name(ctx_gguf, i);
             struct ggml_tensor * t = ggml_get_tensor(ctx_meta, name);
             n_elements += ggml_nelements(t);
+            n_bytes    += ggml_nbytes(t);
         }
 
         LLAMA_LOG_INFO("%s: loaded meta data with %d key-value pairs and %d tensors from %s (version %s)\n",
@@ -1671,28 +1673,17 @@ static void llm_load_hparams(
     hparams.n_head_kv = hparams.n_head;
     GGUF_GET_KEY(ctx, hparams.n_head_kv, gguf_get_val_u32, GGUF_TYPE_UINT32, false, kv(LLM_KV_ATTENTION_HEAD_COUNT_KV));
 
-    // TODO: manually setting rope freq base and scale should override this
-    // FIXME: partial fix when the param specified is not the default value, but
-    //        will not work for overriding the model value to the params default
-
-    llama_context_params defaults = llama_context_default_params();
-
-    // rope_freq_base
-    {
-        float ropebase = 10000.0f;
-        GGUF_GET_KEY(ctx, ropebase, gguf_get_val_f32, GGUF_TYPE_FLOAT32, false, kv(LLM_KV_ROPE_FREQ_BASE));
-        if (ropebase != 10000.0f && rope_freq_base == defaults.rope_freq_base) {
-            rope_freq_base = ropebase;
-        }
+    // rope_freq_base (optional)
+    if (rope_freq_base == 0.0f) {
+        rope_freq_base = 10000.0f;
+        GGUF_GET_KEY(ctx, rope_freq_base, gguf_get_val_f32, GGUF_TYPE_FLOAT32, false, kv(LLM_KV_ROPE_FREQ_BASE));
     }
 
     // rope_freq_scale (inverse of the kv) is optional
-    {
+    if (rope_freq_scale == 0.0f) {
         float ropescale = 1.0f;
         GGUF_GET_KEY(ctx, ropescale, gguf_get_val_f32, GGUF_TYPE_FLOAT32, false, kv(LLM_KV_ROPE_SCALE_LINEAR));
-        if (ropescale != 1.0f && rope_freq_scale == defaults.rope_freq_scale) {
-            rope_freq_scale = 1.0f/ropescale;
-        }
+        rope_freq_scale = 1.0f/ropescale;
     }
 
     // sanity check for n_rot (optional)
@@ -1909,7 +1900,12 @@ static void llm_load_print_meta(llama_model_loader & ml, llama_model & model) {
     LLAMA_LOG_INFO("%s: freq_scale     = %g\n",     __func__, hparams.rope_freq_scale);
     LLAMA_LOG_INFO("%s: model type     = %s\n",     __func__, llama_model_type_name(model.type));
     LLAMA_LOG_INFO("%s: model ftype    = %s\n",     __func__, llama_model_ftype_name(model.ftype).c_str());
-    LLAMA_LOG_INFO("%s: model size     = %.2f B\n", __func__, ml.n_elements*1e-9);
+    LLAMA_LOG_INFO("%s: model params   = %.2f B\n", __func__, ml.n_elements*1e-9);
+    if (ml.n_bytes < GB) {
+        LLAMA_LOG_INFO("%s: model size     = %.2f MiB (%.2f BPW) \n", __func__, ml.n_bytes/1024.0/1024.0, ml.n_bytes*8.0/ml.n_elements);
+    } else {
+        LLAMA_LOG_INFO("%s: model size     = %.2f GiB (%.2f BPW) \n", __func__, ml.n_bytes/1024.0/1024.0/1024.0, ml.n_bytes*8.0/ml.n_elements);
+    }
 
     // general kv
     LLAMA_LOG_INFO("%s: general.name   = %s\n",    __func__, model.name.c_str());
@@ -3495,7 +3491,7 @@ static struct ggml_cgraph * llm_build_starcoder(
 
         ggml_allocr_alloc(lctx.alloc, token);
         if (!ggml_allocr_is_measure(lctx.alloc)) {
-            memcpy(token->data, embd, N * n_embd * ggml_element_size(inpL));
+            memcpy(token->data, embd, N * n_embd * ggml_element_size(token));
         }
     }
 
@@ -3767,6 +3763,15 @@ static bool llama_eval_internal(
     //       with the BLAS calls. need a better solution
     if (N >= 32 && ggml_cpu_has_blas() && !ggml_cpu_has_gpublas()) {
         n_threads = std::min(4, n_threads);
+    }
+
+    // If all tensors can be run on the GPU then using more than 1 thread is detrimental.
+    const bool full_offload_supported = model.arch == LLM_ARCH_LLAMA ||
+        model.arch == LLM_ARCH_BAICHUAN ||
+        model.arch == LLM_ARCH_FALCON;
+    const bool fully_offloaded = model.n_gpu_layers >= (int) hparams.n_layer + 3;
+    if (ggml_cpu_has_cublas() && full_offload_supported && fully_offloaded) {
+        n_threads = 1;
     }
 
     struct ggml_tensor * res        = gf->nodes[gf->n_nodes - 1];
@@ -6180,8 +6185,8 @@ struct llama_context_params llama_context_default_params() {
         /*.n_gpu_layers                =*/ 0,
         /*.main_gpu                    =*/ 0,
         /*.tensor_split                =*/ nullptr,
-        /*.rope_freq_base              =*/ 10000.0f,
-        /*.rope_freq_scale             =*/ 1.0f,
+        /*.rope_freq_base              =*/ 0.0f,
+        /*.rope_freq_scale             =*/ 0.0f,
         /*.progress_callback           =*/ nullptr,
         /*.progress_callback_user_data =*/ nullptr,
         /*.low_vram                    =*/ false,
@@ -7032,19 +7037,21 @@ llama_token llama_token_nl(const struct llama_context * ctx) {
 int llama_tokenize(
         struct llama_context * ctx,
                   const char * text,
+                         int   text_len,
                  llama_token * tokens,
                          int   n_max_tokens,
                         bool   add_bos) {
-    return llama_tokenize_with_model(&ctx->model, text, tokens, n_max_tokens, add_bos);
+    return llama_tokenize_with_model(&ctx->model, text, text_len, tokens, n_max_tokens, add_bos);
 }
 
 int llama_tokenize_with_model(
     const struct llama_model * model,
                   const char * text,
+                         int   text_len,
                  llama_token * tokens,
                          int   n_max_tokens,
                         bool   add_bos) {
-    auto res = llama_tokenize_internal(model->vocab, text, add_bos);
+    auto res = llama_tokenize_internal(model->vocab, std::string(text, text_len), add_bos);
 
     if (n_max_tokens < (int) res.size()) {
         // LLAMA_LOG_ERROR("%s: too many tokens\n", __func__);
