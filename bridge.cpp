@@ -109,15 +109,15 @@ struct llama_context * init_context(int idx) {
 
     auto lparams = llama_context_default_params();
 
-    if (isGPU) {
-        lparams.mul_mat_q = true; // FIXME: Experimental, move to config!
-    }
+    //if (isGPU) {
+    //    lparams.mul_mat_q = true; // FIXME: Experimental, move to config!
+    //}
 
     // NB! [lparams] is of type llama_context_params and have no all parameters from bigger gpt_params
     //     [params]  is of type gpt_params and has n_threads parameter
 
     lparams.n_ctx        = params[idx].n_ctx;
-    lparams.seed         = params[idx].seed;
+    //lparams.seed         = params[idx].seed;
 
     // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
@@ -197,9 +197,10 @@ int64_t do_inference(
         sessionFile = path_session + '/' + sessionID;
     }
 
-    if (::params[idx].seed <= 0) {
+    // FIXME: Do not always use RANDOM seed
+    //if (::params[idx].seed <= 0) {
         ::params[idx].seed = time(NULL);
-    }
+    //}
 
     llama_set_rng_seed(ctx, ::params[idx].seed);
 
@@ -238,7 +239,6 @@ int64_t do_inference(
                 // The better solution is to create new file and sync this event between Go / C++ parts
             }
             session_tokens.resize(n_token_count_out);
-            // FIXME: llama_set_rng_seed(ctx, params.seed);
 
             //fprintf(stderr, "%s: %d tokens were restored\n", __func__, n_token_count_out);
 
@@ -481,6 +481,21 @@ int64_t do_inference(
                 //}
                 // printf("`%d`", candidates_p.size);
 
+                // -- DEBUG
+/*
+                printf("\n\n===");
+
+                printf("\n\nmirostat = %d", mirostat);
+                printf("\ntau (ent) = %f", mirostat_tau);
+                printf("\neta (lr)  = %f", mirostat_eta);
+
+                printf("\n\ntemp = %f", temp);
+                printf("\ntop_k = %d", top_k);
+                printf("\ntop_p = %f", top_p);
+
+                printf("\n\nrepeat_penalty = %f", repeat_penalty);
+                printf("\nlast_n_repeat = %d", last_n_repeat);
+*/
                 //if (grammar != NULL) {
                 //    llama_grammar_accept_token(ctx, grammar, id);
                 //}

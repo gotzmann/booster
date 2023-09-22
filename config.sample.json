@@ -63,8 +63,8 @@
             "repeatPenalty": 1.1,
             "repeatLastN": -1,
             "mirostat": 0,
-            "mirostatTAU": 0,
-            "mirostatETA": 0
+            "mirostatENT": 0,
+            "mirostatLR": 0
         }
     ]
 }

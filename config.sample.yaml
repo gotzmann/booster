@@ -61,5 +61,5 @@ models:
     repeatpenalty: 1.1
     repeatlastn: -1
     mirostat: 0
-    mirostattau: 0
-    mirostateta: 0
+    mirostatent: 0
+    mirostatlr: 0

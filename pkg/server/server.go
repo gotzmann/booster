@@ -84,8 +84,10 @@ type Model struct {
 	Predict     int
 
 	Mirostat    uint32
-	MirostatTAU float32
-	MirostatETA float32
+	MirostatLR  float32 // aka eta, learning rate
+	MirostatENT float32 // aka tau, target entropy
+	MirostatTAU float32 // obsolete
+	MirostatETA float32 // obsolete
 
 	Temp float32
 	TopK int
@@ -418,6 +420,15 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			gpu1 := 0
 			gpu2 := 0
 
+			tau := model.MirostatTAU
+			if model.MirostatENT != 0 {
+				tau = model.MirostatENT
+			}
+			eta := model.MirostatETA
+			if model.MirostatLR != 0 {
+				eta = model.MirostatLR
+			}
+
 			if len(pod.GPUs) > 0 {
 				gpu1 = pod.GPUs[0]
 				if len(pod.GPUs) > 1 {
@@ -432,7 +443,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				// C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
 				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),
-				C.int32_t(model.Mirostat), C.float(model.MirostatTAU), C.float(model.MirostatETA),
+				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
 				C.int32_t(-1))
@@ -457,8 +468,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				Predict:     model.Predict,
 
 				Mirostat:    model.Mirostat,
-				MirostatTAU: model.MirostatTAU,
-				MirostatETA: model.MirostatETA,
+				MirostatTAU: tau,
+				MirostatETA: eta,
 
 				Temp: model.Temp,
 				TopK: model.TopK,
