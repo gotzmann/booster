@@ -125,6 +125,10 @@ llama_token llama_sample_token(
             id = llama_sample_token_mirostat(ctx, &cur_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
         } else if (mirostat == 2) {
             static float mirostat_mu = 2.0f * mirostat_tau;
+            // Experimental step!
+            if (top_k > 0) {
+                llama_sample_top_k(ctx, &cur_p, top_k, 1);
+            }
             llama_sample_temperature(ctx, &cur_p, temp);
             id = llama_sample_token_mirostat_v2(ctx, &cur_p, mirostat_tau, mirostat_eta, &mirostat_mu);
         } else {
