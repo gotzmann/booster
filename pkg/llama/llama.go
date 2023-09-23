@@ -508,7 +508,7 @@ func SampleTopPTopK(
 		// Repetition penalty from ctrl paper (https://arxiv.org/abs/1909.05858)
 		// Credit https://github.com/facebookresearch/llama/compare/main...shawwn:llama:main
 
-		// Check if the i-th token is present in the last_n_tokens ring buffer
+		// Check if the i-th token is present in the last_tokens ring buffer
 		tokenExists := false
 		// TODO: Ompimize [ 32,000 * 1024 ~ 100 ms ] loop with better data structure for lastNTokens
 		lastNTokens.Do(func(p interface{}) {

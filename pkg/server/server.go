@@ -16,6 +16,7 @@ void * initContext(
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
+	float typicalP,
 	float repeat_penalty, int repeat_last_n,
 	int32_t seed);
 int64_t doInference(
@@ -92,6 +93,8 @@ type Model struct {
 	Temp float32
 	TopK int
 	TopP float32
+
+	TypicalP float32
 
 	RepeatPenalty float32
 	RepeatLastN   int
@@ -239,6 +242,7 @@ func Init(
 	context, predict int,
 	mirostat uint32, mirostatTAU float32, mirostatETA float32,
 	temp float32, topK int, topP float32,
+	typicalP float32,
 	repeatPenalty float32, repeatLastN int,
 	deadlineIn int64,
 	seed uint32,
@@ -293,6 +297,7 @@ func Init(
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
+			C.float(typicalP),
 			C.float(repeatPenalty), C.int(repeatLastN),
 			C.int32_t(seed))
 
@@ -445,6 +450,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
+				C.float(model.TypicalP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
 				C.int32_t(-1))
 
@@ -825,7 +831,7 @@ func Do(jobID string, pod *Pod) {
 	   				leftCount := pastCount - params.KeepCount
 	   				pastCount = params.KeepCount
 
-	   				// insert n_left/2 tokens at the start of embd from last_n_tokens
+	   				// insert n_left/2 tokens at the start of embd from last_tokens
 	   				// embd = append(lastNTokens[:leftCount/2], embd...)
 	   				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
 	   			}

@@ -7,7 +7,6 @@
     "numa": 0,
     "lowVRAM": 0,
     "sessions": "/home/sessions",
-    "maxSessions": 100,
 
     "pods": [
 
@@ -41,6 +40,7 @@
             "temp": 0.1,
             "topK": 8,
             "topP": 0.4,
+            "typicalP": 1.0,
             "repeatPenalty": 1.1,
             "repeatLastN": -1,
             "mirostat": 0,
@@ -60,6 +60,7 @@
             "temp": 0.1,
             "topK": 8,
             "topP": 0.4,
+            "typicalP": 1.0,
             "repeatPenalty": 1.1,
             "repeatLastN": -1,
             "mirostat": 0,

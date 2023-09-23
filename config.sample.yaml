@@ -8,7 +8,6 @@ deadline: 180
 numa: 0
 lowvram: 0
 sessions: "/home/sessions"
-maxsessions: 100
 
 # --- pods
 
@@ -40,6 +39,7 @@ models:
     temp: 0.1
     topk: 8
     topp: 0.4
+    typicalp: 1.0
     repeatpenalty: 1.1
     repeatlastn: -1
     mirostat: 2
@@ -58,6 +58,7 @@ models:
     temp: 0.1
     topk: 8
     topp: 0.4
+    typicalp: 1.0
     repeatpenalty: 1.1
     repeatlastn: -1
     mirostat: 0

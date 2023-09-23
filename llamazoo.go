@@ -1,5 +1,6 @@
 package main
 
+// TODO: Show real port => [ INIT ] REST API running on localhost:8080
 // TODO: Hardcode RANDOM seed for ALL generations
 // TODO: Rename --mirostat-lr N: Set the Mirostat learning rate, parameter eta (default: 0.1).
 // TODO: Rename --mirostat-ent N: Set the Mirostat target entropy, parameter tau (default: 5.0).
@@ -80,6 +81,7 @@ type Options struct {
 	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.1 by default ]"`
 	TopK          int     `long:"top-k" description:"TopK parameter for the model [ 8 by default ]"`
 	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.4 by default ]"`
+	TypicalP      float32 `long:"typical-p" description:"TypicalP parameter for the sampling [ 1.0 by default == disabled ]"`
 	RepeatPenalty float32 `long:"repeat-penalty" description:"RepeatPenalty [ 1.1 by default ]"`
 	RepeatLastN   int     `long:"repeat-last-n" description:"RepeatLastN [ -1 by default ]"`
 	Silent        bool    `long:"silent" description:"Hide welcome logo and other output [ shown by default ]"`
@@ -224,6 +226,7 @@ func main() {
 			int(opts.Context), int(opts.Predict),
 			opts.Mirostat, opts.MirostatTAU, opts.MirostatETA,
 			opts.Temp, opts.TopK, opts.TopP,
+			opts.TypicalP,
 			opts.RepeatPenalty, opts.RepeatLastN,
 			opts.Deadline,
 			opts.Seed,
@@ -247,7 +250,7 @@ func main() {
 						output = output[1:]
 					}
 
-					Colorize("\n[light_magenta]%s [light_green][ %s ] [dark_gray][ %s ] [dark_gray]%d => %d tokens | %d => %d ms.[light_blue]\n%s\n",
+					Colorize("\n[light_magenta]%s [light_green][ %s ] [dark_gray][ %s ] [dark_gray]%d => %d tokens | %d => %d ms.[light_blue]\n\n%s\n",
 						job.ID,
 						job.Status,
 						job.Model,
@@ -340,6 +343,10 @@ func parseOptions() *Options {
 
 	if opts.TopP == 0 {
 		opts.TopP = 0.4
+	}
+
+	if opts.TypicalP == 0 {
+		opts.TypicalP = 1.0 // disabled
 	}
 
 	if opts.RepeatPenalty == 0 {

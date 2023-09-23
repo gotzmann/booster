@@ -42,6 +42,123 @@ std::string llama_token_to_str(const struct llama_context * ctx, llama_token tok
     return std::string(result.data(), result.size());
 }
 
+llama_token llama_sample_token(
+                  struct llama_context * ctx,
+                  struct llama_context * ctx_guidance,
+                  struct llama_grammar * grammar,
+               const struct gpt_params & params,
+        const std::vector<llama_token> & last_tokens,
+         std::vector<llama_token_data> & candidates,
+                                   int   idx) {
+
+    const int n_ctx   = llama_n_ctx(ctx);
+    const int n_vocab = llama_n_vocab(ctx);
+
+    const float   temp            = params.temp;
+    const int32_t top_k           = params.top_k <= 0 ? n_vocab : params.top_k;
+    const float   top_p           = params.top_p;
+    //const float   tfs_z           = params.tfs_z;
+    const float   typical_p       = params.typical_p;
+    const int32_t repeat_last_n   = params.repeat_last_n < 0 ? n_ctx : params.repeat_last_n;
+    const float   repeat_penalty  = params.repeat_penalty;
+    //const float   alpha_presence  = params.presence_penalty;
+    //const float   alpha_frequency = params.frequency_penalty;
+    const int     mirostat        = params.mirostat;
+    const float   mirostat_tau    = params.mirostat_tau;
+    const float   mirostat_eta    = params.mirostat_eta;
+    const bool    penalize_nl     = params.penalize_nl;
+
+    llama_token id = 0;
+
+    float * logits = llama_get_logits(ctx) + idx * n_vocab;
+
+    // Apply params.logit_bias map
+    //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
+    //    logits[it->first] += it->second;
+    //}
+
+    candidates.clear();
+    for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
+        candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
+    }
+
+    llama_token_data_array cur_p = { candidates.data(), candidates.size(), false };
+
+    if (ctx_guidance) {
+        llama_sample_classifier_free_guidance(ctx, &cur_p, ctx_guidance, params.cfg_scale);
+    }
+
+    // apply penalties
+    if (!last_tokens.empty()) {
+        const float nl_logit = logits[llama_token_nl(ctx)];
+        const int last_n_repeat = std::min(std::min((int)last_tokens.size(), repeat_last_n), n_ctx);
+
+        llama_sample_repetition_penalty(ctx, &cur_p,
+                last_tokens.data() + last_tokens.size() - last_n_repeat,
+                last_n_repeat, repeat_penalty);
+        //llama_sample_frequency_and_presence_penalties(ctx, &cur_p,
+        //        last_tokens.data() + last_tokens.size() - last_n_repeat,
+        //        last_n_repeat, alpha_frequency, alpha_presence);
+
+        if (!penalize_nl) {
+            for (size_t idx = 0; idx < cur_p.size; idx++) {
+                if (cur_p.data[idx].id == llama_token_nl(ctx)) {
+                    cur_p.data[idx].logit = nl_logit;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (grammar != NULL) {
+        llama_sample_grammar(ctx, &cur_p, grammar);
+    }
+
+    if (temp <= 0) {
+        // Greedy sampling
+        id = llama_sample_token_greedy(ctx, &cur_p);
+    } else {
+        if (mirostat == 1) {
+            static float mirostat_mu = 2.0f * mirostat_tau;
+            const int mirostat_m = 100;
+            llama_sample_temperature(ctx, &cur_p, temp);
+            id = llama_sample_token_mirostat(ctx, &cur_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
+        } else if (mirostat == 2) {
+            static float mirostat_mu = 2.0f * mirostat_tau;
+            llama_sample_temperature(ctx, &cur_p, temp);
+            id = llama_sample_token_mirostat_v2(ctx, &cur_p, mirostat_tau, mirostat_eta, &mirostat_mu);
+        } else {
+            // Temperature sampling
+            llama_sample_top_k      (ctx, &cur_p, top_k, 1);
+            //llama_sample_tail_free  (ctx, &cur_p, tfs_z, 1);
+            llama_sample_typical    (ctx, &cur_p, typical_p, 1);
+            llama_sample_top_p      (ctx, &cur_p, top_p, 1);
+            llama_sample_temperature(ctx, &cur_p, temp);
+
+            /*{
+                const int n_top = 10;
+                LOG("top %d candidates:\n", n_top);
+
+                for (int i = 0; i < n_top; i++) {
+                    const llama_token id = cur_p.data[i].id;
+                    LOG(" - %5d: '%12s' (%.3f)\n", id, llama_token_to_piece(ctx, id).c_str(), cur_p.data[i].p);
+                }
+            }*/
+
+            id = llama_sample_token(ctx, &cur_p);
+
+            //LOG("sampled token: %5d: '%s'\n", id, llama_token_to_piece(ctx, id).c_str());
+        }
+    }
+    // printf("`%d`", candidates_p.size);
+
+    if (grammar != NULL) {
+        llama_grammar_accept_token(ctx, grammar, id);
+    }
+
+    return id;
+}
+
 // FIXME ASAP - do not allow longer context when reading session file
 
 // do_inference: PROMPT [ 2386 ] tokens
@@ -314,8 +431,8 @@ int64_t do_inference(
     }
 
     // TODO: replace with ring-buffer
-    std::vector<llama_token> last_n_tokens(n_ctx);
-    std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
+    std::vector<llama_token> last_tokens(n_ctx);
+    std::fill(last_tokens.begin(), last_tokens.end(), 0);
 
     int n_past             = 0;
     int n_consumed         = 0;
@@ -325,7 +442,7 @@ int64_t do_inference(
     int n_remain           = ::params[idx].n_predict;
 
     std::vector<llama_token> embd;
-    std::vector<llama_token> embd_guidance; // TODO: Investigate
+    std::vector<llama_token> embd_guidance;
 
     // -- MAIN LOOP --
 
@@ -387,7 +504,7 @@ int64_t do_inference(
         }
 
         embd.clear();
-        //embd_guidance.clear(); // -- new feature
+        //embd_guidance.clear();
 
         //fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
 
@@ -395,6 +512,18 @@ int64_t do_inference(
 
             // --- out of user input, sample next token
 
+            std::vector<llama_token_data> candidates;
+            candidates.reserve(llama_n_vocab(ctx));
+
+
+
+            struct llama_context * guidance = NULL;
+            struct llama_grammar * grammar = NULL;
+            llama_token id = llama_sample_token(ctx, guidance, grammar, ::params[idx], last_tokens, candidates, 0);
+
+
+
+/*
             const float   temp            = ::params[idx].temp;
             const int32_t top_k           = ::params[idx].top_k <= 0 ? llama_n_vocab(ctx) : ::params[idx].top_k;
             const float   top_p           = ::params[idx].top_p;
@@ -406,11 +535,11 @@ int64_t do_inference(
             const float   repeat_penalty  = ::params[idx].repeat_penalty;
             const int32_t repeat_last_n   = ::params[idx].repeat_last_n < 0 ? n_ctx : ::params[idx].repeat_last_n;
 
-            //const float   tfs_z           = ::params.tfs_z;
-            //const float   typical_p       = ::params.typical_p;
-            //const float   alpha_presence  = ::params.presence_penalty;
-            //const float   alpha_frequency = ::params.frequency_penalty;
-            ////const bool    penalize_nl     = ::params[idx].penalize_nl;
+            //const float   tfs_z           = ::params[idx].tfs_z;
+            const float   typical_p       = ::params[idx].typical_p > 0 ? ::params[idx].typical_p : 1.0f;
+            //const float   alpha_presence  = ::params[idx].presence_penalty;
+            //const float   alpha_frequency = ::params[idx].frequency_penalty;
+            const bool    penalize_nl     = ::params[idx].penalize_nl;
 
             llama_token id = 0;
 
@@ -420,7 +549,7 @@ int64_t do_inference(
 
                 // FIXME: local logit_bias VS gpt_params context bias
                 // Apply params.logit_bias map
-                ////for (auto it = /*::params.*/logit_bias.begin(); it != /*::params.*/logit_bias.end(); it++) {
+                ////for (auto it = ::params.logit_bias.begin(); it != ::params.logit_bias.end(); it++) {
                 ////    logits[it->first] += it->second;
                 ////}
 
@@ -439,18 +568,18 @@ int64_t do_inference(
 
                 // --- Apply penalties
 
-                //float nl_logit = logits[llama_token_nl(ctx)];
-                auto last_n_repeat = std::min(std::min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
+                float nl_logit = logits[llama_token_nl(ctx)];
+                auto last_n_repeat = std::min(std::min((int)last_tokens.size(), repeat_last_n), n_ctx);
 
                 llama_sample_repetition_penalty(ctx, &candidates_p,
-                    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
+                    last_tokens.data() + last_tokens.size() - last_n_repeat,
                     last_n_repeat, repeat_penalty);
                 //llama_sample_frequency_and_presence_penalties(ctx, &candidates_p,
-                //    last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
+                //    last_tokens.data() + last_tokens.size() - last_n_repeat,
                 //    last_n_repeat, alpha_frequency, alpha_presence);
-                //if (!penalize_nl) {
-                //    logits[llama_token_nl()] = nl_logit;
-                //}
+                if (!penalize_nl) {
+                    logits[llama_token_nl(ctx)] = nl_logit;
+                }
 
                 //if (grammar != NULL) {
                 //    llama_sample_grammar(ctx, &candidates_p, grammar);
@@ -461,19 +590,19 @@ int64_t do_inference(
                 //    id = llama_sample_token_greedy(ctx, &candidates_p);
                 //} else {
                     if (mirostat == 1) {
-                        static float mirostat_mu = 2.0f * mirostat_tau;
+                        static float mirostat_mu = 2.0f * mirostat_tau; // tau = target entropy
                         const int mirostat_m = 100;
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat(ctx, &candidates_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
                     } else if (mirostat == 2) {
-                        static float mirostat_mu = 2.0f * mirostat_tau;
+                        static float mirostat_mu = 2.0f * mirostat_tau; // tau = target entropy
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token_mirostat_v2(ctx, &candidates_p, mirostat_tau, mirostat_eta, &mirostat_mu);
                     } else {
                         // Temperature sampling
                         llama_sample_top_k(ctx, &candidates_p, top_k, 1);
                         //llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
-                        //llama_sample_typical(ctx, &candidates_p, typical_p, 1);
+                        llama_sample_typical(ctx, &candidates_p, typical_p, 1);
                         llama_sample_top_p(ctx, &candidates_p, top_p, 1);
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token(ctx, &candidates_p);
@@ -482,7 +611,7 @@ int64_t do_inference(
                 // printf("`%d`", candidates_p.size);
 
                 // -- DEBUG
-/*
+
                 printf("\n\n===");
 
                 printf("\n\nmirostat = %d", mirostat);
@@ -493,16 +622,18 @@ int64_t do_inference(
                 printf("\ntop_k = %d", top_k);
                 printf("\ntop_p = %f", top_p);
 
+                printf("\n\ntypical_p = %f", typical_p);
+
                 printf("\n\nrepeat_penalty = %f", repeat_penalty);
                 printf("\nlast_n_repeat = %d", last_n_repeat);
-*/
+
                 //if (grammar != NULL) {
                 //    llama_grammar_accept_token(ctx, grammar, id);
                 //}
-
-                last_n_tokens.erase(last_n_tokens.begin());
-                last_n_tokens.push_back(id);
-            } 
+*/
+                last_tokens.erase(last_tokens.begin());
+                last_tokens.push_back(id);
+            //} 
 
             // add it to the context
             embd.push_back(id);
@@ -515,8 +646,8 @@ int64_t do_inference(
             // some user input remains from prompt or interaction, forward it to processing
             while ((int) embd_inp.size() > n_consumed) {
                 embd.push_back(embd_inp[n_consumed]);
-                last_n_tokens.erase(last_n_tokens.begin());
-                last_n_tokens.push_back(embd_inp[n_consumed]);
+                last_tokens.erase(last_tokens.begin());
+                last_tokens.push_back(embd_inp[n_consumed]);
                 ++n_consumed;
                 if ((int) embd.size() >= n_batch) {
                     break;
@@ -610,7 +741,8 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    float temp, int top_k, float top_p, 
+    float temp, int top_k, float top_p,
+    float typical_p, 
     float repeat_penalty, int repeat_last_n,
     int32_t seed) {
     
@@ -632,6 +764,8 @@ void * initContext(
     ::params[idx].temp           = temp;
     ::params[idx].top_k          = top_k;
     ::params[idx].top_p          = top_p;
+
+    ::params[idx].typical_p      = typical_p > 0 ? typical_p : 1.0f;
 
     ::params[idx].repeat_penalty = repeat_penalty;
     ::params[idx].repeat_last_n  = repeat_last_n;

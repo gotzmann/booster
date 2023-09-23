@@ -58,7 +58,7 @@ struct gpt_params {
 
     // sampling parameters
     int32_t top_k             = 8;     // 40;    // <= 0 to use vocab size
-    float   top_p             = 0.1;   // 95f; // 1.0 = disabled
+    float   top_p             = 0.1;   // 0.95f; // 1.0 = disabled
     float   tfs_z             = 1.00f; // 1.0 = disabled
     float   typical_p         = 1.00f; // 1.0 = disabled
     float   temp              = 0.1;   // 0.80f; // 1.0 = disabled
@@ -125,6 +125,36 @@ struct gpt_params {
     bool verbose_prompt    = false; // print prompt tokens before generation
 };
 
+//
+// Sampling utils
+//
+
+// this is a common sampling function used across the examples for convenience
+// it can serve as a starting point for implementing your own sampling function
+//
+// required:
+//  - ctx:    context to use for sampling
+//  - params: sampling parameters
+//
+// optional:
+//  - ctx_guidance:  context to use for classifier-free guidance, ignore if NULL
+//  - grammar:       grammar to use for sampling, ignore if NULL
+//  - last_tokens:   needed for repetition penalty, ignore if empty
+//  - idx:           sample from llama_get_logits(ctx) + idx * n_vocab
+//
+// returns:
+//  - token:      sampled token
+//  - candidates: vector of candidate tokens
+//
+llama_token llama_sample_token(
+                  struct llama_context * ctx,
+                  struct llama_context * ctx_guidance,
+                  struct llama_grammar * grammar,
+               const struct gpt_params & params,
+        const std::vector<llama_token> & last_tokens,
+         std::vector<llama_token_data> & candidates,
+                                   int   idx = 0);
+
 std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool   add_bos);
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
@@ -154,7 +184,8 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    float temp, int top_k, float top_p, 
+    float temp, int top_k, float top_p,
+    float typical_p,
     float repeat_penalty, int repeat_last_n,
     int32_t seed);
 int64_t doInference(
