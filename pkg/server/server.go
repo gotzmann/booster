@@ -47,6 +47,7 @@ import (
 
 	//"github.com/gofiber/fiber/v2"
 	fiber "github.com/gofiber/fiber/v2"
+	"github.com/goodsign/monday"
 	"github.com/google/uuid"
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
@@ -69,6 +70,28 @@ import (
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
 // TODO: UUID vs string for job ID
 // TODO: Unix timestamp vs ISO for date and time
+
+type Mode struct {
+	id string
+	HyperParams
+}
+
+type HyperParams struct {
+	Mirostat    uint32
+	MirostatLR  float32 // aka eta, learning rate
+	MirostatENT float32 // aka tau, target entropy
+	MirostatTAU float32 // obsolete
+	MirostatETA float32 // obsolete
+
+	Temp float32
+	TopK int
+	TopP float32
+
+	TypicalP float32
+
+	RepeatPenalty float32
+	RepeatLastN   int
+}
 
 type Model struct {
 	ID   string // short internal name of the model
@@ -104,7 +127,8 @@ type Model struct {
 type Config struct {
 	ID string // server key, should be unique within cluster
 
-	Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
+	//Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
+	Modes []Mode
 
 	Host string
 	Port string
@@ -651,12 +675,21 @@ func Do(jobID string, pod *Pod) {
 		}
 	}
 
+	// -- Inject context vars
+	// ${DATE} = понедельник 25 сентября 2023
+	// TODO: Support 20 other locales
+	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.LocaleRuRU)
+	date = strings.ToLower(date)
+	preamble := strings.Replace(pod.model.Preamble, "${DATE}", date, 1)
+	//fmt.Printf("\nPREAMBLE: %s", preamble) // DEBUG
+	// --
+
 	prompt := Jobs[jobID].Prompt
-	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
 	fullPrompt := pod.model.Prefix + prompt + pod.model.Suffix
+	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
 
 	if history == "" {
-		fullPrompt = pod.model.Preamble + fullPrompt
+		fullPrompt = preamble + fullPrompt
 	} else {
 		fullPrompt = history + fullPrompt
 	}

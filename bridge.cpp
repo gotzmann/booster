@@ -42,6 +42,28 @@ std::string llama_token_to_str(const struct llama_context * ctx, llama_token tok
     return std::string(result.data(), result.size());
 }
 
+// This works fast and allows for 100% deterministic sampling
+llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logits, const int size) {
+      
+    //const int64_t t_start_sample_us = ggml_time_us();
+
+    llama_token id = 0;
+    float prob = logits[0];
+
+    for (llama_token i = 1; i < size; i++) {
+        if (logits[i] > prob) {
+            id = i;
+            prob = logits[i];
+        }
+    }
+
+    //if (ctx) {
+    //    ctx->t_sample_us += ggml_time_us() - t_start_sample_us;
+    //}
+
+    return id;
+}
+
 llama_token llama_sample_token(
                   struct llama_context * ctx,
                   struct llama_context * ctx_guidance,
@@ -68,14 +90,19 @@ llama_token llama_sample_token(
     const float   mirostat_eta    = params.mirostat_eta;
     const bool    penalize_nl     = params.penalize_nl;
 
-    llama_token id = 0;
-
     float * logits = llama_get_logits(ctx) + idx * n_vocab;
+
+    // Deterministic sampling with great performance
+    if (top_k == 1) {
+        return sample_top_token(logits, n_vocab);
+    } 
+
+    llama_token id = 0;
 
     // Apply params.logit_bias map
     //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
     //    logits[it->first] += it->second;
-    //}
+    //}   
 
     candidates.clear();
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
