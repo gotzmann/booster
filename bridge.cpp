@@ -127,7 +127,7 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     // -- help pop up <EOS> to avoid longer generation
 
     const int EOS = 2;
-    float coeff = 1.0f + float(length) * 10 / llama_n_ctx(ctx);
+    float coeff = 1.0f + float(length) * 8 / llama_n_ctx(ctx);
     fprintf(stderr, "\ncoeff = %f", coeff);
     fprintf(stderr, "\nBOS before = %f", logits[EOS]);
     logits[EOS] *= coeff;
