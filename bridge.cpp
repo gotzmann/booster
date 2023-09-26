@@ -2,6 +2,7 @@
 #include "llama.h"
 #include "ggml.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <random>
