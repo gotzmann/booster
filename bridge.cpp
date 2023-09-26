@@ -127,13 +127,10 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     // -- help pop up <EOS> to avoid longer generation
 
     const int EOS = 2;
-    //const int maxLength = 4096;
-    //const int    = llama_n_ctx(ctx);
-    fprintf(stderr, "\nllama_n_ctx(ctx) = %d", llama_n_ctx(ctx));
-    //fprintf(stderr, "\nlast tokens = %d", last_tokens.size());
-    fprintf(stderr, "\n1.0f + logits[EOS] / llama_n_ctx(ctx) * length = %f", 1.0f + logits[EOS] / llama_n_ctx(ctx) * length);
+    float coeff = 1.0f + float(length) * 10 / llama_n_ctx(ctx);
+    fprintf(stderr, "\ncoeff = %f", coeff);
     fprintf(stderr, "\nBOS before = %f", logits[EOS]);
-    logits[EOS] *= 1.0f + logits[EOS] / llama_n_ctx(ctx) * length;
+    logits[EOS] *= coeff;
     fprintf(stderr, "\nthen after = %f", logits[EOS]);
 
     // -- search for pedantic tokens
