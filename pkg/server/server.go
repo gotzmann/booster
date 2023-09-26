@@ -15,6 +15,7 @@ void * initContext(
 	int gpu1, int gpu2,
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
+	int32_t yanus,
 	float temp, int topK, float topP,
 	float typicalP,
 	float repeat_penalty, int repeat_last_n,
@@ -83,6 +84,8 @@ type HyperParams struct {
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
 
+	Yanus uint32 // version of Yanus Sampling, zero for disable
+
 	Temp float32
 	TopK int
 	TopP float32
@@ -112,6 +115,8 @@ type Model struct {
 	MirostatENT float32 // aka tau, target entropy
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
+
+	Yanus uint32 // version of Yanus Sampling, zero for disable
 
 	Temp float32
 	TopK int
@@ -320,6 +325,7 @@ func Init(
 			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // TODO: Support more than 2 GPUs
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
+			C.int32_t(0), // yanus
 			C.float(temp), C.int(topK), C.float(topP),
 			C.float(typicalP),
 			C.float(repeatPenalty), C.int(repeatLastN),
@@ -473,6 +479,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
+				C.int32_t(model.Yanus),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.TypicalP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
@@ -500,6 +507,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				Mirostat:    model.Mirostat,
 				MirostatTAU: tau,
 				MirostatETA: eta,
+
+				Yanus: model.Yanus,
 
 				Temp: model.Temp,
 				TopK: model.TopK,

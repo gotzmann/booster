@@ -49,7 +49,7 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
     //const int64_t t_start_sample_us = ggml_time_us();
 
     llama_token id = 0;
-    float prob = logits[0];
+    float prob = 0;
 
     for (llama_token i = 1; i < size; i++) {
         if (logits[i] > prob) {
@@ -57,6 +57,76 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
             prob = logits[i];
         }
     }
+
+    //if (ctx) {
+    //    ctx->t_sample_us += ggml_time_us() - t_start_sample_us;
+    //}
+
+    return id;
+}
+
+// Tokens very often used for math, coding and JSON (aka repetitive),
+// so we should be care about them and not penalize
+llama_token pedanticTokens[] = {
+    29900, // "0"
+    29896, // "1"
+    29906, // "2"
+    29941, // "3"
+    29946, // "4"
+    29945, // "5"
+    29953, // "6"
+    29955, // "7"
+    29947, // "8"
+    29929, // "9"
+    29922, // "="
+    353, // " ="
+    // 29974, // "+"
+    // 718, // " +"
+    // 448, // " -"
+    29912, // "{"
+    426, // " {"
+    29913, // "}"
+    500, // " }"
+    29961, // "["
+    518, // " ["
+    29962, // "]"
+    4514, // " ]"
+    29898, // "("
+    313, // " ("
+    29897, // ")"
+    1723, // " )"
+    // 3319, // "({"
+    // 1800, // "})"
+    // 4197, // "(["
+    // 29889, // "."
+    29901, // ":"
+};
+
+// Experimental approach by gotzmann
+llama_token sample_yanus_token(/*struct llama_context * ctx,*/ const int version, const float * logits, const int size) {
+
+    if (version != 1) {
+        return 0;
+    }
+
+    //const int64_t t_start_sample_us = ggml_time_us();
+
+    llama_token id = 0;
+    float prob = 0;
+
+    for (llama_token i = 1; i < size; i++) {
+        if (logits[i] > prob) {
+            id = i;
+            prob = logits[i];
+        }
+    }
+
+    llama_token * found = std::find(std::begin(pedanticTokens), std::end(pedanticTokens), id);
+    if (found == std::end(pedanticTokens)) {
+        return 0; // the most probable token is not pedantic, so go with regular sampling
+    }
+
+    fprintf(stderr, "\n^^^ PEDANTIC TOKEN ON THE TOP ^^^\n");
 
     //if (ctx) {
     //    ctx->t_sample_us += ggml_time_us() - t_start_sample_us;
@@ -91,14 +161,13 @@ llama_token llama_sample_token(
     const float   mirostat_eta    = params.mirostat_eta;
     const bool    penalize_nl     = params.penalize_nl;
 
+    llama_token id = 0;
     float * logits = llama_get_logits(ctx) + idx * n_vocab;
 
     // Deterministic sampling with great performance
     //if (top_k == 1) {
     //    return sample_top_token(logits, n_vocab);
     //} 
-
-    llama_token id = 0;
 
     // Apply params.logit_bias map
     //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
@@ -123,16 +192,23 @@ llama_token llama_sample_token(
     });
     for (int i = 0; i < 8; i++) {
         if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " -- %5d [ %.3f ] \"\\n\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit
-            );
+            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
+        } else if (2 == candidates.data()[i].id) {
+            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
         } else {
-            fprintf(stderr, " -- %5d [ %.3f ] \"%s\" \n", 
+            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
                 candidates.data()[i].id,
                 candidates.data()[i].logit, 
                 llama_token_to_str(ctx, candidates.data()[i].id).c_str()
             );
+        }
+    }
+
+    // Experimental sampling both creative for text and pedantic for math
+    if (params.yanus > 0) {
+        id = sample_yanus_token(params.yanus, logits, n_vocab);
+        if (id > 0) {
+            return id;
         }
     }
 
@@ -159,15 +235,14 @@ llama_token llama_sample_token(
     }
 
     // -- DEBUG 2
-    fprintf(stderr, "\n=== TOP 6 AFTER PENALTIES ===\n");
-    for (int i = 0; i < 6; i++) {
+    fprintf(stderr, "\n=== TOP 8 AFTER PENALTIES ===\n");
+    for (int i = 0; i < 8; i++) {
         if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " -- %5d [ %.3f ] \"\\n\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit
-            );
+            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
+        } else if (2 == candidates.data()[i].id) {
+            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
         } else {
-            fprintf(stderr, " -- %5d [ %.3f ] \"%s\" \n", 
+            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
                 candidates.data()[i].id,
                 candidates.data()[i].logit, 
                 llama_token_to_str(ctx, candidates.data()[i].id).c_str()
@@ -810,6 +885,7 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
+    int32_t yanus,
     float temp, int top_k, float top_p,
     float typical_p, 
     float repeat_penalty, int repeat_last_n,
@@ -829,6 +905,8 @@ void * initContext(
     ::params[idx].mirostat       = mirostat;
     ::params[idx].mirostat_tau   = mirostat_tau; 
     ::params[idx].mirostat_eta   = mirostat_eta;
+
+    ::params[idx].yanus          = yanus;
 
     ::params[idx].temp           = temp;
     ::params[idx].top_k          = top_k;
