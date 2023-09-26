@@ -68,6 +68,7 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
 // Tokens very often used for math, coding and JSON (aka repetitive),
 // so we should be care about them and not penalize
 llama_token pedanticTokens[] = {
+    2, // <EOS>
     29900, // "0"
     29896, // "1"
     29906, // "2"
@@ -127,11 +128,22 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     // -- help pop up <EOS> to avoid longer generation
 
     const int EOS = 2;
-    float coeff = 1.0f + float(length) * 6 / llama_n_ctx(ctx);
-    fprintf(stderr, "\ncoeff = %f", coeff);
-    fprintf(stderr, "\nBOS before = %f", logits[EOS]);
-    logits[EOS] *= coeff;
-    fprintf(stderr, "\nthen after = %f", logits[EOS]);
+    // TODO: Choose the right multiplier empirically from 4 .. 6 .. 8
+    float coeff = 6.0;
+    if (length > 200) {
+        coeff = 4.0;
+    } 
+    if (length > 400) {
+        coeff = 3.0;
+    } 
+    if (length > 800) {
+        coeff = 2.0;
+    } 
+    float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
+    fprintf(stderr, "\nmult = %f", mult);
+    fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
+    logits[EOS] *= mult;
+    fprintf(stderr, "\n  and  after = %f", logits[EOS]);
 
     // -- search for pedantic tokens
 
