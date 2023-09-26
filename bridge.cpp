@@ -117,7 +117,7 @@ llama_token llama_sample_token(
     }
 
     // DEBUG
-    fprintf(stderr, "\n=== TOP 10 candidates ===\n");
+    fprintf(stderr, "\n=== TOP 10 CANDIDATES ===\n");
     // Sort the logits in descending order
     //if (!candidates.sorted) {
         std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
@@ -128,7 +128,7 @@ llama_token llama_sample_token(
     for (int i = 0; i < 10; i++) {
         //const llama_token id = cur_p.data[i].id;
         //fprintf(stderr, " - %5d / %.3f / %8s \n", id, cur_p.data[i].p, llama_token_to_str(ctx, i).c_str());
-        fprintf(stderr, " - %5d / %.3f / %8s \n", 
+        fprintf(stderr, " -- %5d [ %.3f ] '%s' \n", 
             candidates.data()[i].id,
             candidates.data()[i].logit, 
             llama_token_to_str(ctx, candidates.data()[i].id).c_str()
@@ -155,6 +155,21 @@ llama_token llama_sample_token(
                 }
             }
         }
+    }
+
+    // DEBUG
+    fprintf(stderr, "\n=== TOP 10 AFTER PENALTIES ===\n");
+    //std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
+    //    return a.logit > b.logit;
+    //});
+    for (int i = 0; i < 10; i++) {
+        //const llama_token id = cur_p.data[i].id;
+        //fprintf(stderr, " - %5d / %.3f / %8s \n", id, cur_p.data[i].p, llama_token_to_str(ctx, i).c_str());
+        fprintf(stderr, " -- %5d [ %.3f ] %s \n", 
+            cur_p.data[i].id,
+            cur_p.data[i].logit, 
+            llama_token_to_str(ctx, cur_p.data[i].id).c_str()
+        );
     }
 
     if (grammar != NULL) {
