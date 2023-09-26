@@ -157,7 +157,7 @@ llama_token llama_sample_token(
         }
     }
 
-    // DEBUG
+    // DEBUG 2
     fprintf(stderr, "\n=== TOP 10 AFTER PENALTIES ===\n");
     //std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
     //    return a.logit > b.logit;
