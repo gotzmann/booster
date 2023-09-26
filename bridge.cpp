@@ -99,8 +99,10 @@ llama_token pedanticTokens[] = {
     // 3319, // "({"
     // 1800, // "})"
     // 4197, // "(["
-    // 29889, // "."
+    29889, // "."
+    29892, // ","
     29901, // ":"
+    29936, // ";"
 };
 
 // Experimental approach by gotzmann
