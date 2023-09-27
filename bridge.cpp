@@ -134,14 +134,17 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     float coeff = 6.0;
     if (length > 200) {
         coeff = 4.0;
-    } 
+    }
     if (length > 400) {
         coeff = 3.0;
-    } 
+    }
     if (length > 800) {
         coeff = 2.0;
-    } 
-    float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
+    }
+    //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
+    float mult = 1.0f + log(1.0f + (float(length) / 1024));
+    fprintf(stderr, "\nlength = %d", length);
+    fprintf(stderr, "\nLOG = %f", log(1.0f + (float(length) / 1024)));
     fprintf(stderr, "\nmult = %f", mult);
     fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
     logits[EOS] *= mult;
@@ -209,6 +212,29 @@ llama_token llama_sample_token(
     llama_token id = 0;
     float * logits = llama_get_logits(ctx) /* + idx * n_vocab*/ ;
 
+    // -- DEBUG
+    fprintf(stderr, "\n=== TOP 8 CANDIDATES ===\n");
+    candidates.clear();
+    for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
+        candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
+    }
+    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
+        return a.logit > b.logit;
+    });
+    for (int i = 0; i < 8; i++) {
+        if (13 == candidates.data()[i].id) {
+            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
+        } else if (2 == candidates.data()[i].id) {
+            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
+        } else {
+            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
+                candidates.data()[i].id,
+                candidates.data()[i].logit, 
+                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
+            );
+        }
+    }
+
     // Experimental sampling both creative for text and pedantic for math
     if (params.yanus > 0) {
         id = sample_yanus_token(ctx, params.yanus, logits, n_vocab, last_tokens, length);
@@ -238,25 +264,6 @@ llama_token llama_sample_token(
         llama_sample_classifier_free_guidance(ctx, &cur_p, ctx_guidance, params.cfg_scale);
     }
 
-    // -- DEBUG
-    fprintf(stderr, "\n=== TOP 8 CANDIDATES ===\n");
-    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
-        return a.logit > b.logit;
-    });
-    for (int i = 0; i < 8; i++) {
-        if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
-        } else if (2 == candidates.data()[i].id) {
-            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
-        } else {
-            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit, 
-                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
-            );
-        }
-    }
-
     // apply penalties
     if (!last_tokens.empty()) {
         const float nl_logit = logits[llama_token_nl(ctx)];
@@ -280,7 +287,10 @@ llama_token llama_sample_token(
     }
 
     // -- DEBUG 2
-    fprintf(stderr, "\n=== TOP 8 AFTER PENALTIES ===\n");
+    fprintf(stderr, "\n=== TOP AFTER PENALTIES ===\n");
+    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
+        return a.logit > b.logit;
+    });
     for (int i = 0; i < 8; i++) {
         if (13 == candidates.data()[i].id) {
             fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
