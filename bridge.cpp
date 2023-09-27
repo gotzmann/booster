@@ -103,6 +103,12 @@ llama_token pedanticTokens[] = {
     29892, // ","
     29901, // ":"
     29936, // ";"
+    29908, // """
+    376, //  " ""
+    1115, // "":"
+    4710, // "":""
+    613, // "","
+    8853, // " {""
 };
 
 // Experimental approach by gotzmann
@@ -119,7 +125,6 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
     float mult = 1.0f + 0.5f * log(1.0f + (float(pos) / max));
     fprintf(stderr, "\nlength = %d", pos);
-    //fprintf(stderr, "\nLOG = %f", log(1.0f + (float(length) / 1024)));
     fprintf(stderr, "\nmult = %f", mult);
     fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
     logits[EOS] *= mult;
