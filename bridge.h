@@ -132,7 +132,7 @@ struct gpt_params {
 
 llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logits, const int size);
 
-llama_token sample_yanus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int length);
+llama_token sample_yanus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int pos, const int max);
 
 // this is a common sampling function used across the examples for convenience
 // it can serve as a starting point for implementing your own sampling function

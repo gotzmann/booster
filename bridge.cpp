@@ -106,7 +106,7 @@ llama_token pedanticTokens[] = {
 };
 
 // Experimental approach by gotzmann
-llama_token sample_yanus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int length) {
+llama_token sample_yanus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int pos, const int max) {
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
@@ -114,37 +114,12 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
         return 0;
     }
 
-/*
-
-    Allow <EOS> generation when it seems the task is done ?!
-
-    === TOP 8 CANDIDATES ===
-    --    13 [ 22.37 ] "\n"
-    --     2 [ 20.52 ] "<EOS>"
-
-    === TOP 8 AFTER PENALTIES ===
-    --    13 [ 20.71 ] "\n"
-    --     2 [ 20.52 ] "<EOS>"
-*/
-
-    // -- help pop up <EOS> to avoid longer generation
-
+    // Boost <EOS> generation when it seems the task is done
     const int EOS = 2;
-    // TODO: Choose the right multiplier empirically from 4 .. 6 .. 8
-    float coeff = 6.0;
-    if (length > 200) {
-        coeff = 4.0;
-    }
-    if (length > 400) {
-        coeff = 3.0;
-    }
-    if (length > 800) {
-        coeff = 2.0;
-    }
     //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
-    float mult = 1.0f + log(1.0f + (float(length) / 1024));
-    fprintf(stderr, "\nlength = %d", length);
-    fprintf(stderr, "\nLOG = %f", log(1.0f + (float(length) / 1024)));
+    float mult = 1.0f + 0.5f * log(1.0f + (float(pos) / max));
+    fprintf(stderr, "\nlength = %d", pos);
+    //fprintf(stderr, "\nLOG = %f", log(1.0f + (float(length) / 1024)));
     fprintf(stderr, "\nmult = %f", mult);
     fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
     logits[EOS] *= mult;
@@ -187,10 +162,10 @@ llama_token llama_sample_token(
                const struct gpt_params & params,
         const std::vector<llama_token> & last_tokens,
          std::vector<llama_token_data> & candidates,
-                                  /* int idx */
-                               const int length) {
+                               const int pos,
+                               const int max) {
 
-    fprintf(stderr, "\n=> length = %d", length);                                
+    fprintf(stderr, "\n=> pos %d | max %d", pos, max);                                
 
     const int n_ctx   = llama_n_ctx(ctx);
     const int n_vocab = llama_n_vocab(ctx);
@@ -237,7 +212,7 @@ llama_token llama_sample_token(
 
     // Experimental sampling both creative for text and pedantic for math
     if (params.yanus > 0) {
-        id = sample_yanus_token(ctx, params.yanus, logits, n_vocab, last_tokens, length);
+        id = sample_yanus_token(ctx, params.yanus, logits, n_vocab, last_tokens, pos, max);
         if (id > 0) {
             return id;
         }
@@ -716,7 +691,7 @@ int64_t do_inference(
 
             struct llama_context * guidance = NULL;
             struct llama_grammar * grammar = NULL;
-            llama_token id = llama_sample_token(ctx, guidance, grammar, ::params[idx], last_tokens, candidates, /*0*/ n_past - n_consumed);
+            llama_token id = llama_sample_token(ctx, guidance, grammar, ::params[idx], last_tokens, candidates, (const int) n_past - n_consumed, (const int) ::params[idx].n_predict);
 
             last_tokens.erase(last_tokens.begin());
             last_tokens.push_back(id);
