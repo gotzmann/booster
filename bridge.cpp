@@ -106,13 +106,13 @@ llama_token pedanticTokens[] = {
     29908, // """
     376, //  " ""
     1115, // "":"
-    4710, // "":""
+    // 4710, // "":""
     613, // "","
-    8853, // " {""
+    // 8853, // " {""
 };
 
 // Experimental approach by gotzmann
-llama_token sample_yanus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int pos, const int max) {
+llama_token sample_janus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int pos, const int max) {
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
@@ -123,12 +123,13 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     // Boost <EOS> generation when it seems the task is done
     const int EOS = 2;
     //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
-    float mult = 1.0f + 0.5f * log(1.0f + (float(pos) / max));
-    fprintf(stderr, "\nlength = %d", pos);
-    fprintf(stderr, "\nmult = %f", mult);
-    fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
+    float mult = 1.0f + 1.0f / 3.0f * log(1.0f + (float(pos) / float(max)));
+    //fprintf(stderr, "\npos = %d", pos);
+    //fprintf(stderr, "\nmax = %d", max);
+    //fprintf(stderr, "\nmult = %f", mult);
+    //fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
     logits[EOS] *= mult;
-    fprintf(stderr, "\n  and  after = %f", logits[EOS]);
+    //fprintf(stderr, "\n  and  after = %f", logits[EOS]);
 
     // -- search for pedantic tokens
 
@@ -147,7 +148,7 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
         return 0; // the most probable token is not pedantic, so go with regular sampling
     }
 
-    fprintf(stderr, "\n^^^ PEDANTIC TOKEN ON THE TOP ^^^\n");
+    //fprintf(stderr, "\n^^^ PEDANTIC TOKEN ON THE TOP ^^^\n");
 
     //if (ctx) {
     //    ctx->t_sample_us += ggml_time_us() - t_start_sample_us;
@@ -156,9 +157,10 @@ llama_token sample_yanus_token(struct llama_context * ctx, const int version, fl
     return id;
 }
 
-// length => how many tokens were generated via the last iteration?
-//           remember, that sessions might have one or multiple iterations
-//           before reaching context limit of 4K tokens
+// pos => index of current position within generation window [ 0 .. max )
+// max => how many tokens were generated via the last iteration?
+//        remember, that sessions might have one or multiple iterations
+//        before reaching context limit of 4K tokens
 
 llama_token llama_sample_token(
                   struct llama_context * ctx,
@@ -168,9 +170,7 @@ llama_token llama_sample_token(
         const std::vector<llama_token> & last_tokens,
          std::vector<llama_token_data> & candidates,
                                const int pos,
-                               const int max) {
-
-    fprintf(stderr, "\n=> pos %d | max %d", pos, max);                                
+                               const int max) {                              
 
     const int n_ctx   = llama_n_ctx(ctx);
     const int n_vocab = llama_n_vocab(ctx);
@@ -190,8 +190,8 @@ llama_token llama_sample_token(
     const bool    penalize_nl     = params.penalize_nl;
 
     llama_token id = 0;
-    float * logits = llama_get_logits(ctx) /* + idx * n_vocab*/ ;
-
+    float * logits = llama_get_logits(ctx);
+/*
     // -- DEBUG
     fprintf(stderr, "\n=== TOP 8 CANDIDATES ===\n");
     candidates.clear();
@@ -214,19 +214,20 @@ llama_token llama_sample_token(
             );
         }
     }
+*/
+
+    // Deterministic sampling with great performance
+    if (top_k == 1) {
+        return sample_top_token(logits, n_vocab);
+    }
 
     // Experimental sampling both creative for text and pedantic for math
-    if (params.yanus > 0) {
-        id = sample_yanus_token(ctx, params.yanus, logits, n_vocab, last_tokens, pos, max);
+    if (params.janus > 0) {
+        id = sample_janus_token(ctx, params.janus, logits, n_vocab, last_tokens, pos, max);
         if (id > 0) {
             return id;
         }
     }
-
-    // Deterministic sampling with great performance
-    //if (top_k == 1) {
-    //    return sample_top_token(logits, n_vocab);
-    //} 
 
     // Apply params.logit_bias map
     //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
@@ -265,7 +266,7 @@ llama_token llama_sample_token(
             }
         }
     }
-
+/*
     // -- DEBUG 2
     fprintf(stderr, "\n=== TOP AFTER PENALTIES ===\n");
     std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
@@ -284,7 +285,7 @@ llama_token llama_sample_token(
             );
         }
     }
-
+*/
     if (grammar != NULL) {
         llama_sample_grammar(ctx, &cur_p, grammar);
     }
@@ -313,23 +314,9 @@ llama_token llama_sample_token(
             llama_sample_typical    (ctx, &cur_p, typical_p, 1);
             llama_sample_top_p      (ctx, &cur_p, top_p, 1);
             llama_sample_temperature(ctx, &cur_p, temp);
-
-            /*{
-                const int n_top = 10;
-                LOG("top %d candidates:\n", n_top);
-
-                for (int i = 0; i < n_top; i++) {
-                    const llama_token id = cur_p.data[i].id;
-                    LOG(" - %5d: '%12s' (%.3f)\n", id, llama_token_to_piece(ctx, id).c_str(), cur_p.data[i].p);
-                }
-            }*/
-
             id = llama_sample_token(ctx, &cur_p);
-
-            //LOG("sampled token: %5d: '%s'\n", id, llama_token_to_piece(ctx, id).c_str());
         }
     }
-    // printf("`%d`", candidates_p.size);
 
     if (grammar != NULL) {
         llama_grammar_accept_token(ctx, grammar, id);
@@ -807,7 +794,7 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    int32_t yanus,
+    int32_t janus,
     float temp, int top_k, float top_p,
     float typical_p, 
     float repeat_penalty, int repeat_last_n,
@@ -828,7 +815,7 @@ void * initContext(
     ::params[idx].mirostat_tau   = mirostat_tau; 
     ::params[idx].mirostat_eta   = mirostat_eta;
 
-    ::params[idx].yanus          = yanus;
+    ::params[idx].janus          = janus;
 
     ::params[idx].temp           = temp;
     ::params[idx].top_k          = top_k;

@@ -4,8 +4,6 @@
     "port": "8080",
     "log": "llamazoo.log",
     "deadline": 180,
-    "numa": 0,
-    "lowVRAM": 0,
     "sessions": "/home/sessions",
 
     "pods": [
@@ -14,14 +12,12 @@
             "threads": 6,
             "gpus": [ 0, 0],
             "model": "wizard",
-            "mode": ""
         },
 
         {
             "threads": 1,
             "gpus": [ 50, 50],
             "model": "airoboros",
-            "mode": ""
         }
 
     ],
@@ -46,7 +42,7 @@
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0,
-            "yanus": 0
+            "janus": 0
         },
 
         {
@@ -67,7 +63,7 @@
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0,
-            "yanus": 0
+            "janus": 0
         }
     ]
 }
