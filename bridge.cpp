@@ -69,7 +69,11 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
 // Tokens very often used for math, coding and JSON (aka repetitive),
 // so we should be care about them and not penalize
 llama_token pedanticTokens[] = {
+
     2, // <EOS>
+
+    // -- Math
+
     29900, // "0"
     29896, // "1"
     29906, // "2"
@@ -85,6 +89,9 @@ llama_token pedanticTokens[] = {
     // 29974, // "+"
     // 718, // " +"
     // 448, // " -"
+
+    // -- JSON
+
     29912, // "{"
     426, // " {"
     29913, // "}"
@@ -93,6 +100,7 @@ llama_token pedanticTokens[] = {
     518, // " ["
     29962, // "]"
     4514, // " ]"
+
     // 29898, // "("
     // 313, // " ("
     // 29897, // ")"
@@ -104,6 +112,9 @@ llama_token pedanticTokens[] = {
     // 29892, // ","
     // 29901, // ":"
     // 29936, // ";"
+
+    // -- JSON
+
     29908, // """
     376, //  " ""
     1115, // "":"
@@ -178,16 +189,26 @@ llama_token sample_janus_token(
                     continue;
                 }
 
-                // 29889 => "."
                 // 29892 => ","
+                // 29889 => "."
+                if (id == 29892 || id == 29889) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.3;
+                    continue;
+                }
+
                 // 29901 => ":"
                 // 29936 => ";"
+                if (id == 29901 || id == 29936) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.5;
+                    continue;
+                }
+
                 // 29898 => "("
                 // 313   => " ("
                 // 29897 => ")"
                 // 1723  => " )"
-                if (id == 29889 || id == 29892 || id == 29901 || id == 29936) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.3;
+                if (id == 29898 || id == 313 || id == 29897 || id == 1723) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.6;
                     continue;
                 }
 
