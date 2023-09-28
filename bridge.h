@@ -132,7 +132,16 @@ struct gpt_params {
 
 llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logits, const int size);
 
-llama_token sample_janus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int pos, const int max);
+//llama_token sample_janus_token(struct llama_context * ctx, const int version, float * logits, const int size, const std::vector<llama_token> & last_tokens, const int pos, const int max);
+
+llama_token sample_janus_token(
+        struct llama_context * ctx, 
+        const struct gpt_params & params, 
+        //float * logits, 
+        //const int size,
+        const std::vector<llama_token> & last_tokens, 
+        const int pos, 
+        const int max);
 
 // this is a common sampling function used across the examples for convenience
 // it can serve as a starting point for implementing your own sampling function
@@ -208,3 +217,5 @@ int64_t getPromptTokenCount(char * jobID);
 int64_t timing(char * jobID);   
 
 } // ------- extern "C"
+
+std::vector<std::byte> getBytes(std::string const &s);
