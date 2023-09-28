@@ -273,7 +273,7 @@ llama_token sample_janus_token(
     // penalize tokens
     float penalty = params.repeat_penalty;
     if (penalty != 0.0 && penalty != 1.0) {
-
+/*
         // preserve pedantic logits
         float pedanticLogits[100];
         size_t pedanticLen = *(&pedanticTokens + 1) - pedanticTokens;
@@ -281,7 +281,7 @@ llama_token sample_janus_token(
             llama_token id = pedanticTokens[i];
             pedanticLogits[i] = logits[id];
         }
-
+*/
         //fprintf(stderr, "\n=== FIXED PENALTY : %f ===\n", 1.0 + (penalty - 1.0) * 0.1);
         for (size_t i = last_tokens.size() - 1; i >= 0; i--) {
 
@@ -297,9 +297,39 @@ llama_token sample_janus_token(
 
                 // --- experimental idea - specific penalties for high-frequency tokens like space
 
+                // 29900 => "0"
+                // 29896 => "1"
+                // 29906 => "2"
+                // 29941 => "3"
+                // 29946 => "4"
+                // 29945 => "5"
+                // 29953 => "6"
+                // 29955 => "7"
+                // 29947 => "8"
+                // 29929 => "9"
+                if (id == 29900 || id == 29896 || id == 29906 || id == 29941 || id == 29946 || 
+                    id == 29945 || id == 29953 || id == 29955 || id == 29947 || id == 29929) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+                    continue;
+                }
+
+                // 29912 => "{"
+                // 426   => " {"
+                // 29913 => "}"
+                // 500   => " }"
+                // 29961 => "["
+                // 518   => " ["
+                // 29962 => "]"
+                // 4514  => " ]"
+                if (id == 29912 || id == 426 || id == 29913 || id == 500 || id == 29961 || 
+                    id == 518 || id == 29962 || id == 4514) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+                    continue;
+                }
+
                 // 29871 => " "
                 if (id == 29871) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.05;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
                     continue;
                 }
 
@@ -335,16 +365,17 @@ llama_token sample_janus_token(
                 logits[id] /= penalty;
             }
         }
-
+/*
         // restore pedantic logits
         for (size_t i = 0; i < pedanticLen; i++) {
             llama_token id = pedanticTokens[i];
             //fprintf(stderr, "!!! #%d = %d !!! ", i, id);
             logits[id] = pedanticLogits[i];
         }
+*/    
     }
 
-    // -- Double penalyze incompatible tokens (like english ending for russian word)
+    // -- Triple penalty for incompatible tokens (like english ending for russian word)
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
     if (lastToken != 0) {
@@ -360,7 +391,7 @@ llama_token sample_janus_token(
                 ||
                 ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
             ) {
-                logits[id] /= 1.0 + (penalty - 1.0) * 2.00;
+                logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
             }
         }        
     }
