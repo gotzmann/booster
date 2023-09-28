@@ -100,9 +100,9 @@ llama_token pedanticTokens[] = {
     // 3319, // "({"
     // 1800, // "})"
     // 4197, // "(["
-    29889, // "."
-    29892, // ","
-    29901, // ":"
+    // 29889, // "."
+    // 29892, // ","
+    // 29901, // ":"
     // 29936, // ";"
     // 29908, // """
     // 376, //  " ""
@@ -142,19 +142,21 @@ llama_token sample_janus_token(
 
     // -- Apply penalty for repeated tokens except pedantic
 
-    // preserve pedantic logits
-    float pedanticLogits[100];
-    size_t pedanticLen = *(&pedanticTokens + 1) - pedanticTokens;
-    for (size_t i = 0; i < pedanticLen; i++) {
-        llama_token id = pedanticTokens[i];
-        pedanticLogits[i] = logits[id];
-    }
-
     // penalize tokens
     float penalty = params.repeat_penalty;
     if (penalty != 0.0 && penalty != 1.0) {
-        //fprintf(stderr, "\n=== APPLY PENALTY : %f ===\n", penalty);
+
+        // preserve pedantic logits
+        float pedanticLogits[100];
+        size_t pedanticLen = *(&pedanticTokens + 1) - pedanticTokens;
+        for (size_t i = 0; i < pedanticLen; i++) {
+            llama_token id = pedanticTokens[i];
+            pedanticLogits[i] = logits[id];
+        }
+
+        fprintf(stderr, "\n=== FIXED PENALTY : %f ===\n", 1.0 + (penalty - 1.0) * 0.1);
         for (size_t i = last_tokens.size() - 1; i >= 0; i--) {
+
             llama_token id = last_tokens.data()[i]; 
             if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
             //fprintf(stderr, "[ #%d = %d ] ", i, id);
@@ -164,27 +166,37 @@ llama_token sample_janus_token(
 
                 // --- experimental idea - specific penalties for high-frequency tokens like space
 
-                // 29871 [ 15.03 ] " "
+                // 29871 => " "
                 if (id == 29871) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.1;
+                    continue;
+                }
+
+                // new line
+                if (id == 13) {
                     logits[id] /= 1.0 + (penalty - 1.0) * 0.2;
                     continue;
                 }
 
-                if (id == 13) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.2;
+                // 29889 => "."
+                // 29892 => ","
+                // 29901 => ":"
+                // 29936 => ";"
+                if (id == 29889 || id == 29892 || id == 29901 || id == 29936) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.3;
                     continue;
                 }
 
                 logits[id] /= penalty;
             }
         }
-    }
 
-    // restore pedantic logits
-    for (size_t i = 0; i < pedanticLen; i++) {
-        llama_token id = pedanticTokens[i];
-        //fprintf(stderr, "!!! #%d = %d !!! ", i, id);
-        logits[id] = pedanticLogits[i];
+        // restore pedantic logits
+        for (size_t i = 0; i < pedanticLen; i++) {
+            llama_token id = pedanticTokens[i];
+            //fprintf(stderr, "!!! #%d = %d !!! ", i, id);
+            logits[id] = pedanticLogits[i];
+        }
     }
 
     // -- search for pedantic tokens
