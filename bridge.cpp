@@ -171,7 +171,7 @@ llama_token sample_janus_token(
                 }
 
                 if (id == 13) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.5;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.2;
                     continue;
                 }
 
