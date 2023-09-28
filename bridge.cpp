@@ -132,7 +132,7 @@ llama_token sample_janus_token(
 
     const int EOS = 2;
     //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
-    float mult = 1.0f + 1.0f / 3.0f * log(1.0f + (float(pos) / float(max)));
+    float mult = 1.0 + 0.33 * log(1.0 + (float(pos) / float(max)));
     //fprintf(stderr, "\npos = %d", pos);
     //fprintf(stderr, "\nmax = %d", max);
     //fprintf(stderr, "\nmult = %f", mult);
@@ -152,14 +152,29 @@ llama_token sample_janus_token(
 
     // penalize tokens
     float penalty = params.repeat_penalty;
-    if (penalty != 0.0f && penalty != 1.0f) {
+    if (penalty != 0.0 && penalty != 1.0) {
         //fprintf(stderr, "\n=== APPLY PENALTY : %f ===\n", penalty);
         for (size_t i = last_tokens.size() - 1; i >= 0; i--) {
             llama_token id = last_tokens.data()[i]; 
-            if (id == 0) break;
+            if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
             //fprintf(stderr, "[ #%d = %d ] ", i, id);
-            // well, lets just ignore negative probabilities     
+
+            // well, let just ignore negative probabilities   
             if (logits[id] > 0.0) {
+
+                // --- experimental idea - specific penalties for high-frequency tokens like space
+
+                // 29871 [ 15.03 ] " "
+                if (id == 29871) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.2;
+                    continue;
+                }
+
+                if (id == 13) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.5;
+                    continue;
+                }
+
                 logits[id] /= penalty;
             }
         }
