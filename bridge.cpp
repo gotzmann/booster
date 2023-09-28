@@ -143,8 +143,11 @@ const int LANG_UNDEFINED = 0;
 const int LANG_NEUTRAL = 1;
 const int LANG_MIXED = 1;
 const int LANG_EN = 2;
+const int SPACE_EN = 20;
 const int LANG_RU = 3;
+const int SPACE_RU = 30;
 const int LANG_OTHER = 4;
+const int SPACE_OTHER = 40;
 
 int toktype(const llama_context *ctx, const llama_token token) {
 
@@ -159,8 +162,12 @@ int toktype(const llama_context *ctx, const llama_token token) {
     int en = 0;
     int ru = 0;
     int other = 0;
+    bool space = 0;
 
     auto buf = getBytes(in);
+    if (buf.size() > 0 && buf[0] == std::byte{0x20}) {
+        space = true;
+    }
     // DEBUG
     //for(size_t i = 0; i < buf.size(); i ++) {
     //    fprintf(stderr, " - %d", buf[i]);
@@ -219,15 +226,15 @@ int toktype(const llama_context *ctx, const llama_token token) {
         }    
     }
 
-    if (other) {
-        return LANG_OTHER;
-    } else if (en && ru) {
-        return LANG_MIXED;
-    } else if (en) {
-        return LANG_EN;
-    } else if (ru) {
-        return LANG_RU;
-    }
+    if (space) { 
+        if (other) return SPACE_OTHER;
+        if (en) return SPACE_EN;
+        if (ru) return SPACE_RU;   
+    } 
+
+    if (other) return LANG_OTHER;
+    if (en) return LANG_EN;             
+    if (ru) return LANG_RU;
 
     return LANG_UNDEFINED;
 }
@@ -253,7 +260,7 @@ llama_token sample_janus_token(
 
     const int EOS = 2;
     //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
-    float mult = 1.0 + 0.33 * log(1.0 + (float(pos) / float(max)));
+    float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
     //fprintf(stderr, "\npos = %d", pos);
     //fprintf(stderr, "\nmax = %d", max);
     //fprintf(stderr, "\nmult = %f", mult);
@@ -348,7 +355,11 @@ llama_token sample_janus_token(
             auto curType = toktype(ctx, id);
             //fprintf(stderr, "\n[ CUR #%d '%s' = %d ] ", id, llama_token_to_str(ctx, id).c_str(), curType);
             //exit(1); // DEBUG
-            if((curType == LANG_RU || lastType == LANG_RU) && curType != lastType) {
+            if(
+                ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
+                ||
+                ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
+            ) {
                 logits[id] /= 1.0 + (penalty - 1.0) * 2.00;
             }
         }        
