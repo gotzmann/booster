@@ -150,18 +150,28 @@ int toktype(const llama_context *ctx, const llama_token token) {
 
     std::string in = llama_token_to_str(ctx, token); // vocab.id_to_token[token].text
 
+    // DEBUG
     //std::string in = "är";
+    //std::string in = "хід";
+    //std::string in = " för";
+    //fprintf(stderr, "\n STR SIZE = %d \n", in.size());
 
     int en = 0;
     int ru = 0;
     int other = 0;
 
     auto buf = getBytes(in);
+    // DEBUG
+    //for(size_t i = 0; i < buf.size(); i ++) {
+    //    fprintf(stderr, " - %d", buf[i]);
+    //}
+    //exit(1);
+    //fprintf(stderr, "\n BUF SIZE = %d \n", buf.size());
     for(size_t i = 0; i < buf.size(); i ++) {
 
         // -- Simplified UTF-9 parsing 
         // TODO: Be more strict
-        //fprintf(stderr, " - %d", buf[i]);
+        
         // -- ASCII Letters
         if (
             (buf[i] >= std::byte{0x41} && buf[i] <= std::byte{0x5A}) ||
@@ -178,12 +188,16 @@ int toktype(const llama_context *ctx, const llama_token token) {
             i++;
             if ((buf[i] >= std::byte{0x90} && buf[i] <= std::byte{0xBF}))
                 ru++;
+            else
+                other++;     
             continue;
         }
         if (buf[i] == std::byte{0xD1} && (i + 1 < buf.size())) {
             i++;
             if ((buf[i] >= std::byte{0x80} && buf[i] <= std::byte{0x8F}))
                 ru++;
+            else
+                other++;    
             continue;
         }
         // -- UTF-8 2 bytes (European)
@@ -328,9 +342,12 @@ llama_token sample_janus_token(
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
     if (lastToken != 0) {
         auto lastType = toktype(ctx, lastToken);
-        fprintf(stderr, "\n[ LAST %s = %d ] ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
+        fprintf(stderr, "\n[ LAST #%d '%s' = %d ] ", lastToken, llama_token_to_str(ctx, lastToken).c_str(), lastType);
+
         for (llama_token id = 0; id < vocabSize; id++) {
             auto curType = toktype(ctx, id);
+            //fprintf(stderr, "\n[ CUR #%d '%s' = %d ] ", id, llama_token_to_str(ctx, id).c_str(), curType);
+            //exit(1); // DEBUG
             if((curType == LANG_RU || lastType == LANG_RU) && curType != lastType) {
                 logits[id] /= 1.0 + (penalty - 1.0) * 2.00;
             }
