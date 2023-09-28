@@ -139,9 +139,9 @@ std::vector<std::byte> getBytes(std::string const &s) {
     return bytes;
 }
 
-const int LANG_UNDEFINED = 0;
-const int LANG_NEUTRAL = 1;
-const int LANG_MIXED = 1;
+const int LANG_ZERO = 0;
+// const int LANG_NEUTRAL = 1;
+// const int LANG_MIXED = 1;
 const int LANG_EN = 2;
 const int SPACE_EN = 20;
 const int LANG_RU = 3;
@@ -236,7 +236,7 @@ int toktype(const llama_context *ctx, const llama_token token) {
     if (en) return LANG_EN;             
     if (ru) return LANG_RU;
 
-    return LANG_UNDEFINED;
+    return LANG_ZERO;
 }
 
 // -- Experimental approach Janus Sampling by gotzmann [ paper is coming ]
@@ -323,7 +323,7 @@ llama_token sample_janus_token(
                 // 4514  => " ]"
                 if (id == 29912 || id == 426 || id == 29913 || id == 500 || id == 29961 || 
                     id == 518 || id == 29962 || id == 4514) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.05;
                     continue;
                 }
 
@@ -336,13 +336,13 @@ llama_token sample_janus_token(
                 // 29892 => ","
                 // 29889 => "."
                 if (id == 29892 || id == 29889) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.20;
                     continue;
                 }
 
                 // new line
                 if (id == 13) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.20;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
                     continue;
                 }
 
@@ -361,6 +361,17 @@ llama_token sample_janus_token(
                     logits[id] /= 1.0 + (penalty - 1.0) * 0.80;
                     continue;
                 }
+
+                // -- Special case for complex languages like Russian
+                //    Do not penalise much tokens that might work as other words parts!
+
+                auto tokenType = toktype(ctx, id);
+                if (tokenType == LANG_RU) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.40;
+                    continue;
+                }
+
+                // -- Full penalization for full words in English and word beginnings in Russian (SPACE_RU)
 
                 logits[id] /= penalty;
             }
@@ -396,12 +407,68 @@ llama_token sample_janus_token(
         }        
     }
 
+    // -- finally sort all logits
+
+    std::vector<llama_token_data> candidates;
+    //candidates.reserve(llama_n_vocab(ctx));
+    candidates.clear();
+
+    for (llama_token id = 0; id < vocabSize; id++) {
+        candidates.emplace_back(
+            llama_token_data{id, logits[id], 0.0f}
+        );
+    }
+
+    std::sort(
+        candidates.data(), 
+        candidates.data() + candidates.size(), 
+        [](const llama_token_data & a, const llama_token_data & b) { 
+            return a.logit > b.logit; 
+        }
+    );
+
+    // -- Final choice [ with cutoff experimental ]
+
+    float cutoff = 0.96;
+    float topLogit = candidates.data()[0].logit;
+    size_t size = 0;
+
+    for (size_t i = 1; i < candidates.size(); i++) {
+        //fprintf(stderr, "\n -- %.2f < %.2f", candidates.data()[i].logit / topLogit, cutoff);
+        if (candidates.data()[i].logit / topLogit < cutoff) {
+            size = i;
+            candidates.resize(i);
+            break;
+        }
+    }
+
+    // -- DEBUG
+    fprintf(stderr, "\n=== # %d === SHORTLIST ===\n", pos);
+    for (size_t i = 0; i < size; i++) {
+        if (13 == candidates.data()[i].id) {
+            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
+        } else if (2 == candidates.data()[i].id) {
+            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
+        } else {
+            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
+                candidates.data()[i].id,
+                candidates.data()[i].logit, 
+                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
+            );
+        }
+    }
+
+    llama_token_data_array shortlist = { candidates.data(), size, true };
+
+    return llama_sample_token(ctx, &shortlist);
+
+
     //llama_token_to_piece_with_model
 
     //std::string result = model->vocab.id_to_token[token].text;
 
     // -- search for pedantic tokens
-
+/*
     llama_token id = 0;
     float prob = 0;
 
@@ -422,8 +489,8 @@ llama_token sample_janus_token(
     //if (ctx) {
     //    ctx->t_sample_us += ggml_time_us() - t_start_sample_us;
     //}
-
-    return id;
+*/
+    //return id;
 }
 
 // pos => index of current position within generation window [ 0 .. max )
