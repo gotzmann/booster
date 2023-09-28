@@ -124,6 +124,100 @@ llama_token pedanticTokens[] = {
     // 29871, // " "
 };
 
+// this function receives any std::string 
+// and returns a vector<byte> containing the numerical value of each byte in the string
+std::vector<std::byte> getBytes(std::string const &s) {
+
+    std::vector<std::byte> bytes;
+    bytes.reserve(std::size(s));
+
+    std::transform(std::begin(s), 
+                   std::end(s),
+                   std::back_inserter(bytes), 
+                   [](char const &c){ return std::byte(c);});
+
+    return bytes;
+}
+
+const int LANG_UNDEFINED = 0;
+const int LANG_NEUTRAL = 1;
+const int LANG_MIXED = 1;
+const int LANG_EN = 2;
+const int LANG_RU = 3;
+const int LANG_OTHER = 4;
+
+int toktype(const llama_context *ctx, const llama_token token) {
+
+    std::string in = llama_token_to_str(ctx, token); // vocab.id_to_token[token].text
+
+    //std::string in = "är";
+
+    int en = 0;
+    int ru = 0;
+    int other = 0;
+
+    auto buf = getBytes(in);
+    for(size_t i = 0; i < buf.size(); i ++) {
+
+        // -- Simplified UTF-9 parsing 
+        // TODO: Be more strict
+        //fprintf(stderr, " - %d", buf[i]);
+        // -- ASCII Letters
+        if (
+            (buf[i] >= std::byte{0x41} && buf[i] <= std::byte{0x5A}) ||
+            (buf[i] >= std::byte{0x61} && buf[i] <= std::byte{0x7A})) {
+            en++;
+            continue;
+        }
+        // -- ASCII Other
+        if (buf[i] < std::byte{0x80}) {
+            continue;
+        }
+        // -- UTF-8 RU
+        if (buf[i] == std::byte{0xD0} && (i + 1 < buf.size())) {
+            i++;
+            if ((buf[i] >= std::byte{0x90} && buf[i] <= std::byte{0xBF}))
+                ru++;
+            continue;
+        }
+        if (buf[i] == std::byte{0xD1} && (i + 1 < buf.size())) {
+            i++;
+            if ((buf[i] >= std::byte{0x80} && buf[i] <= std::byte{0x8F}))
+                ru++;
+            continue;
+        }
+        // -- UTF-8 2 bytes (European)
+        if (buf[i] >= std::byte{0xC3} && buf[i] < std::byte{0xE3}) {
+            i++;
+            other++;
+            continue;
+        }
+        // -- UTF-8 3 bytes (Asian)
+        if (buf[i] >= std::byte{0xE3} && buf[i] < std::byte{0xF0}) {
+            i += 2;
+            other++;
+            continue;
+        }    
+        // -- UTF-8 4 bytes (Emojis)
+        if (buf[i] >= std::byte{0xF0}) {
+            i += 3;
+            continue;
+        }    
+    }
+
+    if (other) {
+        return LANG_OTHER;
+    } else if (en && ru) {
+        return LANG_MIXED;
+    } else if (en) {
+        return LANG_EN;
+    } else if (ru) {
+        return LANG_RU;
+    }
+
+    return LANG_UNDEFINED;
+}
+
 // -- Experimental approach Janus Sampling by gotzmann [ paper is coming ]
 
 llama_token sample_janus_token(
@@ -137,6 +231,8 @@ llama_token sample_janus_token(
 
     //const int64_t t_start_sample_us = ggml_time_us();
     float * logits = llama_get_logits(ctx);
+    //const llama_model & model = llama_get_model(ctx);
+    //auto vocab = model.vocab;
     const int vocabSize = llama_n_vocab(ctx);
 
     // -- Boost <EOS> token when we are reaching the context limits
@@ -172,6 +268,9 @@ llama_token sample_janus_token(
             if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
             //fprintf(stderr, "[ #%d = %d ] ", i, id);
 
+            //llama_token_to_str(ctx, id);
+            //isRussian("pri вет"); // DEBUG
+
             // well, let just ignore negative probabilities   
             if (logits[id] > 0.0) {
 
@@ -179,27 +278,27 @@ llama_token sample_janus_token(
 
                 // 29871 => " "
                 if (id == 29871) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.1;
-                    continue;
-                }
-
-                // new line
-                if (id == 13) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.2;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.05;
                     continue;
                 }
 
                 // 29892 => ","
                 // 29889 => "."
                 if (id == 29892 || id == 29889) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.3;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+                    continue;
+                }
+
+                // new line
+                if (id == 13) {
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.20;
                     continue;
                 }
 
                 // 29901 => ":"
                 // 29936 => ";"
                 if (id == 29901 || id == 29936) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.5;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.60;
                     continue;
                 }
 
@@ -208,7 +307,7 @@ llama_token sample_janus_token(
                 // 29897 => ")"
                 // 1723  => " )"
                 if (id == 29898 || id == 313 || id == 29897 || id == 1723) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.6;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.80;
                     continue;
                 }
 
@@ -223,6 +322,24 @@ llama_token sample_janus_token(
             logits[id] = pedanticLogits[i];
         }
     }
+
+    // -- Double penalyze incompatible tokens (like english ending for russian word)
+
+    auto lastToken = last_tokens.data()[last_tokens.size() - 1];
+    if (lastToken != 0) {
+        auto lastType = toktype(ctx, lastToken);
+        fprintf(stderr, "\n[ LAST %s = %d ] ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
+        for (llama_token id = 0; id < vocabSize; id++) {
+            auto curType = toktype(ctx, id);
+            if((curType == LANG_RU || lastType == LANG_RU) && curType != lastType) {
+                logits[id] /= 1.0 + (penalty - 1.0) * 2.00;
+            }
+        }        
+    }
+
+    //llama_token_to_piece_with_model
+
+    //std::string result = model->vocab.id_to_token[token].text;
 
     // -- search for pedantic tokens
 

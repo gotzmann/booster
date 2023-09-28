@@ -217,3 +217,5 @@ int64_t getPromptTokenCount(char * jobID);
 int64_t timing(char * jobID);   
 
 } // ------- extern "C"
+
+std::vector<std::byte> getBytes(std::string const &s);
