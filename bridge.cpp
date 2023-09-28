@@ -367,7 +367,7 @@ llama_token sample_janus_token(
 
                 auto tokenType = toktype(ctx, id);
                 if (tokenType == LANG_RU) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.40;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.30;
                     continue;
                 }
 
