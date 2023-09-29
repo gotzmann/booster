@@ -174,9 +174,7 @@ int toktype(const llama_context *ctx, const llama_token token) {
     std::string in = llama_token_to_str(ctx, token); // vocab.id_to_token[token].text
 
     // DEBUG
-    //std::string in = "är";
     //std::string in = "хід";
-    //std::string in = " för";
     //in = "ёл";
     //fprintf(stderr, "\n STR SIZE = %d \n", in.size());
 
@@ -301,44 +299,25 @@ llama_token sample_janus_token(
     // -- Boost <EOS> token when we are nearing prediction limits
 
     const int EOS = 2;
-    //float mult = 1.0f + float(length) * coeff / llama_n_ctx(ctx);
     float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
-    //fprintf(stderr, "\npos = %d", pos);
-    //fprintf(stderr, "\nmax = %d", max);
-    //fprintf(stderr, "\nmult = %f", mult);
-    //fprintf(stderr, "\n<EOS> before = %f", logits[EOS]);
     logits[EOS] *= mult;
-    //fprintf(stderr, "\n  and  after = %f", logits[EOS]);
 
     // -- Apply penalty for repeated tokens except pedantic
 
     // penalize tokens
     float penalty = params.repeat_penalty;
     if (penalty != 0.0 && penalty != 1.0) {
-/*
-        // preserve pedantic logits
-        float pedanticLogits[100];
-        size_t pedanticLen = *(&pedanticTokens + 1) - pedanticTokens;
-        for (size_t i = 0; i < pedanticLen; i++) {
-            llama_token id = pedanticTokens[i];
-            pedanticLogits[i] = logits[id];
-        }
-*/
+
         // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
         size_t depth = 0;
         if (params.repeat_last_n != -1 && params.repeat_last_n != 0 && params.repeat_last_n < (int32_t) last_tokens.size()) {
             depth = last_tokens.size() - params.repeat_last_n;
         }
-        //fprintf(stderr, "\nDEPTH = %d", depth);
 
         for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
 
             llama_token id = last_tokens.data()[i]; 
             if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
-            //fprintf(stderr, "[ #%d = %d ] ", i, id);
-
-            //llama_token_to_str(ctx, id);
-            //isRussian("pri вет"); // DEBUG
 
             // well, let just ignore negative probabilities   
             if (logits[id] > 0.0) {
@@ -365,7 +344,7 @@ llama_token sample_janus_token(
 
                 // new line
                 if (id == 13) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+                    logits[id] /= 1.0 + (penalty - 1.0) * 0.05;
                     continue;
                 }
 
@@ -456,14 +435,7 @@ llama_token sample_janus_token(
                 logits[id] /= penalty;
             }
         }
-/*
-        // restore pedantic logits
-        for (size_t i = 0; i < pedanticLen; i++) {
-            llama_token id = pedanticTokens[i];
-            //fprintf(stderr, "!!! #%d = %d !!! ", i, id);
-            logits[id] = pedanticLogits[i];
-        }
-*/    
+   
     }
 
     // -- Triple penalty for incompatible tokens (like english ending for russian word)
@@ -530,55 +502,10 @@ llama_token sample_janus_token(
     }
 
     printDebug(ctx, candidates, pos, "SHORTLIST"); // -- DEBUG
-/*    
-    fprintf(stderr, "\n=== # %d === SHORTLIST ===\n", pos);
-    for (size_t i = 0; i < candidates.size(); i++) {
-        if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
-        } else if (2 == candidates.data()[i].id) {
-            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
-        } else {
-            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit, 
-                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
-            );
-        }
-    }
-*/
+
     llama_token_data_array shortlist = { candidates.data(), candidates.size(), true };
 
     return llama_sample_token(ctx, &shortlist);
-
-
-    //llama_token_to_piece_with_model
-
-    //std::string result = model->vocab.id_to_token[token].text;
-
-    // -- search for pedantic tokens
-/*
-    llama_token id = 0;
-    float prob = 0;
-
-    for (llama_token i = 1; i < vocabSize; i++) {
-        if (logits[i] > prob) {
-            id = i;
-            prob = logits[i];
-        }
-    }
-
-    llama_token * found = std::find(std::begin(pedanticTokens), std::end(pedanticTokens), id);
-    if (found == std::end(pedanticTokens)) {
-        return 0; // the most probable token is not pedantic, so go with regular sampling
-    }
-
-    //fprintf(stderr, "\n^^^ PEDANTIC TOKEN ON THE TOP ^^^\n");
-
-    //if (ctx) {
-    //    ctx->t_sample_us += ggml_time_us() - t_start_sample_us;
-    //}
-*/
-    //return id;
 }
 
 // pos => index of current position within generation window [ 0 .. max )
@@ -622,39 +549,15 @@ llama_token llama_sample_token(
     }
     std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
     printDebug(ctx, candidates, pos, "TOP"); // -- DEBUG 
-/*
-    // -- DEBUG 1
-    fprintf(stderr, "\n=== # %d === TOP 8 ===\n", pos);
-    candidates.clear();
-    for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
-        candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
-    }
-    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
-    for (int i = 0; i < 8; i++) {
-        if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
-        } else if (2 == candidates.data()[i].id) {
-            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
-        } else {
-            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit, 
-                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
-            );
-        }
-    }
-*/
+
     // Deterministic sampling with great performance
-    //if (top_k == 1) {
-    //    return sample_top_token(logits, n_vocab);
-    //}
+    if (top_k == 1) {
+        return sample_top_token(logits, n_vocab);
+    }
 
     // Experimental sampling both creative for text and pedantic for math
     if (params.janus > 0) {
         id = sample_janus_token(ctx, params, last_tokens, pos, max);
-    //    if (id > 0) {
-    //         return id;
-    //    }
     }
     
     // -- DEBUG 
@@ -664,28 +567,7 @@ llama_token llama_sample_token(
     }
     std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
     printDebug(ctx, candidates, pos, "AFTER JANUS"); 
-/*
-    // -- DEBUG 2 [ logits were changed! ]
-    fprintf(stderr, "\n=== # %d === AFTER JANUS ===\n", pos);
-    candidates.clear();
-    for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
-        candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
-    }
-    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
-    for (int i = 0; i < 8; i++) {
-        if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
-        } else if (2 == candidates.data()[i].id) {
-            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
-        } else {
-            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit, 
-                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
-            );
-        }
-    }
-*/
+
     if (id > 0) {
         return id;
     }
@@ -735,26 +617,7 @@ llama_token llama_sample_token(
     }
     std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
     printDebug(ctx, candidates, pos, "AFTER PENALTIES"); 
-/*
-    // -- DEBUG 3
-    fprintf(stderr, "\n=== TOP AFTER PENALTIES ===\n");
-    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) {
-        return a.logit > b.logit;
-    });
-    for (int i = 0; i < 8; i++) {
-        if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
-        } else if (2 == candidates.data()[i].id) {
-            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
-        } else {
-            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
-                candidates.data()[i].id,
-                candidates.data()[i].logit, 
-                llama_token_to_str(ctx, candidates.data()[i].id).c_str()
-            );
-        }
-    }
-*/
+
     if (grammar != NULL) {
         llama_sample_grammar(ctx, &cur_p, grammar);
     }
