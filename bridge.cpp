@@ -176,8 +176,8 @@ int tokType(const llama_context *ctx, const llama_token token) {
     // DEBUG
     //std::string in = "хід";
     //in = "ёл";
-    in = "ё"; // 30043
-    //30083 [ 18.79 ] "ë"
+    //in = "ё"; // 30043 => {209} {145} => {0xD1} {0x91}
+    // in = "ë"; // 30083 => {195} {171} => {0xC3} {0xAB}
     //fprintf(stderr, "\n STR SIZE = %d \n", in.size());
 
     auto buf = getBytes(in);
@@ -185,7 +185,7 @@ int tokType(const llama_context *ctx, const llama_token token) {
         space = true;
     }
 
-    for(size_t i = 0; i < buf.size(); i ++) { fprintf(stderr, " - %d", buf[i]); } exit(1); // DEBUG
+    //for(size_t i = 0; i < buf.size(); i ++) { fprintf(stderr, " - %d", buf[i]); } exit(1); // DEBUG
 
     for(size_t i = 0; i < buf.size(); i ++) {
 
@@ -220,7 +220,10 @@ int tokType(const llama_context *ctx, const llama_token token) {
 
         if (buf[i] == std::byte{0xD1} && (i + 1 < buf.size())) {
             i++;
-            if ((buf[i] >= std::byte{0x80} && buf[i] <= std::byte{0x8F}))
+            if (
+                (buf[i] >= std::byte{0x80} && buf[i] <= std::byte{0x8F}) || 
+                (buf[i] == std::byte{0x91}) // "ё"
+            )
                 ru++;
             else
                 other++;    
