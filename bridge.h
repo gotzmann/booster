@@ -219,3 +219,5 @@ int64_t timing(char * jobID);
 } // ------- extern "C"
 
 std::vector<std::byte> getBytes(std::string const &s);
+bool isPedantic(llama_token id);
+int toktype(const llama_context *ctx, const llama_token token);
