@@ -164,7 +164,7 @@ const int SPACE_RU = 30;
 const int LANG_OTHER = 4;
 const int SPACE_OTHER = 40;
 
-int toktype(const llama_context *ctx, const llama_token token) {
+int tokType(const llama_context *ctx, const llama_token token) {
 
     int en = 0;
     int ru = 0;
@@ -257,6 +257,10 @@ int toktype(const llama_context *ctx, const llama_token token) {
     if (ru) return LANG_RU;
 
     return LANG_ZERO;
+}
+
+int tokSize(const llama_context *ctx, const llama_token token) {
+    return llama_token_to_str(ctx, token).size();
 }
 
 static void printDebug(struct llama_context * ctx, std::vector<llama_token_data> & candidates, const int pos, const char * text) {
@@ -416,17 +420,21 @@ llama_token sample_janus_token(
                 // -- Special case for complex languages like Russian
                 //    Do not penalise much tokens that might work as other words parts!
 
-                auto tokenType = toktype(ctx, id);
+                auto tokenType = tokType(ctx, id);
                 if (tokenType == LANG_RU) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.30;
+                    float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
+                    //fprintf(stderr, "\nSIZE %d | RU PROB %f", tokSize(ctx, id), prob);
+                    logits[id] /= 1.0 + (penalty - 1.0) * prob;
                     continue;
                 }
 
                 // -- Similar hack for EN (slightly decrease penalty ) ?!
 
-                tokenType = toktype(ctx, id);
+                tokenType = tokType(ctx, id);
                 if (tokenType == LANG_EN) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.60;
+                    float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
+                    //fprintf(stderr, "\nSIZE %d | EN PROB %f", tokSize(ctx, id), prob);
+                    logits[id] /= 1.0 + (penalty - 1.0) * prob;
                     continue;
                 }
 
@@ -441,13 +449,13 @@ llama_token sample_janus_token(
     // -- Triple penalty for incompatible tokens (like english ending for russian word)
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
-    auto lastType = toktype(ctx, lastToken);
+    auto lastType = tokType(ctx, lastToken);
     if (lastToken != 0) {
         
         //fprintf(stderr, "\n=== LAST \"%s\" === TYPE %d === ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
 
         for (llama_token id = 0; id < vocabSize; id++) {
-            auto curType = toktype(ctx, id);
+            auto curType = tokType(ctx, id);
             //fprintf(stderr, "\n[ CUR #%d '%s' = %d ] ", id, llama_token_to_str(ctx, id).c_str(), curType);
             //exit(1); // DEBUG
             if(
@@ -485,12 +493,12 @@ llama_token sample_janus_token(
     //    and pedantic cutoff for sensitive ones
 
     auto topToken = candidates.data()[0].id;
-    auto topType = toktype(ctx, topToken);
+    auto topType = tokType(ctx, topToken);
     float topLogit = candidates.data()[0].logit;
 
-    float cutoff = 0.92;
+    float cutoff = 0.948;
     if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
-        cutoff = 0.98;
+        cutoff = 0.982;
     }
 
     for (size_t i = 1; i < candidates.size(); i++) {
@@ -501,7 +509,7 @@ llama_token sample_janus_token(
         }
     }
 
-    //printDebug(ctx, candidates, pos, "SHORTLIST"); // -- DEBUG
+    printDebug(ctx, candidates, pos, "SHORTLIST"); // -- DEBUG
 
     llama_token_data_array shortlist = { candidates.data(), candidates.size(), true };
 
@@ -543,13 +551,13 @@ llama_token llama_sample_token(
     llama_token id = 0;
     float * logits = llama_get_logits(ctx);
     candidates.clear();
-/*
+// *
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
         candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
     }
     std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
     printDebug(ctx, candidates, pos, "TOP"); // -- DEBUG 
-*/
+//*/
 
     // Experimental sampling both creative for text and pedantic for math
     if (params.janus > 0) {
@@ -561,7 +569,7 @@ llama_token llama_sample_token(
     //    return sample_top_token(logits, n_vocab);
     //}
 
-/*    
+// *    
     // -- DEBUG 
     candidates.clear();
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
@@ -573,7 +581,7 @@ llama_token llama_sample_token(
     if (id > 0) {
         return id;
     }
-*/
+// */
     // Apply params.logit_bias map
     //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
     //    logits[it->first] += it->second;
