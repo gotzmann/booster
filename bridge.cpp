@@ -282,13 +282,14 @@ llama_token sample_janus_token(
             pedanticLogits[i] = logits[id];
         }
 */
-        // Look up last tokens up for certain depth [ 0 .. size )
-        size_t depth = last_tokens.size();
+        // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
+        size_t depth = 0;
         if (params.repeat_last_n != -1 && params.repeat_last_n != 0 && params.repeat_last_n < last_tokens.size()) {
-            depth = params.repeat_last_n;
+            depth = last_tokens.size() - params.repeat_last_n;
         }
+        fprintf(stderr, "\nDEPTH = %d", depth);
 
-        for (size_t i = depth - 1; i >= 0; i--) {
+        for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
 
             llama_token id = last_tokens.data()[i]; 
             if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
