@@ -444,7 +444,7 @@ llama_token sample_janus_token(
     auto lastType = toktype(ctx, lastToken);
     if (lastToken != 0) {
         
-        fprintf(stderr, "\n=== LAST \"%s\" === TYPE %d === ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
+        //fprintf(stderr, "\n=== LAST \"%s\" === TYPE %d === ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
 
         for (llama_token id = 0; id < vocabSize; id++) {
             auto curType = toktype(ctx, id);
@@ -501,7 +501,7 @@ llama_token sample_janus_token(
         }
     }
 
-    printDebug(ctx, candidates, pos, "SHORTLIST"); // -- DEBUG
+    //printDebug(ctx, candidates, pos, "SHORTLIST"); // -- DEBUG
 
     llama_token_data_array shortlist = { candidates.data(), candidates.size(), true };
 
@@ -542,24 +542,26 @@ llama_token llama_sample_token(
 
     llama_token id = 0;
     float * logits = llama_get_logits(ctx);
-
     candidates.clear();
+/*
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
         candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
     }
     std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
     printDebug(ctx, candidates, pos, "TOP"); // -- DEBUG 
-
-    // Deterministic sampling with great performance
-    if (top_k == 1) {
-        return sample_top_token(logits, n_vocab);
-    }
+*/
 
     // Experimental sampling both creative for text and pedantic for math
     if (params.janus > 0) {
         id = sample_janus_token(ctx, params, last_tokens, pos, max);
     }
-    
+
+    // Deterministic sampling with great performance
+    //if (top_k == 1) {
+    //    return sample_top_token(logits, n_vocab);
+    //}
+
+/*    
     // -- DEBUG 
     candidates.clear();
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
@@ -571,7 +573,7 @@ llama_token llama_sample_token(
     if (id > 0) {
         return id;
     }
-
+*/
     // Apply params.logit_bias map
     //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
     //    logits[it->first] += it->second;
@@ -609,7 +611,7 @@ llama_token llama_sample_token(
             }
         }
     }
-
+/*
     // -- DEBUG 
     candidates.clear();
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
@@ -621,7 +623,7 @@ llama_token llama_sample_token(
     if (grammar != NULL) {
         llama_sample_grammar(ctx, &cur_p, grammar);
     }
-
+*/
     if (temp <= 0) {
         // Greedy sampling
         id = llama_sample_token_greedy(ctx, &cur_p);
