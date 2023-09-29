@@ -176,6 +176,8 @@ int tokType(const llama_context *ctx, const llama_token token) {
     // DEBUG
     //std::string in = "хід";
     //in = "ёл";
+    in = "ё"; // 30043
+    //30083 [ 18.79 ] "ë"
     //fprintf(stderr, "\n STR SIZE = %d \n", in.size());
 
     auto buf = getBytes(in);
@@ -183,7 +185,7 @@ int tokType(const llama_context *ctx, const llama_token token) {
         space = true;
     }
 
-    //for(size_t i = 0; i < buf.size(); i ++) { fprintf(stderr, " - %d", buf[i]); } exit(1); // DEBUG
+    for(size_t i = 0; i < buf.size(); i ++) { fprintf(stderr, " - %d", buf[i]); } exit(1); // DEBUG
 
     for(size_t i = 0; i < buf.size(); i ++) {
 
