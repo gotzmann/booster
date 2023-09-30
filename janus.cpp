@@ -59,7 +59,8 @@ llama_token sample_janus_token(
 
     const int EOS = 2;
     // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
-    float mult = penalty + log(1.0 + float(pos) / float(max)) * 0.2;
+    float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.2;
+    fprintf(stderr, "\nMULT = %f", mult);
     logits[EOS] *= mult;
 
     // -- Apply penalty for repeated tokens except pedantic
