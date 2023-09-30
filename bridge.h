@@ -39,6 +39,17 @@
 // Not sure why bad values above 1.1 are shuffling and muffling the output completely (with mirostat at least)
 
 struct gpt_params {
+
+    // -- Janus Sampling
+
+    int32_t janus = 1;     // 0 = off, 1 = Janus Sampling v1
+    int32_t depth = 200;   // last n tokens to penalize [ -1 = context size ]
+    float penalty = 0.936; // janus repetition penalty
+    float hi_p = 0.982;    // 1.0 = max pedantic [ 100% strict ]
+    float lo_p = 0.948;    // 0.0 = min pedantic [ 100% random ]
+
+    // -- main params
+
     uint32_t seed                           = -1;   // RNG seed
     int32_t n_threads                       = 1;    // get_num_physical_cores();
     int32_t n_predict                       = -1;   // new tokens to predict
@@ -69,7 +80,6 @@ struct gpt_params {
     int32_t mirostat          = 2;     // 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 0.1;   // 5.00f; // target entropy
     float   mirostat_eta      = 0.1;   // 0.10f; // learning rate
-    int32_t janus             = 0;     // 0 = off, 1 = Janus Sampling v1
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
@@ -192,6 +202,7 @@ int64_t timingCPP(const std::string & jobID);
 extern "C" { // -----    
 
 void init(char * sessionPath);
+
 void * initContext(
     int idx, 
     char * modelName, 
@@ -203,13 +214,20 @@ void * initContext(
     float temp, int top_k, float top_p,
     float typical_p,
     float repeat_penalty, int repeat_last_n,
+    int32_t janus,
+	int32_t depth,
+	float penalty,
+	float hi_p,
+	float lo_p,
     int32_t seed);
+
 int64_t doInference(
     int idx, 
     void * ctx, 
     char * jobID, 
     char * sessionID, 
     char * prompt); 
+    
 void stopInference(int idx);
 const char * status(char * jobID);
 int64_t promptEval(char * jobID);

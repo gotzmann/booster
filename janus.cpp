@@ -13,7 +13,17 @@
 #include <unordered_map>
 #include <tuple>
 
-// The introduction to the Guardian stylebook of 1960, which itself was a revision to the initial guide published in 1928, was headed "Neither pedantic nor wild".
+// The Guardian has always been a newspaper for writers, 
+// and so a newspaper for readers.
+
+// The introduction to the Guardian stylebook of 1960, 
+// which itself was a revision to the initial guide published in 1928, 
+// was headed "Neither pedantic nor wild".
+
+// https://www.theguardian.com/info/2000/mar/24/neither-pedantic-nor-wild
+
+bool isJanusInitialized = false;
+float * penalties;
 
 // -- Experimental approach Janus Sampling by gotzmann [ paper is coming ]
 
@@ -25,6 +35,10 @@ llama_token sample_janus_token(
         const std::vector<llama_token> & last_tokens, 
         const int pos, 
         const int max) {
+
+    if (!isJanusInitialized) {
+        initJanus(ctx, params);
+    }        
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
@@ -47,8 +61,8 @@ llama_token sample_janus_token(
 
         // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
         size_t depth = 0;
-        if (params.repeat_last_n != -1 && params.repeat_last_n != 0 && params.repeat_last_n < (int32_t) last_tokens.size()) {
-            depth = last_tokens.size() - params.repeat_last_n;
+        if (params.depth != -1 && params.depth != 0 && params.depth < (int32_t) last_tokens.size()) {
+            depth = last_tokens.size() - params.depth;
         }
 
         for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
@@ -57,124 +71,7 @@ llama_token sample_janus_token(
             if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
 
             // well, let just ignore negative probabilities   
-            if (logits[id] > 0.0) {
-
-                // --- experimental idea - specific penalties for high-frequency tokens like space
-
-                if (isPedantic(id)) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.05;
-                    continue;
-                }                
-
-                // 29871 => " "
-                if (id == 29871) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-                    continue;
-                }
-
-                // 29892 => ","
-                // 29889 => "."
-                if (id == 29892 || id == 29889) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-                    continue;
-                }
-
-                // new line
-                if (id == 13) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.05;
-                    continue;
-                }
-
-                // 29901 => ":"
-                // 29936 => ";"
-                if (id == 29901 || id == 29936) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.30;
-                    continue;
-                }
-
-                // 29898 => "("
-                // 313   => " ("
-                // 29897 => ")"
-                // 1723  => " )"
-
-                if (id == 29898 || id == 313 || id == 29897 || id == 1723) {
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.40;
-                    continue;
-                }
-
-                // Popular RU parts
-
-                // 490 => " в"
-                // 531 => " с"
-                // 606 => " и"
-                // 614 => " о"
-
-                if (id == 490 || id == 531 || id == 606 || id == 614) {
-
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-                    continue;
-                }
-
-                // 665 => " на"
-                // 733 => " по"
-                // 863 => " у"
-
-                if (id == 665 || id == 733 || id == 863) {
-
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.20;
-                    continue;
-                }
-
-                // -- Popular EN parts
-
-                // 263 => " a"
-                // 278 => " the"
-                // 297 => " in"
-                // 304 => " to"
-                // 310 => " of"
-
-                if (id == 263 || id == 278 || id == 297 || id == 304 || id == 310) {
-
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-                    continue;
-                }
-
-                // 322 => " and"
-                // 372 => " it"
-                // 373 => " on"
-                // 385 => " an"
-
-                if (id == 322 || id == 372 || id == 373 || id == 385) {
-
-                    logits[id] /= 1.0 + (penalty - 1.0) * 0.20;
-                    continue;
-                }
-
-                // -- Special case for complex languages like Russian
-                //    Do not penalise much tokens that might work as other words parts!
-
-                auto tokenType = tokType(ctx, id);
-                if (tokenType == LANG_RU) {
-                    float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
-                    //fprintf(stderr, "\nSIZE %d | RU PROB %f", tokSize(ctx, id), prob);
-                    logits[id] /= 1.0 + (penalty - 1.0) * prob;
-                    continue;
-                }
-
-                // -- Similar hack for EN (slightly decrease penalty ) ?!
-
-                tokenType = tokType(ctx, id);
-                if (tokenType == LANG_EN) {
-                    float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
-                    //fprintf(stderr, "\nSIZE %d | EN PROB %f", tokSize(ctx, id), prob);
-                    logits[id] /= 1.0 + (penalty - 1.0) * prob;
-                    continue;
-                }
-
-                // -- Full penalization for full words in English and word beginnings in Russian (SPACE_RU)
-
-                logits[id] /= penalty;
-            }
+            logits[id] *= penalties[i];
         }
    
     }
@@ -197,7 +94,7 @@ llama_token sample_janus_token(
                 ||
                 ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
             ) {
-                logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
+                logits[id] *= ::penalties[id] * 3.00;
             }
         }        
     }
@@ -232,9 +129,9 @@ llama_token sample_janus_token(
     auto topType = tokType(ctx, topToken);
     float topLogit = candidates.data()[0].logit;
 
-    float cutoff = 0.948;
+    float cutoff = params.lo_p;
     if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
-        cutoff = 0.982;
+        cutoff = params.hi_p;
     }
 
     for (size_t i = 1; i < candidates.size(); i++) {
@@ -250,6 +147,136 @@ llama_token sample_janus_token(
     llama_token_data_array shortlist = { candidates.data(), candidates.size(), true };
 
     return llama_sample_token(ctx, &shortlist);
+}
+
+// -- initJanus prefills base penalties for each token depending on Janus Sampling euristics
+
+void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
+
+    //float * logits = llama_get_logits(ctx);
+    const int vocabSize = llama_n_vocab(ctx);
+    ::penalties = new float[vocabSize] {};
+    float penalty = params.penalty;
+
+    for (llama_token id = 0; id < vocabSize; id++) {
+
+        // --- experimental idea - specific penalties for high-frequency tokens like space
+
+        if (isPedantic(id)) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.05;
+            continue;
+        }                
+
+        // 29871 => " "
+
+        if (id == 29871) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.10;
+            continue;
+        }
+
+        // 29892 => ","
+        // 29889 => "."
+
+        if (id == 29892 || id == 29889) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.10;
+            continue;
+        }
+
+        // new line
+
+        if (id == 13) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.05;
+            continue;
+        }
+
+        // 29901 => ":"
+        // 29936 => ";"
+
+        if (id == 29901 || id == 29936) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.30;
+            continue;
+        }
+
+        // 29898 => "("
+        // 313   => " ("
+        // 29897 => ")"
+        // 1723  => " )"
+
+        if (id == 29898 || id == 313 || id == 29897 || id == 1723) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.40;
+            continue;
+        }
+
+        // Popular RU parts
+
+        // 490 => " в"
+        // 531 => " с"
+        // 606 => " и"
+        // 614 => " о"
+
+        if (id == 490 || id == 531 || id == 606 || id == 614) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.10;
+            continue;
+        }
+
+        // 665 => " на"
+        // 733 => " по"
+        // 863 => " у"
+
+        if (id == 665 || id == 733 || id == 863) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.20;
+            continue;
+        }
+
+        // -- Popular EN parts
+
+        // 263 => " a"
+        // 278 => " the"
+        // 297 => " in"
+        // 304 => " to"
+        // 310 => " of"
+
+        if (id == 263 || id == 278 || id == 297 || id == 304 || id == 310) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.10;
+            continue;
+        }
+
+        // 322 => " and"
+        // 372 => " it"
+        // 373 => " on"
+        // 385 => " an"
+
+        if (id == 322 || id == 372 || id == 373 || id == 385) {
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.20;
+            continue;
+        }
+
+        // -- Special case for complex languages like Russian
+        //    Do not penalise much tokens that might work as other words parts!
+
+        auto tokenType = tokType(ctx, id);
+        if (tokenType == LANG_RU) {
+            float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
+            //fprintf(stderr, "\nSIZE %d | RU PROB %f", tokSize(ctx, id), prob);
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * prob;
+            continue;
+        }
+
+        // -- Similar hack for EN (slightly decrease penalty ) ?!
+
+        tokenType = tokType(ctx, id);
+        if (tokenType == LANG_EN) {
+            float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
+            //fprintf(stderr, "\nSIZE %d | EN PROB %f", tokSize(ctx, id), prob);
+            ::penalties[id] /= 1.0 + (penalty - 1.0) * prob;
+            continue;
+        }
+
+        // -- Full penalization for full words in English and word beginnings in Russian (SPACE_RU)
+
+        ::penalties[id] = penalty;
+
+    }
 }
 
 
@@ -322,23 +349,18 @@ bool isPedantic(llama_token id) {
             return true;
         }
     }
-
     return false;
 }
-
 
 // this function receives any std::string 
 // and returns a vector<byte> containing the numerical value of each byte in the string
 std::vector<std::byte> getBytes(std::string const &s) {
-
     std::vector<std::byte> bytes;
     bytes.reserve(std::size(s));
-
     std::transform(std::begin(s), 
                    std::end(s),
                    std::back_inserter(bytes), 
                    [](char const &c){ return std::byte(c);});
-
     return bytes;
 }
 
@@ -465,13 +487,14 @@ void printDebug(struct llama_context * ctx, const int pos, const char * text) {
 
     for (size_t i = 0; i < size; i++) {
         if (13 == candidates.data()[i].id) {
-            fprintf(stderr, " --    13 [ %.2f ] \"\\n\" \n", candidates.data()[i].logit);
+            fprintf(stderr, " --    13 [ %.2f * %.2f ] \"\\n\" \n", candidates.data()[i].logit, penalties[i]);
         } else if (2 == candidates.data()[i].id) {
-            fprintf(stderr, " --     2 [ %.2f ] \"<EOS>\" \n", candidates.data()[i].logit);
+            fprintf(stderr, " --     2 [ %.2f * %.2f ] \"<EOS>\" \n", candidates.data()[i].logit, penalties[i]);
         } else {
-            fprintf(stderr, " -- %5d [ %.2f ] \"%s\" \n", 
+            fprintf(stderr, " -- %5d [ %.2f * %.2f ] \"%s\" \n", 
                 candidates.data()[i].id,
-                candidates.data()[i].logit, 
+                candidates.data()[i].logit,
+                penalties[i],
                 llama_token_to_str(ctx, candidates.data()[i].id).c_str()
             );
         }

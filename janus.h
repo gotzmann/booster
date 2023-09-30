@@ -2,7 +2,6 @@
 #include <string>
 #include <vector>
 
-
 const int LANG_ZERO = 0;
 // const int LANG_NEUTRAL = 1;
 // const int LANG_MIXED = 1;
@@ -19,4 +18,5 @@ std::vector<std::byte> getBytes(std::string const &s);
 bool isPedantic(llama_token id);
 int tokType(const llama_context *ctx, const llama_token token);
 int tokSize(const llama_context *ctx, const llama_token token);
+void initJanus(struct llama_context * ctx, const struct gpt_params & params);
 void printDebug(struct llama_context * ctx, const int pos, const char * text);

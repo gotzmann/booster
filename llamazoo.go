@@ -1,5 +1,6 @@
 package main
 
+// TODO: Init Janus Sampling from CLI
 // TODO: Show real port => [ INIT ] REST API running on localhost:8080
 // TODO: Hardcode RANDOM seed for ALL generations
 // TODO: Rename --mirostat-lr N: Set the Mirostat learning rate, parameter eta (default: 0.1).

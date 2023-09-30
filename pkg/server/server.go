@@ -19,6 +19,11 @@ void * initContext(
 	float temp, int topK, float topP,
 	float typicalP,
 	float repeat_penalty, int repeat_last_n,
+	int32_t janus,
+	int32_t depth,
+	float penalty,
+	float hi_p,
+	float lo_p,
 	int32_t seed);
 int64_t doInference(
 	int idx,
@@ -84,7 +89,13 @@ type HyperParams struct {
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
 
-	Janus uint32 // version of Janus Sampling, zero for disable
+	// -- Janus Sampling
+
+	Janus   uint32
+	Depth   uint32
+	Penalty float32
+	HiP     float32
+	LoP     float32
 
 	Temp float32
 	TopK int
@@ -110,13 +121,19 @@ type Model struct {
 	ContextSize int
 	Predict     int
 
+	// -- Janus Sampling
+
+	Janus   uint32
+	Depth   uint32
+	Penalty float32
+	HiP     float32
+	LoP     float32
+
 	Mirostat    uint32
 	MirostatLR  float32 // aka eta, learning rate
 	MirostatENT float32 // aka tau, target entropy
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
-
-	Janus uint32 // version of Janus Sampling, zero for disable
 
 	Temp float32
 	TopK int

@@ -11,13 +11,13 @@
         {
             "threads": 6,
             "gpus": [ 0, 0],
-            "model": "wizard",
+            "model": "wizard"
         },
 
         {
             "threads": 1,
             "gpus": [ 50, 50],
-            "model": "airoboros",
+            "model": "airoboros"
         }
 
     ],
@@ -28,11 +28,20 @@
             "id": "airoboros",
             "name": "Airoboros 7B",
             "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
+
             "preamble": "",
             "prefix": "USER:",
             "suffix": "ASSISTANT:",
+
             "contextSize": 2048,
             "predict": 1024,
+
+            "janus": 1,
+            "depth": 200,
+            "penalty": 0.936,
+            "hip": 0.982,
+            "lop": 0.948,
+
             "temp": 0.1,
             "topK": 8,
             "topP": 0.4,
@@ -41,19 +50,27 @@
             "repeatLastN": -1,
             "mirostat": 0,
             "mirostatENT": 0,
-            "mirostatLR": 0,
-            "janus": 0
+            "mirostatLR": 0
         },
 
         {
             "id": "wizard",
             "name": "WizardLM 7B",
             "path": "~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin",
+
             "preamble": "",
             "prefix": "### Instruction:",
             "suffix": "### Response:",
+
             "contextSize": 2048,
             "predict": 1024,
+
+            "janus": 1,
+            "depth": 200,
+            "penalty": 0.936,
+            "hip": 0.982,
+            "lop": 0.948,
+
             "temp": 0.1,
             "topK": 8,
             "topP": 0.4,
@@ -62,8 +79,7 @@
             "repeatLastN": -1,
             "mirostat": 0,
             "mirostatENT": 0,
-            "mirostatLR": 0,
-            "janus": 0
+            "mirostatLR": 0
         }
     ]
 }
