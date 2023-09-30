@@ -8,24 +8,27 @@
 # https://developer.nvidia.com/cuda-gpus
 # NVCCFLAGS += -arch=sm_86
 
-# clean: rm -f *.a bridge.o llamazoo
+# clean: rm -f *.a bridge.o janus.o llamazoo
 
 default: llamazoo
 
 # How to build for regular platform with just CPU support
-llamazoo: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
+llamazoo: bridge.o janus.o ggml.o ggml-alloc.o llama.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 # How to build for GPU platrorm with CUDA support?
-cuda: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
+cuda: bridge.o janus.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go	
 
 # How to build for Apple Silicon with CPU + Metal support?
-mac: bridge.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
+mac: bridge.o janus.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
 bridge.o: bridge.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+janus.o: janus.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@	
 
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot train-text-from-scratch convert-llama2c-to-ggml simple save-load-state server embd-input-test gguf llama-bench baby-llama beam-search speculative tests/test-c.o

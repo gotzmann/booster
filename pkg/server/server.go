@@ -15,10 +15,14 @@ void * initContext(
 	int gpu1, int gpu2,
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
-	int32_t janus,
 	float temp, int topK, float topP,
 	float typicalP,
 	float repeat_penalty, int repeat_last_n,
+	int32_t janus,
+	int32_t depth,
+	float scale,
+	float hi,
+	float lo,
 	int32_t seed);
 int64_t doInference(
 	int idx,
@@ -84,7 +88,13 @@ type HyperParams struct {
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
 
-	Janus uint32 // version of Janus Sampling, zero for disable
+	// -- Janus Sampling
+
+	Janus uint32
+	Depth uint32
+	Scale float32
+	Hi    float32
+	Lo    float32
 
 	Temp float32
 	TopK int
@@ -110,13 +120,19 @@ type Model struct {
 	ContextSize int
 	Predict     int
 
+	// -- Janus Sampling
+
+	Janus uint32
+	Depth uint32
+	Scale float32
+	Hi    float32
+	Lo    float32
+
 	Mirostat    uint32
 	MirostatLR  float32 // aka eta, learning rate
 	MirostatENT float32 // aka tau, target entropy
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
-
-	Janus uint32 // version of Janus Sampling, zero for disable
 
 	Temp float32
 	TopK int
@@ -325,10 +341,10 @@ func Init(
 			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // TODO: Support more than 2 GPUs
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
-			C.int32_t(0), // janus off
 			C.float(temp), C.int(topK), C.float(topP),
 			C.float(typicalP),
 			C.float(repeatPenalty), C.int(repeatLastN),
+			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
 			C.int32_t(seed))
 
 		if ctx == nil {
@@ -479,10 +495,10 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
-				C.int32_t(model.Janus),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.TypicalP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
+				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
 				C.int32_t(-1))
 
 			if ctx == nil {
@@ -509,6 +525,10 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				MirostatETA: eta,
 
 				Janus: model.Janus,
+				Depth: model.Depth,
+				Scale: model.Scale,
+				Hi:    model.Hi,
+				Lo:    model.Lo,
 
 				Temp: model.Temp,
 				TopK: model.TopK,
