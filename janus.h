@@ -19,4 +19,4 @@ bool isPedantic(llama_token id);
 int tokType(const llama_context *ctx, const llama_token token);
 int tokSize(const llama_context *ctx, const llama_token token);
 void initJanus(struct llama_context * ctx, const struct gpt_params & params);
-void printDebug(struct llama_context * ctx, const int pos, const char * text);
+void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text);

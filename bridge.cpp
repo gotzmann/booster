@@ -38,18 +38,14 @@ llama_token llama_sample_token(
     float * logits = llama_get_logits(ctx);
     candidates.clear();
 
-    // Experimental sampling both creative for text and pedantic for math
+    // Experimental sampling both creative for text and pedantic for math / coding
     if (params.janus > 0) {
-        id = sample_janus_token(ctx, params, last_tokens, pos, max);
+        return sample_janus_token(ctx, params, last_tokens, pos, max);
     }
 
     // Deterministic sampling with great performance
-    //if (top_k == 1) {
-    //    return sample_top_token(logits, n_vocab);
-    //}
-
-    if (id > 0) {
-        return id;
+    if (top_k == 1) {
+        return sample_top_token(logits, n_vocab);
     }
 
     // Apply params.logit_bias map
@@ -606,10 +602,10 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    int32_t janus,
     float temp, int top_k, float top_p,
     float typical_p, 
     float repeat_penalty, int repeat_last_n,
+    int32_t janus, int32_t depth, float penalty, float hi_p, float lo_p,
     int32_t seed) {
     
     ::params[idx].model          = modelName;
@@ -627,8 +623,6 @@ void * initContext(
     ::params[idx].mirostat_tau   = mirostat_tau; 
     ::params[idx].mirostat_eta   = mirostat_eta;
 
-    ::params[idx].janus          = janus;
-
     ::params[idx].temp           = temp;
     ::params[idx].top_k          = top_k;
     ::params[idx].top_p          = top_p;
@@ -637,6 +631,12 @@ void * initContext(
 
     ::params[idx].repeat_penalty = repeat_penalty;
     ::params[idx].repeat_last_n  = repeat_last_n;
+
+    ::params[idx].janus          = janus;
+    ::params[idx].depth          = depth;
+    ::params[idx].penalty        = penalty;
+    ::params[idx].hi_p           = hi_p;
+    ::params[idx].lo_p           = lo_p;
     
     ::params[idx].seed           = seed;
     

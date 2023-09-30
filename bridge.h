@@ -210,7 +210,6 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    int32_t yanus,
     float temp, int top_k, float top_p,
     float typical_p,
     float repeat_penalty, int repeat_last_n,
@@ -227,7 +226,7 @@ int64_t doInference(
     char * jobID, 
     char * sessionID, 
     char * prompt); 
-    
+
 void stopInference(int idx);
 const char * status(char * jobID);
 int64_t promptEval(char * jobID);
