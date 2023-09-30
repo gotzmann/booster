@@ -83,7 +83,7 @@ llama_token sample_janus_token(
         }
     }
 
-    // -- Triple penalty for incompatible tokens (like english ending for russian word)
+    // -- DOUBLE penalty for incompatible tokens (like english ending for russian word)
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
     auto lastType = tokType(ctx, lastToken);
@@ -94,14 +94,21 @@ llama_token sample_janus_token(
 
         for (llama_token id = 0; id < vocabSize; id++) {
             auto curType = tokType(ctx, id);
-            //fprintf(stderr, "\n[ CUR #%d '%s' = %d ] ", id, llama_token_to_str(ctx, id).c_str(), curType);
-            //exit(1); // DEBUG
+
             if(
                 ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
                 ||
                 ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
             ) {
-                logits[id] *= ::penalties[id] * 3.00; // FIXME !!!
+                // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
+
+                // 3x: 0.936 => 0.808
+                // 3x: [ 12.061 * 0.987 ] "mi" => [ 11.598 * 0.987 ] "mi" => 3x is not enough!
+                // 10x: 0.936 => 0.36
+                // 10x: [ 12.445 * 0.987 ] "mi" => [ 10.852 * 0.987 ] "mi" => 10x so-so
+                // logits[id] *= 1.0 - (1.0 - ::penalties[id]) * 100.00;
+
+                logits[id] *= 0.5; 
             }
         }        
     }
