@@ -42,11 +42,11 @@ struct gpt_params {
 
     // -- Janus Sampling
 
-    int32_t janus = 1;     // 0 = off, 1 = Janus Sampling v1
-    int32_t depth = 200;   // last n tokens to penalize [ -1 = context size ]
-    float penalty = 0.936; // janus repetition penalty
-    float hi_p = 0.982;    // 1.0 = max pedantic [ 100% strict ]
-    float lo_p = 0.948;    // 0.0 = min pedantic [ 100% random ]
+    int32_t janus = 1;   // 0 = off or Janus Sampling version
+    int32_t depth = 200; // last n tokens to penalize [ -1 = context size ]
+    float scale = 0.936; // janus scale factor for penalty and other heuristics
+    float hi = 0.982;    // 1.0 = max pedantic [ 100% strict ]
+    float lo = 0.948;    // 0.0 = min pedantic [ 100% random ]
 
     // -- main params
 
@@ -215,9 +215,9 @@ void * initContext(
     float repeat_penalty, int repeat_last_n,
     int32_t janus,
 	int32_t depth,
-	float penalty,
-	float hi_p,
-	float lo_p,
+	float scale,
+	float hi,
+	float lo,
     int32_t seed);
 
 int64_t doInference(

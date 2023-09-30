@@ -20,9 +20,9 @@ void * initContext(
 	float repeat_penalty, int repeat_last_n,
 	int32_t janus,
 	int32_t depth,
-	float penalty,
-	float hi_p,
-	float lo_p,
+	float scale,
+	float hi,
+	float lo,
 	int32_t seed);
 int64_t doInference(
 	int idx,
@@ -90,11 +90,11 @@ type HyperParams struct {
 
 	// -- Janus Sampling
 
-	Janus   uint32
-	Depth   uint32
-	Penalty float32
-	HiP     float32
-	LoP     float32
+	Janus uint32
+	Depth uint32
+	Scale float32
+	Hi    float32
+	Lo    float32
 
 	Temp float32
 	TopK int
@@ -122,11 +122,11 @@ type Model struct {
 
 	// -- Janus Sampling
 
-	Janus   uint32
-	Depth   uint32
-	Penalty float32
-	HiP     float32
-	LoP     float32
+	Janus uint32
+	Depth uint32
+	Scale float32
+	Hi    float32
+	Lo    float32
 
 	Mirostat    uint32
 	MirostatLR  float32 // aka eta, learning rate
@@ -498,7 +498,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.TypicalP),
 				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
-				C.int(model.Janus), C.int(model.Depth), C.float(model.Penalty), C.float(model.HiP), C.float(model.LoP),
+				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
 				C.int32_t(-1))
 
 			if ctx == nil {
@@ -524,11 +524,11 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				MirostatTAU: tau,
 				MirostatETA: eta,
 
-				Janus:   model.Janus,
-				Depth:   model.Depth,
-				Penalty: model.Penalty,
-				HiP:     model.HiP,
-				LoP:     model.LoP,
+				Janus: model.Janus,
+				Depth: model.Depth,
+				Scale: model.Scale,
+				Hi:    model.Hi,
+				Lo:    model.Lo,
 
 				Temp: model.Temp,
 				TopK: model.TopK,

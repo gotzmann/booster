@@ -23,7 +23,7 @@
 // https://www.theguardian.com/info/2000/mar/24/neither-pedantic-nor-wild
 
 bool isJanusInitialized = false;
-float * penalties;
+float * scales;
 
 // -- Experimental approach Janus Sampling by gotzmann [ paper is coming ]
 
@@ -43,15 +43,15 @@ llama_token sample_janus_token(
     /* DEBUG
     fprintf(stderr, "\n * janus = %d", params.janus);
     fprintf(stderr, "\n * depth = %d", params.depth);
-    fprintf(stderr, "\n * penalty = %f", params.penalty);
-    fprintf(stderr, "\n * hi_p = %f", params.hi_p);
-    fprintf(stderr, "\n * lo_p = %f", params.lo_p); */
+    fprintf(stderr, "\n * scale = %f", params.scale);
+    fprintf(stderr, "\n * hi = %f", params.hi);
+    fprintf(stderr, "\n * lo = %f", params.lo); */
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
-    float penalty = params.penalty;
+    //float scale = params.scale;
 
     printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG 
 
@@ -60,10 +60,10 @@ llama_token sample_janus_token(
     const int EOS = 2;
     // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
     float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.2;
-    fprintf(stderr, "\nMULT = %f", mult);
+    //fprintf(stderr, "\nMULT = %f", mult);
     logits[EOS] *= mult;
 
-    // -- Apply penalty for repeated tokens except pedantic
+    // -- Apply scale for repeated tokens except pedantic
 
     // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
     size_t depth = 0;
@@ -78,10 +78,10 @@ llama_token sample_janus_token(
 
         // well, let just ignore negative probabilities
         // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-        logits[id] *= penalties[id];
+        logits[id] *= ::scales[id];
     }
 
-    // -- DOUBLE penalty for incompatible tokens (like english ending for russian word)
+    // -- DOUBLE scale for incompatible tokens (like english ending for russian word)
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
     auto lastType = tokType(ctx, lastToken);
@@ -98,13 +98,13 @@ llama_token sample_janus_token(
                 ||
                 ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
             ) {
-                // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
+                // was: logits[id] /= 1.0 + (scale - 1.0) * 3.00;
 
                 // 3x: 0.936 => 0.808
                 // 3x: [ 12.061 * 0.987 ] "mi" => [ 11.598 * 0.987 ] "mi" => 3x is not enough!
                 // 10x: 0.936 => 0.36
                 // 10x: [ 12.445 * 0.987 ] "mi" => [ 10.852 * 0.987 ] "mi" => 10x so-so
-                // logits[id] *= 1.0 - (1.0 - ::penalties[id]) * 100.00;
+                // logits[id] *= 1.0 - (1.0 - ::scales[id]) * 100.00;
 
                 logits[id] *= 0.5; 
             }
@@ -141,9 +141,9 @@ llama_token sample_janus_token(
     auto topType = tokType(ctx, topToken);
     float topLogit = candidates.data()[0].logit;
 
-    float cutoff = params.lo_p;
+    float cutoff = params.lo;
     if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
-        cutoff = params.hi_p;
+        cutoff = params.hi;
     }
 
     for (size_t i = 1; i < candidates.size(); i++) {
@@ -160,18 +160,22 @@ llama_token sample_janus_token(
     return llama_sample_token(ctx, &shortlist);
 }
 
-// -- initJanus prefills base penalties for each token depending on Janus Sampling euristics
+// -- initJanus prefills base scaling penalties for each token depending on Janus Sampling euristics
 
 void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
     const int vocabSize = llama_n_vocab(ctx);
-    ::penalties = new float[vocabSize] {};
-    float penalty = params.penalty;
+    ::scales = new float[vocabSize] {};
+
+    float scale = params.scale;
+    if (scale <= 0.0 || scale > 1.0) {
+        scale = 1.0;
+    }
 
     // -- init tokens with some heuristic rules
 
-    // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-    // and then wrong: ::penalties[id] = penalty * prob;
+    // how it was before: logits[id] /= 1.0 + (scale - 1.0) * 0.10;
+    // and then wrong: ::scales[id] = scale * prob;
     for (llama_token id = 0; id < vocabSize; id++) {
 
         auto tokenType = tokType(ctx, id);      
@@ -179,74 +183,74 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         // -- pedantic tokens
 
         if (isPedantic(id)) {
-            ::penalties[id] = 1.0 - (1.0 - penalty) * 0.05;
+            ::scales[id] = 1.0 - (1.0 - scale) * 0.05;
             continue;
         }   
 
         // -- Special case for complex languages like Russian
-        //    Do not penalise much tokens that might work as other words parts!
+        //    Do not penalise much tokens that might work as other word parts!
 
         if (tokenType == LANG_RU) {
             float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
-            ::penalties[id] = 1.0 - (1.0 - penalty) * prob;
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // FIXME ?
             continue;
         }
 
-        // -- Similar hack for EN (slightly decrease penalty ) ?!
+        // -- Similar hack for EN (slightly decrease scale ) ?!
 
         tokenType = tokType(ctx, id);
         if (tokenType == LANG_EN) {
             float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
-            ::penalties[id] = 1.0 - (1.0 - penalty) * prob;
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // FIXME ?
             continue;
         }
 
         // -- Full penalization for other tokens
 
-        ::penalties[id] = penalty;
+        ::scales[id] = scale;
 
     }
 
     // -- rewrite some specific penalties for high-frequency tokens
     
-    ::penalties[13]    = 1.0 - (1.0 - penalty) * 0.05; // newline
+    ::scales[13]    = 1.0 - (1.0 - scale) * 0.05; // newline
 
-    ::penalties[29871] = 1.0 - (1.0 - penalty) * 0.20; // 29871 => " "
+    ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
 
-    ::penalties[29892] = 1.0 - (1.0 - penalty) * 0.10; // 29892 => ","
-    ::penalties[29889] = 1.0 - (1.0 - penalty) * 0.10; // 29889 => "."
+    ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
+    ::scales[29889] = 1.0 - (1.0 - scale) * 0.10; // 29889 => "."
 
-    ::penalties[29901] = 1.0 - (1.0 - penalty) * 0.30; // 29901 => ":"
-    ::penalties[29936] = 1.0 - (1.0 - penalty) * 0.30; // 29936 => ";"
+    ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
+    ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
 
-    ::penalties[29898] = 1.0 - (1.0 - penalty) * 0.40; // 29898 => "("
-    ::penalties[313]   = 1.0 - (1.0 - penalty) * 0.40; // 313   => " ("
-    ::penalties[29897] = 1.0 - (1.0 - penalty) * 0.40; // 29897 => ")"
-    ::penalties[1723]  = 1.0 - (1.0 - penalty) * 0.40; // 1723  => " )"
+    ::scales[29898] = 1.0 - (1.0 - scale) * 0.40; // 29898 => "("
+    ::scales[313]   = 1.0 - (1.0 - scale) * 0.40; // 313   => " ("
+    ::scales[29897] = 1.0 - (1.0 - scale) * 0.40; // 29897 => ")"
+    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.40; // 1723  => " )"
 
     // -- Popular RU parts
 
-    ::penalties[490]   = 1.0 - (1.0 - penalty) * 0.10; // 490 => " в"
-    ::penalties[531]   = 1.0 - (1.0 - penalty) * 0.10; // 531 => " с"
-    ::penalties[606]   = 1.0 - (1.0 - penalty) * 0.10; // 606 => " и"
-    ::penalties[614]   = 1.0 - (1.0 - penalty) * 0.10; // 614 => " о"
+    ::scales[490]   = 1.0 - (1.0 - scale) * 0.10; // 490 => " в"
+    ::scales[531]   = 1.0 - (1.0 - scale) * 0.10; // 531 => " с"
+    ::scales[606]   = 1.0 - (1.0 - scale) * 0.10; // 606 => " и"
+    ::scales[614]   = 1.0 - (1.0 - scale) * 0.10; // 614 => " о"
 
-    ::penalties[665]   = 1.0 - (1.0 - penalty) * 0.20; // 665 => " на"
-    ::penalties[733]   = 1.0 - (1.0 - penalty) * 0.20; // 733 => " по"
-    ::penalties[863]   = 1.0 - (1.0 - penalty) * 0.20; // 863 => " у"
+    ::scales[665]   = 1.0 - (1.0 - scale) * 0.20; // 665 => " на"
+    ::scales[733]   = 1.0 - (1.0 - scale) * 0.20; // 733 => " по"
+    ::scales[863]   = 1.0 - (1.0 - scale) * 0.20; // 863 => " у"
 
     // -- Popular EN parts
 
-    ::penalties[263]   = 1.0 - (1.0 - penalty) * 0.10; // 263 => " a"
-    ::penalties[278]   = 1.0 - (1.0 - penalty) * 0.10; // 278 => " the"
-    ::penalties[297]   = 1.0 - (1.0 - penalty) * 0.10; // 297 => " in"
-    ::penalties[304]   = 1.0 - (1.0 - penalty) * 0.10; // 304 => " to"
-    ::penalties[310]   = 1.0 - (1.0 - penalty) * 0.10; // 310 => " of"
+    ::scales[263]   = 1.0 - (1.0 - scale) * 0.10; // 263 => " a"
+    ::scales[278]   = 1.0 - (1.0 - scale) * 0.10; // 278 => " the"
+    ::scales[297]   = 1.0 - (1.0 - scale) * 0.10; // 297 => " in"
+    ::scales[304]   = 1.0 - (1.0 - scale) * 0.10; // 304 => " to"
+    ::scales[310]   = 1.0 - (1.0 - scale) * 0.10; // 310 => " of"
 
-    ::penalties[322]   = 1.0 - (1.0 - penalty) * 0.20; // 322 => " and"
-    ::penalties[372]   = 1.0 - (1.0 - penalty) * 0.20; // 372 => " it"
-    ::penalties[373]   = 1.0 - (1.0 - penalty) * 0.20; // 373 => " on"
-    ::penalties[385]   = 1.0 - (1.0 - penalty) * 0.20; // 385 => " an"
+    ::scales[322]   = 1.0 - (1.0 - scale) * 0.20; // 322 => " and"
+    ::scales[372]   = 1.0 - (1.0 - scale) * 0.20; // 372 => " it"
+    ::scales[373]   = 1.0 - (1.0 - scale) * 0.20; // 373 => " on"
+    ::scales[385]   = 1.0 - (1.0 - scale) * 0.20; // 385 => " an"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
@@ -479,14 +483,14 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
                 "\n  --    13 [ %s%.3f * %.3f ] \"\\n\"",
                 zero.c_str(),
                 logit, 
-                penalties[id]
+                ::scales[id]
             );
         } else if (2 == id) {
             fprintf(stderr, 
                 "\n  --     2 [ %s%.3f * %.3f ] \"<EOS>\"",
                 zero.c_str(),
                 logit, 
-                penalties[id]
+                ::scales[id]
             );
         } else {
             fprintf(stderr, 
@@ -494,7 +498,7 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
                 id,
                 zero.c_str(),
                 logit,
-                penalties[id],
+                ::scales[id],
                 llama_token_to_str(ctx, id).c_str()
             );
         }

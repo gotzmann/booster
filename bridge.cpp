@@ -605,7 +605,7 @@ void * initContext(
     float temp, int top_k, float top_p,
     float typical_p, 
     float repeat_penalty, int repeat_last_n,
-    int32_t janus, int32_t depth, float penalty, float hi_p, float lo_p,
+    int32_t janus, int32_t depth, float scale, float hi, float lo,
     int32_t seed) {
     
     ::params[idx].model          = modelName;
@@ -634,9 +634,9 @@ void * initContext(
 
     ::params[idx].janus          = janus;
     ::params[idx].depth          = depth;
-    ::params[idx].penalty        = penalty;
-    ::params[idx].hi_p           = hi_p;
-    ::params[idx].lo_p           = lo_p;
+    ::params[idx].scale          = scale;
+    ::params[idx].hi             = hi;
+    ::params[idx].lo             = lo;
     
     ::params[idx].seed           = seed;
     
