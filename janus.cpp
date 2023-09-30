@@ -135,7 +135,6 @@ llama_token sample_janus_token(
     }
 
     for (size_t i = 1; i < candidates.size(); i++) {
-        //fprintf(stderr, "\n -- %.2f < %.2f", candidates.data()[i].logit / topLogit, cutoff);
         if (candidates.data()[i].logit / topLogit < cutoff) {
             candidates.resize(i);
             break;
@@ -153,94 +152,20 @@ llama_token sample_janus_token(
 
 void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
-    //float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
     ::penalties = new float[vocabSize] {};
     float penalty = params.penalty;
 
-    // -- experimental idea - specific penalties for high-frequency tokens like space  
-
-    
-    ::penalties[13]    = penalty * 0.05; // newline
-    ::penalties[29871] = penalty * 0.20; // 29871 => " "
-
-    ::penalties[29892] = penalty * 0.10; // 29892 => ","
-    ::penalties[29889] = penalty * 0.10; // 29889 => "."
-  
+    // -- init tokens with some heuristic rules
 
     for (llama_token id = 0; id < vocabSize; id++) {         
-
-
-
-
-        // 29901 => ":"
-        // 29936 => ";"
-
-        if (id == 29901 || id == 29936) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.30;
-            continue;
-        }
-
-        // 29898 => "("
-        // 313   => " ("
-        // 29897 => ")"
-        // 1723  => " )"
-
-        if (id == 29898 || id == 313 || id == 29897 || id == 1723) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.40;
-            continue;
-        }
 
         // -- other pedantic tokens
 
         if (isPedantic(id)) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.05;
+            ::penalties[id] = penalty * 0.05;
             continue;
         }   
-
-        // -- Popular RU parts
-
-        // 490 => " в"
-        // 531 => " с"
-        // 606 => " и"
-        // 614 => " о"
-
-        if (id == 490 || id == 531 || id == 606 || id == 614) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.10;
-            continue;
-        }
-
-        // 665 => " на"
-        // 733 => " по"
-        // 863 => " у"
-
-        if (id == 665 || id == 733 || id == 863) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.20;
-            continue;
-        }
-
-        // -- Popular EN parts
-
-        // 263 => " a"
-        // 278 => " the"
-        // 297 => " in"
-        // 304 => " to"
-        // 310 => " of"
-
-        if (id == 263 || id == 278 || id == 297 || id == 304 || id == 310) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.10;
-            continue;
-        }
-
-        // 322 => " and"
-        // 372 => " it"
-        // 373 => " on"
-        // 385 => " an"
-
-        if (id == 322 || id == 372 || id == 373 || id == 385) {
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * 0.20;
-            continue;
-        }
 
         // -- Special case for complex languages like Russian
         //    Do not penalise much tokens that might work as other words parts!
@@ -248,8 +173,7 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         auto tokenType = tokType(ctx, id);
         if (tokenType == LANG_RU) {
             float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
-            //fprintf(stderr, "\nSIZE %d | RU PROB %f", tokSize(ctx, id), prob);
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * prob;
+            ::penalties[id] = penalty * prob;
             continue;
         }
 
@@ -258,8 +182,7 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         tokenType = tokType(ctx, id);
         if (tokenType == LANG_EN) {
             float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
-            //fprintf(stderr, "\nSIZE %d | EN PROB %f", tokSize(ctx, id), prob);
-            ::penalties[id] /= 1.0 + (penalty - 1.0) * prob;
+            ::penalties[id] = penalty * prob;
             continue;
         }
 
@@ -268,6 +191,47 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         ::penalties[id] = penalty;
 
     }
+
+    // -- specific penalties for high-frequency tokens
+    
+    ::penalties[13]    = penalty * 0.05; // newline
+
+    ::penalties[29871] = penalty * 0.20; // 29871 => " "
+
+    ::penalties[29892] = penalty * 0.10; // 29892 => ","
+    ::penalties[29889] = penalty * 0.10; // 29889 => "."
+
+    ::penalties[29901] = penalty * 0.30; // 29901 => ":"
+    ::penalties[29936] = penalty * 0.30; // 29936 => ";"
+
+    ::penalties[29898] = penalty * 0.40; // 29898 => "("
+    ::penalties[313]   = penalty * 0.40; // 313   => " ("
+    ::penalties[29897] = penalty * 0.40; // 29897 => ")"
+    ::penalties[1723]  = penalty * 0.40; // 1723  => " )"
+
+    // -- Popular RU parts
+
+    ::penalties[490]   = penalty * 0.10; // 490 => " в"
+    ::penalties[531]   = penalty * 0.10; // 531 => " с"
+    ::penalties[606]   = penalty * 0.10; // 606 => " и"
+    ::penalties[614]   = penalty * 0.10; // 614 => " о"
+
+    ::penalties[665]   = penalty * 0.20; // 665 => " на"
+    ::penalties[733]   = penalty * 0.20; // 733 => " по"
+    ::penalties[863]   = penalty * 0.20; // 863 => " у"
+
+    // -- Popular EN parts
+
+    ::penalties[263]   = penalty * 0.10; // 263 => " a"
+    ::penalties[278]   = penalty * 0.10; // 278 => " the"
+    ::penalties[297]   = penalty * 0.10; // 297 => " in"
+    ::penalties[304]   = penalty * 0.10; // 304 => " to"
+    ::penalties[310]   = penalty * 0.10; // 310 => " of"
+
+    ::penalties[322]   = penalty * 0.20; // 322 => " and"
+    ::penalties[372]   = penalty * 0.20; // 372 => " it"
+    ::penalties[373]   = penalty * 0.20; // 373 => " on"
+    ::penalties[385]   = penalty * 0.20; // 385 => " an"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
