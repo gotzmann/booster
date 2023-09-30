@@ -51,6 +51,7 @@ llama_token sample_janus_token(
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
+    float penalty = params.penalty;
 
     printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG 
 
@@ -58,30 +59,25 @@ llama_token sample_janus_token(
 
     const int EOS = 2;
     // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
-    float mult = 1.0 - (1.0 - log(1.0 + (float(pos) / float(max)))) * 0.2;
+    float mult = penalty + log(1.0 + float(pos) / float(max)) * 0.2;
     logits[EOS] *= mult;
 
     // -- Apply penalty for repeated tokens except pedantic
 
-    // penalize tokens
-    float penalty = params.penalty;
-    if (penalty != 0.0 && penalty != 1.0) {
+    // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
+    size_t depth = 0;
+    if (params.depth != -1 && params.depth != 0 && params.depth < (int32_t) last_tokens.size()) {
+        depth = last_tokens.size() - params.depth;
+    }
 
-        // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
-        size_t depth = 0;
-        if (params.depth != -1 && params.depth != 0 && params.depth < (int32_t) last_tokens.size()) {
-            depth = last_tokens.size() - params.depth;
-        }
+    for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
 
-        for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
+        llama_token id = last_tokens.data()[i]; 
+        if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
 
-            llama_token id = last_tokens.data()[i]; 
-            if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
-
-            // well, let just ignore negative probabilities
-            // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-            logits[id] *= penalties[id];
-        }
+        // well, let just ignore negative probabilities
+        // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+        logits[id] *= penalties[id];
     }
 
     // -- DOUBLE penalty for incompatible tokens (like english ending for russian word)
