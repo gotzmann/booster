@@ -57,7 +57,8 @@ llama_token sample_janus_token(
     // -- Boost <EOS> token when we are nearing prediction limits
 
     const int EOS = 2;
-    float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
+    // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
+    float mult = 1.0 - (1.0 - log(1.0 + (float(pos) / float(max)))) * 0.2;
     logits[EOS] *= mult;
 
     // -- Apply penalty for repeated tokens except pedantic
@@ -79,7 +80,7 @@ llama_token sample_janus_token(
 
             // well, let just ignore negative probabilities
             // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-            logits[id] *= penalties[i];
+            logits[id] *= penalties[id];
         }
     }
 
@@ -174,7 +175,9 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
     // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
     // and then wrong: ::penalties[id] = penalty * prob;
-    for (llama_token id = 0; id < vocabSize; id++) {         
+    for (llama_token id = 0; id < vocabSize; id++) {
+
+        auto tokenType = tokType(ctx, id);      
 
         // -- pedantic tokens
 
@@ -186,7 +189,6 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         // -- Special case for complex languages like Russian
         //    Do not penalise much tokens that might work as other words parts!
 
-        auto tokenType = tokType(ctx, id);
         if (tokenType == LANG_RU) {
             float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
             ::penalties[id] = 1.0 - (1.0 - penalty) * prob;
@@ -208,7 +210,7 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
     }
 
-    // -- specific penalties for high-frequency tokens
+    // -- rewrite some specific penalties for high-frequency tokens
     
     ::penalties[13]    = 1.0 - (1.0 - penalty) * 0.05; // newline
 
