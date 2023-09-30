@@ -38,7 +38,14 @@ llama_token sample_janus_token(
 
     if (!isJanusInitialized) {
         initJanus(ctx, params);
-    }        
+    }
+
+    /* DEBUG
+    fprintf(stderr, "\n * janus = %d", params.janus);
+    fprintf(stderr, "\n * depth = %d", params.depth);
+    fprintf(stderr, "\n * penalty = %f", params.penalty);
+    fprintf(stderr, "\n * hi_p = %f", params.hi_p);
+    fprintf(stderr, "\n * lo_p = %f", params.lo_p); */
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
@@ -56,7 +63,7 @@ llama_token sample_janus_token(
     // -- Apply penalty for repeated tokens except pedantic
 
     // penalize tokens
-    float penalty = params.repeat_penalty;
+    float penalty = params.penalty;
     if (penalty != 0.0 && penalty != 1.0) {
 
         // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
@@ -70,10 +77,10 @@ llama_token sample_janus_token(
             llama_token id = last_tokens.data()[i]; 
             if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
 
-            // well, let just ignore negative probabilities   
+            // well, let just ignore negative probabilities
+            // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
             logits[id] *= penalties[i];
         }
-   
     }
 
     // -- Triple penalty for incompatible tokens (like english ending for russian word)
@@ -94,7 +101,7 @@ llama_token sample_janus_token(
                 ||
                 ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
             ) {
-                logits[id] *= ::penalties[id] * 3.00;
+                logits[id] *= ::penalties[id] * 3.00; // FIXME !!!
             }
         }        
     }
@@ -158,12 +165,14 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
     // -- init tokens with some heuristic rules
 
+    // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
+    // and then wrong: ::penalties[id] = penalty * prob;
     for (llama_token id = 0; id < vocabSize; id++) {         
 
-        // -- other pedantic tokens
+        // -- pedantic tokens
 
         if (isPedantic(id)) {
-            ::penalties[id] = penalty * 0.05;
+            ::penalties[id] = 1.0 - (1.0 - penalty) * 0.05;
             continue;
         }   
 
@@ -173,7 +182,7 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         auto tokenType = tokType(ctx, id);
         if (tokenType == LANG_RU) {
             float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
-            ::penalties[id] = penalty * prob;
+            ::penalties[id] = 1.0 - (1.0 - penalty) * prob;
             continue;
         }
 
@@ -182,11 +191,11 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         tokenType = tokType(ctx, id);
         if (tokenType == LANG_EN) {
             float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
-            ::penalties[id] = penalty * prob;
+            ::penalties[id] = 1.0 - (1.0 - penalty) * prob;
             continue;
         }
 
-        // -- Full penalization for full words in English and word beginnings in Russian (SPACE_RU)
+        // -- Full penalization for other tokens
 
         ::penalties[id] = penalty;
 
@@ -194,44 +203,44 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
     // -- specific penalties for high-frequency tokens
     
-    ::penalties[13]    = penalty * 0.05; // newline
+    ::penalties[13]    = 1.0 - (1.0 - penalty) * 0.05; // newline
 
-    ::penalties[29871] = penalty * 0.20; // 29871 => " "
+    ::penalties[29871] = 1.0 - (1.0 - penalty) * 0.20; // 29871 => " "
 
-    ::penalties[29892] = penalty * 0.10; // 29892 => ","
-    ::penalties[29889] = penalty * 0.10; // 29889 => "."
+    ::penalties[29892] = 1.0 - (1.0 - penalty) * 0.10; // 29892 => ","
+    ::penalties[29889] = 1.0 - (1.0 - penalty) * 0.10; // 29889 => "."
 
-    ::penalties[29901] = penalty * 0.30; // 29901 => ":"
-    ::penalties[29936] = penalty * 0.30; // 29936 => ";"
+    ::penalties[29901] = 1.0 - (1.0 - penalty) * 0.30; // 29901 => ":"
+    ::penalties[29936] = 1.0 - (1.0 - penalty) * 0.30; // 29936 => ";"
 
-    ::penalties[29898] = penalty * 0.40; // 29898 => "("
-    ::penalties[313]   = penalty * 0.40; // 313   => " ("
-    ::penalties[29897] = penalty * 0.40; // 29897 => ")"
-    ::penalties[1723]  = penalty * 0.40; // 1723  => " )"
+    ::penalties[29898] = 1.0 - (1.0 - penalty) * 0.40; // 29898 => "("
+    ::penalties[313]   = 1.0 - (1.0 - penalty) * 0.40; // 313   => " ("
+    ::penalties[29897] = 1.0 - (1.0 - penalty) * 0.40; // 29897 => ")"
+    ::penalties[1723]  = 1.0 - (1.0 - penalty) * 0.40; // 1723  => " )"
 
     // -- Popular RU parts
 
-    ::penalties[490]   = penalty * 0.10; // 490 => " в"
-    ::penalties[531]   = penalty * 0.10; // 531 => " с"
-    ::penalties[606]   = penalty * 0.10; // 606 => " и"
-    ::penalties[614]   = penalty * 0.10; // 614 => " о"
+    ::penalties[490]   = 1.0 - (1.0 - penalty) * 0.10; // 490 => " в"
+    ::penalties[531]   = 1.0 - (1.0 - penalty) * 0.10; // 531 => " с"
+    ::penalties[606]   = 1.0 - (1.0 - penalty) * 0.10; // 606 => " и"
+    ::penalties[614]   = 1.0 - (1.0 - penalty) * 0.10; // 614 => " о"
 
-    ::penalties[665]   = penalty * 0.20; // 665 => " на"
-    ::penalties[733]   = penalty * 0.20; // 733 => " по"
-    ::penalties[863]   = penalty * 0.20; // 863 => " у"
+    ::penalties[665]   = 1.0 - (1.0 - penalty) * 0.20; // 665 => " на"
+    ::penalties[733]   = 1.0 - (1.0 - penalty) * 0.20; // 733 => " по"
+    ::penalties[863]   = 1.0 - (1.0 - penalty) * 0.20; // 863 => " у"
 
     // -- Popular EN parts
 
-    ::penalties[263]   = penalty * 0.10; // 263 => " a"
-    ::penalties[278]   = penalty * 0.10; // 278 => " the"
-    ::penalties[297]   = penalty * 0.10; // 297 => " in"
-    ::penalties[304]   = penalty * 0.10; // 304 => " to"
-    ::penalties[310]   = penalty * 0.10; // 310 => " of"
+    ::penalties[263]   = 1.0 - (1.0 - penalty) * 0.10; // 263 => " a"
+    ::penalties[278]   = 1.0 - (1.0 - penalty) * 0.10; // 278 => " the"
+    ::penalties[297]   = 1.0 - (1.0 - penalty) * 0.10; // 297 => " in"
+    ::penalties[304]   = 1.0 - (1.0 - penalty) * 0.10; // 304 => " to"
+    ::penalties[310]   = 1.0 - (1.0 - penalty) * 0.10; // 310 => " of"
 
-    ::penalties[322]   = penalty * 0.20; // 322 => " and"
-    ::penalties[372]   = penalty * 0.20; // 372 => " it"
-    ::penalties[373]   = penalty * 0.20; // 373 => " on"
-    ::penalties[385]   = penalty * 0.20; // 385 => " an"
+    ::penalties[322]   = 1.0 - (1.0 - penalty) * 0.20; // 322 => " and"
+    ::penalties[372]   = 1.0 - (1.0 - penalty) * 0.20; // 372 => " it"
+    ::penalties[373]   = 1.0 - (1.0 - penalty) * 0.20; // 373 => " on"
+    ::penalties[385]   = 1.0 - (1.0 - penalty) * 0.20; // 385 => " an"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
@@ -446,9 +455,11 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
     fprintf(stderr, "\n\n==== %05d ==== %s ====", pos, text);
 
     for (size_t i = 0; i < size; i++) {
+
         auto id =candidates.data()[i].id;
         auto logit = candidates.data()[i].logit;
         std::string zero = "";
+
         if (logit < 10.0) {
             zero = "0";
         }
@@ -461,14 +472,14 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
             fprintf(stderr, 
                 "\n  --    13 [ %s%.3f * %.3f ] \"\\n\"",
                 zero.c_str(),
-                candidates.data()[i].logit, 
+                logit, 
                 penalties[id]
             );
         } else if (2 == id) {
             fprintf(stderr, 
                 "\n  --     2 [ %s%.3f * %.3f ] \"<EOS>\"",
                 zero.c_str(),
-                candidates.data()[i].logit, 
+                logit, 
                 penalties[id]
             );
         } else {
@@ -476,7 +487,7 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
                 "\n  -- %5d [ %s%.3f * %.3f ] \"%s\"", 
                 id,
                 zero.c_str(),
-                candidates.data()[i].logit,
+                logit,
                 penalties[id],
                 llama_token_to_str(ctx, id).c_str()
             );
