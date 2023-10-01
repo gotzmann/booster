@@ -442,7 +442,7 @@ int tokSize(const llama_context *ctx, const llama_token token) {
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    return; // !!!
+    // return; // !!!
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
