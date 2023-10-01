@@ -53,7 +53,7 @@ llama_token sample_janus_token(
 
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(ctx);
-    size_t depth        = params.depth;
+    size_t depth     = params.depth;
     float scale      = params.scale;
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
@@ -88,7 +88,7 @@ llama_token sample_janus_token(
     //fprintf(stderr, "\nMULT = %f", mult);
     logits[EOS] *= mult;
 
-    // -- Smart scaling
+    // -- Smart pessimization for repeated tokens
 
     for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
 
@@ -100,32 +100,27 @@ llama_token sample_janus_token(
         logits[id] *= ::scales[id];
     }
 
-    // -- DOUBLE scale down for incompatible tokens (like english endings for russian words)
-    
-    if (lastToken != 0) {
-        
-        //fprintf(stderr, "\n=== LAST \"%s\" === TYPE %d === ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
+    // -- DOUBLE scale down for incompatible tokens (like word endings in some other language)
 
-        for (size_t id = 0; id < vocabSize; id++) {
-            auto curType = tokType(ctx, id);
+    for (size_t id = 0; id < vocabSize; id++) {
+        auto curType = tokType(ctx, id);
 
-            if(
-                ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
-                ||
-                ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other langs, europeans mix ASCII and UTF-8
-            ) {
-                // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
+        if(
+            ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
+            ||
+            ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other langs, europeans mix ASCII and UTF-8
+        ) {
+            // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
 
-                // 3x: 0.936 => 0.808
-                // 3x: [ 12.061 * 0.987 ] "mi" => [ 11.598 * 0.987 ] "mi" => 3x is not enough!
-                // 10x: 0.936 => 0.36
-                // 10x: [ 12.445 * 0.987 ] "mi" => [ 10.852 * 0.987 ] "mi" => 10x so-so
-                // logits[id] *= 1.0 - (1.0 - ::scales[id]) * 100.00;
+            // 3x: 0.936 => 0.808
+            // 3x: [ 12.061 * 0.987 ] "mi" => [ 11.598 * 0.987 ] "mi" => 3x is not enough!
+            // 10x: 0.936 => 0.36
+            // 10x: [ 12.445 * 0.987 ] "mi" => [ 10.852 * 0.987 ] "mi" => 10x so-so
+            // logits[id] *= 1.0 - (1.0 - ::scales[id]) * 100.00;
 
-                logits[id] *= 0.5; 
-            }
-        }        
-    }
+            logits[id] *= 0.5; 
+        }
+    }        
 
     // -- finally sort all logits
 
@@ -185,7 +180,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.942;
+        params.scale = 0.948;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -197,7 +192,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.948;
+        params.lo = 0.942;
     }
 
     // -- init tokens with some heuristic rules
@@ -278,9 +273,9 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[606]   = 1.0 - (1.0 - scale) * 0.10; // 606 => " и"
     ::scales[614]   = 1.0 - (1.0 - scale) * 0.10; // 614 => " о"
 
-    ::scales[665]   = 1.0 - (1.0 - scale) * 0.20; // 665 => " на"
-    ::scales[733]   = 1.0 - (1.0 - scale) * 0.20; // 733 => " по"
-    ::scales[863]   = 1.0 - (1.0 - scale) * 0.20; // 863 => " у"
+    ::scales[665]   = 1.0 - (1.0 - scale) * 0.15; // 665 => " на"
+    ::scales[733]   = 1.0 - (1.0 - scale) * 0.15; // 733 => " по"
+    ::scales[863]   = 1.0 - (1.0 - scale) * 0.15; // 863 => " у"
 
     // -- Popular EN parts
 
@@ -290,10 +285,10 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[304]   = 1.0 - (1.0 - scale) * 0.10; // 304 => " to"
     ::scales[310]   = 1.0 - (1.0 - scale) * 0.10; // 310 => " of"
 
-    ::scales[322]   = 1.0 - (1.0 - scale) * 0.20; // 322 => " and"
-    ::scales[372]   = 1.0 - (1.0 - scale) * 0.20; // 372 => " it"
-    ::scales[373]   = 1.0 - (1.0 - scale) * 0.20; // 373 => " on"
-    ::scales[385]   = 1.0 - (1.0 - scale) * 0.20; // 385 => " an"
+    ::scales[322]   = 1.0 - (1.0 - scale) * 0.15; // 322 => " and"
+    ::scales[372]   = 1.0 - (1.0 - scale) * 0.15; // 372 => " it"
+    ::scales[373]   = 1.0 - (1.0 - scale) * 0.15; // 373 => " on"
+    ::scales[385]   = 1.0 - (1.0 - scale) * 0.15; // 385 => " an"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
