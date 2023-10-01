@@ -49,27 +49,46 @@ llama_token sample_janus_token(
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
-    float * logits = llama_get_logits(ctx);
-    const int vocabSize = llama_n_vocab(ctx);
-    //float scale = params.scale;
+    printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG
 
-    printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG 
+    float * logits   = llama_get_logits(ctx);
+    size_t vocabSize = llama_n_vocab(ctx);
+    size_t depth        = params.depth;
+    float scale      = params.scale;
 
-    // -- Boost <EOS> token when we are nearing prediction limits
+    auto lastToken = last_tokens.data()[last_tokens.size() - 1];
+    auto lastType  = tokType(ctx, lastToken);
+
+    llama_token topToken = 0;
+    float topLogit = logits[0];
+    for (size_t i = 1; i < vocabSize; i++) {
+        if (logits[i] > topLogit) {
+            topToken = i;
+            topLogit = logits[i];
+        }       
+    }
+    auto topType = tokType(ctx, topToken);
+
+    // -- Slightly boost the top token when the word continuation expected
+    //    It should allow better coherence for languages with complex grammar
+
+    if (
+        ((lastType == LANG_RU || lastType == SPACE_RU) && (topType == LANG_EN || topType == LANG_OTHER))
+        ||
+        ((lastType == LANG_EN || lastType == SPACE_EN) && topType == LANG_RU) // It's OK to expect other langs, europeans mix ASCII and UTF-8
+    ) {
+        logits[topToken] *= 1.0 + (1.0 / scale - 1.0) * 0.10; 
+    } 
+
+    // -- Boost <EOS> token reaching prediction limits
 
     const int EOS = 2;
     // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
-    float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.2;
+    float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.10;
     //fprintf(stderr, "\nMULT = %f", mult);
     logits[EOS] *= mult;
 
-    // -- Apply scale for repeated tokens except pedantic
-
-    // Look up last tokens for certain depth in reverese order [ context_size .. depth ]
-    size_t depth = 0;
-    if (params.depth != -1 && params.depth != 0 && params.depth < (int32_t) last_tokens.size()) {
-        depth = last_tokens.size() - params.depth;
-    }
+    // -- Smart scaling
 
     for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
 
@@ -81,24 +100,21 @@ llama_token sample_janus_token(
         logits[id] *= ::scales[id];
     }
 
-    // -- DOUBLE scale for incompatible tokens (like english ending for russian word)
-
-    auto lastToken = last_tokens.data()[last_tokens.size() - 1];
-    auto lastType = tokType(ctx, lastToken);
+    // -- DOUBLE scale down for incompatible tokens (like english endings for russian words)
     
     if (lastToken != 0) {
         
         //fprintf(stderr, "\n=== LAST \"%s\" === TYPE %d === ", llama_token_to_str(ctx, lastToken).c_str(), lastType);
 
-        for (llama_token id = 0; id < vocabSize; id++) {
+        for (size_t id = 0; id < vocabSize; id++) {
             auto curType = tokType(ctx, id);
 
             if(
                 ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
                 ||
-                ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other lang, europeans mix ASCII and UTF-8
+                ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other langs, europeans mix ASCII and UTF-8
             ) {
-                // was: logits[id] /= 1.0 + (scale - 1.0) * 3.00;
+                // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
 
                 // 3x: 0.936 => 0.808
                 // 3x: [ 12.061 * 0.987 ] "mi" => [ 11.598 * 0.987 ] "mi" => 3x is not enough!
@@ -114,10 +130,11 @@ llama_token sample_janus_token(
     // -- finally sort all logits
 
     std::vector<llama_token_data> candidates;
-    //candidates.reserve(llama_n_vocab(ctx));
+    candidates.reserve(vocabSize);
     candidates.clear();
 
-    for (llama_token id = 0; id < vocabSize; id++) {
+    for (llama_token id = 0; id < (int) vocabSize; id++) {
+        //candidates.data()[id] = llama_token_data{ id, logits[id], 0.0f };
         candidates.emplace_back(
             llama_token_data{id, logits[id], 0.0f}
         );
@@ -129,17 +146,15 @@ llama_token sample_janus_token(
         [](const llama_token_data & a, const llama_token_data & b) { 
             return a.logit > b.logit; 
         }
-    );
-
-    //printDebug(ctx, pos, 0, "AFTER JANUS"); // -- DEBUG
+    );           
 
     // -- Final choice [ with experimental cutoff ]
     //    We'll use some general cutoff for most of tokens
     //    and pedantic cutoff for sensitive ones
 
-    auto topToken = candidates.data()[0].id;
-    auto topType = tokType(ctx, topToken);
-    float topLogit = candidates.data()[0].logit;
+    topToken = candidates.data()[0].id;
+    topType = tokType(ctx, topToken);
+    topLogit = candidates.data()[0].logit;
 
     float cutoff = params.lo;
     if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
@@ -174,8 +189,7 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
 
     // -- init tokens with some heuristic rules
 
-    // how it was before: logits[id] /= 1.0 + (scale - 1.0) * 0.10;
-    // and then wrong: ::scales[id] = scale * prob;
+    // how it was before [ with penalty = 1.06 ] : logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
     for (llama_token id = 0; id < vocabSize; id++) {
 
         auto tokenType = tokType(ctx, id);      
@@ -191,27 +205,29 @@ void initJanus(struct llama_context * ctx, const struct gpt_params & params) {
         //    Do not penalise much tokens that might work as other word parts!
 
         if (tokenType == LANG_RU) {
-            float prob = (float) tokSize(ctx, id) * 0.05; // 0.1, 0.2, 0.3 ...
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // FIXME ?
+            // NB! Size in bytes is 2x of UTF-8 chars for RU
+            float prob = (float) tokSize(ctx, id) * 0.1; // 0.2, 0.4, 0.6 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * prob;
             continue;
         }
 
-        // -- Similar hack for EN (slightly decrease scale ) ?!
+        // -- Similar hack for EN
 
         tokenType = tokType(ctx, id);
         if (tokenType == LANG_EN) {
-            float prob = (float) tokSize(ctx, id) * 0.1; // 0.1, 0.2, 0.3 ...
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // FIXME ?
+            float prob = (float) tokSize(ctx, id) * 0.2; // 0.2, 0.4, 0.6 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * prob;
             continue;
         }
 
         // -- Full penalization for other tokens
 
         ::scales[id] = scale;
-
     }
 
     // -- rewrite some specific penalties for high-frequency tokens
+
+    ::scales[2]     = 1.0; // do not penalize EOS
     
     ::scales[13]    = 1.0 - (1.0 - scale) * 0.05; // newline
 
