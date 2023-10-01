@@ -180,7 +180,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.948;
+        params.scale = 0.952;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -192,7 +192,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.942;
+        params.lo = 0.948;
     }
 
     // -- init tokens with some heuristic rules
