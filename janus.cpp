@@ -56,13 +56,13 @@ llama_token sample_janus_token(
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
     auto lastType  = tokType(ctx, lastToken);
-
+/*
     // -- Normalize all tokens agains their scales before doing anything
 
     for (size_t i = 1; i < vocabSize; i++) {
         logits[i] *= scales[i];
     }
-
+*/
 /*
     //llama_token topToken = 0;
     //float topLogit = logits[0];
