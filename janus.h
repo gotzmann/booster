@@ -22,8 +22,6 @@ const int SPACE_OTHER = 40;
 llama_token sample_janus_token(
         struct llama_context * ctx, 
         struct gpt_params & params, 
-        //float * logits, 
-        //const int size,
         const std::vector<llama_token> & last_tokens, 
         const int pos, 
         const int max);

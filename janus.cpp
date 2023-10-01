@@ -30,8 +30,6 @@ float * scales;
 llama_token sample_janus_token(
         struct llama_context * ctx, 
         struct gpt_params & params, 
-        //float * logits, 
-        //const int size,
         const std::vector<llama_token> & last_tokens, 
         const int pos, 
         const int max) {
@@ -40,7 +38,7 @@ llama_token sample_janus_token(
         initJanus(ctx, params);
     }
 
-    //fprintf(stderr, "\n\nIS PEDANTIC: %d", isPedantic(29900)); exit(1); // DEBUG
+    printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG
 
     /* DEBUG
     fprintf(stderr, "\n * janus = %d", params.janus);
@@ -51,25 +49,31 @@ llama_token sample_janus_token(
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
-    printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG
-
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(ctx);
     size_t depth     = params.depth;
-    float scale      = params.scale;
+    //float scale      = params.scale;
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
     auto lastType  = tokType(ctx, lastToken);
 
-    llama_token topToken = 0;
-    float topLogit = logits[0];
+    // -- Normalize all tokens agains their scales before doing anything
+
     for (size_t i = 1; i < vocabSize; i++) {
-        if (logits[i] > topLogit) {
-            topToken = i;
-            topLogit = logits[i];
-        }       
+        logits[i] *= scales[i];
     }
-    auto topType = tokType(ctx, topToken);
+
+/*
+    //llama_token topToken = 0;
+    //float topLogit = logits[0];
+    for (size_t i = 1; i < vocabSize; i++) {
+        logits[i] *= scales[i];
+        //if (logits[i] > topLogit) {
+        //    topToken = i;
+        //    topLogit = logits[i];
+        //}       
+    }
+    //auto topType = tokType(ctx, topToken);
 
     // -- Slightly boost the top token when the word continuation expected
     //    It should allow better coherence for languages with complex grammar
@@ -77,17 +81,15 @@ llama_token sample_janus_token(
     if (
         ((lastType == LANG_RU || lastType == SPACE_RU) && (topType == LANG_EN || topType == LANG_OTHER))
         ||
-        ((lastType == LANG_EN || lastType == SPACE_EN) && topType == LANG_RU) // It's OK to expect other langs, europeans mix ASCII and UTF-8
+        ((lastType == LANG_EN || lastType == SPACE_EN) && topType == LANG_RU) // Europeans mix ASCII and UTF-8
     ) {
         logits[topToken] *= 1.0 + (1.0 / scale - 1.0) * 0.05; 
     } 
-
-    // -- Boost <EOS> token reaching prediction limits
+*/
+    // -- Boost <EOS> token when we are closer to the limit
     //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
-    // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
     float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.05;
-    //fprintf(stderr, "\nMULT = %f", mult);
     logits[EOS] *= mult;
 
     // -- Smart pessimization for repeated tokens
@@ -102,7 +104,7 @@ llama_token sample_janus_token(
         logits[id] *= ::scales[id];
     }
 
-    // -- DOUBLE scale down for incompatible tokens (like word endings in some other language)
+    // -- Double down incompatible tokens (like word endings in some other language)
 
     for (size_t id = 0; id < vocabSize; id++) {
         auto curType = tokType(ctx, id);
@@ -110,21 +112,14 @@ llama_token sample_janus_token(
         if(
             ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
             ||
-            ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // It's OK to expect other langs, europeans mix ASCII and UTF-8
+            ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // Europeans mix ASCII and UTF-8
         ) {
             // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
-
-            // 3x: 0.936 => 0.808
-            // 3x: [ 12.061 * 0.987 ] "mi" => [ 11.598 * 0.987 ] "mi" => 3x is not enough!
-            // 10x: 0.936 => 0.36
-            // 10x: [ 12.445 * 0.987 ] "mi" => [ 10.852 * 0.987 ] "mi" => 10x so-so
-            // logits[id] *= 1.0 - (1.0 - ::scales[id]) * 100.00;
-
             logits[id] *= 0.5; 
         }
     }        
 
-    // -- finally sort all logits
+    // -- Sort all logits
 
     std::vector<llama_token_data> candidates;
     //candidates.reserve(vocabSize);
@@ -149,15 +144,12 @@ llama_token sample_janus_token(
     //    We'll use some general cutoff for most of tokens
     //    and pedantic cutoff for sensitive ones
 
-    topToken = candidates.data()[0].id;
-    topType = tokType(ctx, topToken);
-    topLogit = candidates.data()[0].logit;
+    auto topToken = candidates.data()[0].id;
+    auto topType = tokType(ctx, topToken);
+    auto topLogit = candidates.data()[0].logit;
 
     float cutoff = params.lo;
-    // WAS: if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
-    //fprintf(stderr, "\n\nIS PEDANTIC %d ? %d", topType, isPedantic(topType)); // DEBUG    
-    if (isPedantic(topToken) || topType == LANG_RU) {
-        //fprintf(stderr, "\n^^^^ PEDANTIC %d ^^^^", topToken);
+    if (isPedantic(topToken) || topType == LANG_RU || topType == LANG_EN) {
         cutoff = params.hi;
     }
 
@@ -252,13 +244,9 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
         ::scales[id] = scale;
     }
 
-    // -- rewrite some specific penalties for high-frequency tokens
+    // -- Assign manually specific penalties for high-frequency tokens
 
-    // slightly penalize <EOS> in the beginning 
-    // and allow it to be boosted over 1.0 later
-    // it cures newlines which are penalized harder 
-
-    ::scales[EOS]     = 0.90; 
+    ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
     ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
 
@@ -308,6 +296,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
 // so we should be care about them and not penalize
+
 llama_token pedanticTokens[] = {
 
     2,     // <EOS>
@@ -351,7 +340,6 @@ llama_token pedanticTokens[] = {
 bool isPedantic(llama_token id) {
     size_t len = *(&pedanticTokens + 1) - pedanticTokens;
     for (size_t i = 0; i < len; i++) {
-        //fprintf(stderr, "  -- %d == %d --  ", id, pedanticTokens[i]);
         if (id == pedanticTokens[i]) {
             return true;
         }
@@ -363,6 +351,7 @@ bool isPedantic(llama_token id) {
 // and returns a vector<byte> containing the numerical value of each byte in the string
 // TODO: Optimize implementation
 // FIXME: Do we need to free buffer after use?
+
 std::vector<std::byte> getBytes(std::string const &s) {
     std::vector<std::byte> bytes;
     bytes.reserve(std::size(s));
@@ -384,8 +373,7 @@ int tokType(const llama_context *ctx, const llama_token token) {
 
     // DEBUG
     //std::string in = "хід";
-    //in = "ёл";
-    //in = "ё"; // 30043 => {209} {145} => {0xD1} {0x91}
+    // in = "ё"; // 30043 => {209} {145} => {0xD1} {0x91}
     // in = "ë"; // 30083 => {195} {171} => {0xC3} {0xAB}
     //fprintf(stderr, "\n STR SIZE = %d \n", in.size());
 
@@ -477,6 +465,23 @@ int tokSize(const llama_context *ctx, const llama_token token) {
     return llama_token_to_str(ctx, token).size();
 }
 
+// TODO: It's duplicate
+static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
+
+    std::vector<char> result(8, 0);
+    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
+
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+
+    return std::string(result.data(), result.size());
+}
+
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
     // return; // !!!
 
@@ -540,21 +545,4 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
             );
         }
     }
-}
-
-// TODO: It's duplicate
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
-
-    std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
-
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
-    }
-
-    return std::string(result.data(), result.size());
 }
