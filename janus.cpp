@@ -177,7 +177,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.948;
+        params.scale = 0.94;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -185,11 +185,11 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     if (params.hi <= 0.0 || params.hi > 1.0) {
-        params.hi = 0.986;
+        params.hi = 0.99;
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.952;
+        params.lo = 0.92;
     }
 
     // -- init tokens with some heuristic rules
@@ -483,7 +483,7 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    // return; // !!!
+    return; // !!!
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
