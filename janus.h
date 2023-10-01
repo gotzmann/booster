@@ -2,6 +2,13 @@
 #include <string>
 #include <vector>
 
+// -- Tokens
+
+const int EOS = 2;
+const int NL  = 13;
+
+// -- Token types
+
 const int LANG_ZERO = 0;
 // const int LANG_NEUTRAL = 1;
 // const int LANG_MIXED = 1;

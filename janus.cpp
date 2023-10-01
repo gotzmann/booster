@@ -40,6 +40,8 @@ llama_token sample_janus_token(
         initJanus(ctx, params);
     }
 
+    //fprintf(stderr, "\n\nIS PEDANTIC: %d", isPedantic(29900)); exit(1); // DEBUG
+
     /* DEBUG
     fprintf(stderr, "\n * janus = %d", params.janus);
     fprintf(stderr, "\n * depth = %d", params.depth);
@@ -81,10 +83,10 @@ llama_token sample_janus_token(
     } 
 
     // -- Boost <EOS> token reaching prediction limits
+    //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
-    const int EOS = 2;
     // was: float mult = 1.0 + 0.2 * log(1.0 + (float(pos) / float(max)));
-    float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.10;
+    float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.05;
     //fprintf(stderr, "\nMULT = %f", mult);
     logits[EOS] *= mult;
 
@@ -125,7 +127,7 @@ llama_token sample_janus_token(
     // -- finally sort all logits
 
     std::vector<llama_token_data> candidates;
-    candidates.reserve(vocabSize);
+    //candidates.reserve(vocabSize);
     candidates.clear();
 
     for (llama_token id = 0; id < (int) vocabSize; id++) {
@@ -152,7 +154,10 @@ llama_token sample_janus_token(
     topLogit = candidates.data()[0].logit;
 
     float cutoff = params.lo;
-    if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
+    // WAS: if (isPedantic(topType) || lastType == SPACE_RU || lastType == LANG_RU) {
+    //fprintf(stderr, "\n\nIS PEDANTIC %d ? %d", topType, isPedantic(topType)); // DEBUG    
+    if (isPedantic(topToken) || topType == LANG_RU) {
+        //fprintf(stderr, "\n^^^^ PEDANTIC %d ^^^^", topToken);
         cutoff = params.hi;
     }
 
@@ -180,7 +185,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.952;
+        params.scale = 0.948;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -192,7 +197,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.948;
+        params.lo = 0.952;
     }
 
     // -- init tokens with some heuristic rules
@@ -249,57 +254,65 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     // -- rewrite some specific penalties for high-frequency tokens
 
-    ::scales[2]     = 1.0; // do not penalize EOS
+    // slightly penalize <EOS> in the beginning 
+    // and allow it to be boosted over 1.0 later
+    // it cures newlines which are penalized harder 
+
+    ::scales[EOS]     = 0.90; 
     
-    ::scales[13]    = 1.0 - (1.0 - scale) * 0.05; // newline
+    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
 
-    ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
+    ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
+    ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
+    ::scales[29871] = 1.0 - (1.0 - scale) * 0.30; // 29871 => " "
 
-    ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
-    ::scales[29889] = 1.0 - (1.0 - scale) * 0.10; // 29889 => "."
+    ::scales[29892] = 1.0 - (1.0 - scale) * 0.20; // 29892 => ","
+    ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
 
     ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
-    ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
-
-    ::scales[29898] = 1.0 - (1.0 - scale) * 0.40; // 29898 => "("
-    ::scales[313]   = 1.0 - (1.0 - scale) * 0.40; // 313   => " ("
+    ::scales[29936] = 1.0 - (1.0 - scale) * 0.40; // 29936 => ";"
+    
+    ::scales[313]   = 1.0 - (1.0 - scale) * 0.30; // 313   => " ("
+    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.30; // 1723  => " )"
     ::scales[29897] = 1.0 - (1.0 - scale) * 0.40; // 29897 => ")"
-    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.40; // 1723  => " )"
-
+    ::scales[29898] = 1.0 - (1.0 - scale) * 0.40; // 29898 => "("
+    
     // -- Popular RU parts
 
-    ::scales[490]   = 1.0 - (1.0 - scale) * 0.10; // 490 => " в"
-    ::scales[531]   = 1.0 - (1.0 - scale) * 0.10; // 531 => " с"
-    ::scales[606]   = 1.0 - (1.0 - scale) * 0.10; // 606 => " и"
-    ::scales[614]   = 1.0 - (1.0 - scale) * 0.10; // 614 => " о"
+    ::scales[490]   = 1.0 - (1.0 - scale) * 0.20; // 490 => " в"
+    ::scales[531]   = 1.0 - (1.0 - scale) * 0.20; // 531 => " с"
+    ::scales[606]   = 1.0 - (1.0 - scale) * 0.20; // 606 => " и"
+    ::scales[614]   = 1.0 - (1.0 - scale) * 0.20; // 614 => " о"
 
-    ::scales[665]   = 1.0 - (1.0 - scale) * 0.15; // 665 => " на"
-    ::scales[733]   = 1.0 - (1.0 - scale) * 0.15; // 733 => " по"
-    ::scales[863]   = 1.0 - (1.0 - scale) * 0.15; // 863 => " у"
+    ::scales[665]   = 1.0 - (1.0 - scale) * 0.30; // 665 => " на"
+    ::scales[733]   = 1.0 - (1.0 - scale) * 0.30; // 733 => " по"
+    ::scales[863]   = 1.0 - (1.0 - scale) * 0.30; // 863 => " у"
+
+    ::scales[857]   = 1.0 - (1.0 - scale) * 0.40; // 857  => " С"
+    ::scales[939]   = 1.0 - (1.0 - scale) * 0.40; // 939  => " В"
+    ::scales[1651]  = 1.0 - (1.0 - scale) * 0.40; // 1651 => " О"
 
     // -- Popular EN parts
 
-    ::scales[263]   = 1.0 - (1.0 - scale) * 0.10; // 263 => " a"
-    ::scales[278]   = 1.0 - (1.0 - scale) * 0.10; // 278 => " the"
-    ::scales[297]   = 1.0 - (1.0 - scale) * 0.10; // 297 => " in"
-    ::scales[304]   = 1.0 - (1.0 - scale) * 0.10; // 304 => " to"
-    ::scales[310]   = 1.0 - (1.0 - scale) * 0.10; // 310 => " of"
+    ::scales[263]   = 1.0 - (1.0 - scale) * 0.20; // 263 => " a"
+    ::scales[278]   = 1.0 - (1.0 - scale) * 0.20; // 278 => " the"
+    ::scales[297]   = 1.0 - (1.0 - scale) * 0.20; // 297 => " in"
+    ::scales[304]   = 1.0 - (1.0 - scale) * 0.20; // 304 => " to"
+    ::scales[310]   = 1.0 - (1.0 - scale) * 0.20; // 310 => " of"
 
-    ::scales[322]   = 1.0 - (1.0 - scale) * 0.15; // 322 => " and"
-    ::scales[372]   = 1.0 - (1.0 - scale) * 0.15; // 372 => " it"
-    ::scales[373]   = 1.0 - (1.0 - scale) * 0.15; // 373 => " on"
-    ::scales[385]   = 1.0 - (1.0 - scale) * 0.15; // 385 => " an"
+    ::scales[322]   = 1.0 - (1.0 - scale) * 0.30; // 322 => " and"
+    ::scales[372]   = 1.0 - (1.0 - scale) * 0.30; // 372 => " it"
+    ::scales[373]   = 1.0 - (1.0 - scale) * 0.30; // 373 => " on"
+    ::scales[385]   = 1.0 - (1.0 - scale) * 0.30; // 385 => " an"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
 // so we should be care about them and not penalize
 llama_token pedanticTokens[] = {
 
-    2, // <EOS>
+    2,     // <EOS>
 
-    // -- Code
-
-    28956 , // "```"
+    28956, // "```"
 
     // -- Math
 
@@ -313,49 +326,32 @@ llama_token pedanticTokens[] = {
     29955, // "7"
     29947, // "8"
     29929, // "9"
-    // 29922, // "="
-    // 353, // " ="
-    // 29974, // "+"
-    // 718, // " +"
-    // 448, // " -"
+
+    334,   // " *"
+    353,   // " ="
+    448,   // " -"
+    718,   // " +"
 
     // -- JSON
+
+    426,   // " {"
+    500,   // " }"
+    518,   // " ["
+    4514,  // " ]"
 
     29912, // "{"
-    426, // " {"
     29913, // "}"
-    500, // " }"
     29961, // "["
-    518, // " ["
     29962, // "]"
-    4514, // " ]"
 
-    // 29898, // "("
-    // 313, // " ("
-    // 29897, // ")"
-    // 1723, // " )"
-    // 3319, // "({"
-    // 1800, // "})"
-    // 4197, // "(["
-    // 29889, // "."
-    // 29892, // ","
-    // 29901, // ":"
-    // 29936, // ";"
-
-    // -- JSON
-
-    // 29908, // """
-    // 376, //  " ""
-    // 1115, // "":"
-    // 4710, // "":""
-    // 613, // "","
-    // 8853, // " {""
-    // 29871, // " "
+    376,   //  " ""
+    613,   // "","
 };
 
 bool isPedantic(llama_token id) {
-    size_t pedanticLen = *(&pedanticTokens + 1) - pedanticTokens;
-    for (size_t i = 0; i < pedanticLen; i++) {
+    size_t len = *(&pedanticTokens + 1) - pedanticTokens;
+    for (size_t i = 0; i < len; i++) {
+        //fprintf(stderr, "  -- %d == %d --  ", id, pedanticTokens[i]);
         if (id == pedanticTokens[i]) {
             return true;
         }
@@ -365,6 +361,8 @@ bool isPedantic(llama_token id) {
 
 // this function receives any std::string 
 // and returns a vector<byte> containing the numerical value of each byte in the string
+// TODO: Optimize implementation
+// FIXME: Do we need to free buffer after use?
 std::vector<std::byte> getBytes(std::string const &s) {
     std::vector<std::byte> bytes;
     bytes.reserve(std::size(s));
@@ -517,14 +515,14 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
             fprintf(stderr, "\n  ---------------------------");
         }
 
-        if (13 == id) {
+        if (id == NL) {
             fprintf(stderr, 
                 "\n  --    13 [ %s%.3f * %.3f ] \"\\n\"",
                 zero.c_str(),
                 logit, 
                 ::scales[id]
             );
-        } else if (2 == id) {
+        } else if (id == EOS) {
             fprintf(stderr, 
                 "\n  --     2 [ %s%.3f * %.3f ] \"<EOS>\"",
                 zero.c_str(),
