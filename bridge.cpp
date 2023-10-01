@@ -22,7 +22,7 @@ llama_token llama_sample_token(
                   struct llama_context * ctx,
                   struct llama_context * ctx_guidance,
                   struct llama_grammar * grammar,
-               const struct gpt_params & params,
+                     struct gpt_params & params,
         const std::vector<llama_token> & last_tokens,
          std::vector<llama_token_data> & candidates,
                                const int pos,
