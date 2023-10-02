@@ -177,7 +177,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.94;
+        params.scale = 0.96;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -205,7 +205,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
         // -- pedantic tokens
 
         if (isPedantic(id)) {
-            ::scales[id] = 1.0 - (1.0 - scale) * 0.10;
+            ::scales[id] = 1.0 - (1.0 - scale) * 0.20;
             continue;
         }   
 
@@ -252,15 +252,15 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     ::scales[259]   = 1.0 - (1.0 - scale) * 0.10; //   259 => "  "
     ::scales[268]   = 1.0 - (1.0 - scale) * 0.10; //   268 => "    "
+
     ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
-
-    ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
+    ::scales[29892] = 1.0 - (1.0 - scale) * 0.20; // 29892 => ","
     ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
-    ::scales[29899] = 1.0 - (1.0 - scale) * 0.20; // 29899 => "-" [ used as bullet point ]
 
+    ::scales[29899] = 1.0 - (1.0 - scale) * 0.30; // 29899 => "-" [ used as bullet point ]
     ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
     ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
-    ::scales[813]   = 1.0 - (1.0 - scale) * 0.50; // 813   => " —"
+    ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"
 
     ::scales[313]   = 1.0 - (1.0 - scale) * 0.20; // 313   => " ("
     ::scales[467]   = 1.0 - (1.0 - scale) * 0.30; // 467   => ")."
