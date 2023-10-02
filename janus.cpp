@@ -248,10 +248,10 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
-    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
+    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.20; // newline
 
-    ::scales[259]   = 1.0 - (1.0 - scale) * 0.10; //   259 => "  "
-    ::scales[268]   = 1.0 - (1.0 - scale) * 0.10; //   268 => "    "
+    ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
+    ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
 
     ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
     ::scales[29892] = 1.0 - (1.0 - scale) * 0.20; // 29892 => ","
@@ -262,7 +262,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
     ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"
 
-    ::scales[313]   = 1.0 - (1.0 - scale) * 0.20; // 313   => " ("
+    ::scales[313]   = 1.0 - (1.0 - scale) * 0.30; // 313   => " ("
     ::scales[467]   = 1.0 - (1.0 - scale) * 0.30; // 467   => ")."
     ::scales[1723]  = 1.0 - (1.0 - scale) * 0.40; // 1723  => " )"
     ::scales[29897] = 1.0 - (1.0 - scale) * 0.60; // 29897 => ")"
@@ -272,48 +272,48 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     
     // -- Popular RU parts
 
-    ::scales[490]   = 1.0 - (1.0 - scale) * 0.20; // 490  => " в"
-    ::scales[531]   = 1.0 - (1.0 - scale) * 0.20; // 531  => " с"
-    ::scales[606]   = 1.0 - (1.0 - scale) * 0.20; // 606  => " и"
-    ::scales[614]   = 1.0 - (1.0 - scale) * 0.20; // 614  => " о"
-    ::scales[665]   = 1.0 - (1.0 - scale) * 0.20; // 665  => " на"
-    ::scales[733]   = 1.0 - (1.0 - scale) * 0.25; // 733  => " по"
-    ::scales[863]   = 1.0 - (1.0 - scale) * 0.25; // 863  => " у"
-    ::scales[1077]  = 1.0 - (1.0 - scale) * 0.30; // 1077 => " за"
-    ::scales[1097]  = 1.0 - (1.0 - scale) * 0.30; // 1097 => " а"
-    ::scales[1186]  = 1.0 - (1.0 - scale) * 0.30; // 1186 => " к"
-    ::scales[1447]  = 1.0 - (1.0 - scale) * 0.35; // 1447 => " до"
-    ::scales[1538]  = 1.0 - (1.0 - scale) * 0.35; // 1538 => " не"
-    ::scales[1604]  = 1.0 - (1.0 - scale) * 0.35; // 1604 => " об"
-    ::scales[1685]  = 1.0 - (1.0 - scale) * 0.35; // 1685 => " от"
-    ::scales[4281]  = 1.0 - (1.0 - scale) * 0.40; // 4281 => " что"
+    ::scales[490]   = 1.0 - (1.0 - scale) * 0.30; // 490  => " в"
+    ::scales[531]   = 1.0 - (1.0 - scale) * 0.30; // 531  => " с"
+    ::scales[606]   = 1.0 - (1.0 - scale) * 0.30; // 606  => " и"
+    ::scales[614]   = 1.0 - (1.0 - scale) * 0.30; // 614  => " о"
+    ::scales[665]   = 1.0 - (1.0 - scale) * 0.35; // 665  => " на"
+    ::scales[733]   = 1.0 - (1.0 - scale) * 0.35; // 733  => " по"
+    ::scales[863]   = 1.0 - (1.0 - scale) * 0.35; // 863  => " у"
+    ::scales[1077]  = 1.0 - (1.0 - scale) * 0.40; // 1077 => " за"
+    ::scales[1097]  = 1.0 - (1.0 - scale) * 0.40; // 1097 => " а"
+    ::scales[1186]  = 1.0 - (1.0 - scale) * 0.40; // 1186 => " к"
+    ::scales[1447]  = 1.0 - (1.0 - scale) * 0.45; // 1447 => " до"
+    ::scales[1538]  = 1.0 - (1.0 - scale) * 0.45; // 1538 => " не"
+    ::scales[1604]  = 1.0 - (1.0 - scale) * 0.45; // 1604 => " об"
+    ::scales[1685]  = 1.0 - (1.0 - scale) * 0.45; // 1685 => " от"
+    ::scales[4281]  = 1.0 - (1.0 - scale) * 0.50; // 4281 => " что"
 
-    ::scales[857]   = 1.0 - (1.0 - scale) * 0.30; // 857  => " С"
-    ::scales[939]   = 1.0 - (1.0 - scale) * 0.30; // 939  => " В"
-    ::scales[1651]  = 1.0 - (1.0 - scale) * 0.40; // 1651 => " О"
+    ::scales[857]   = 1.0 - (1.0 - scale) * 0.50; // 857  => " С"
+    ::scales[939]   = 1.0 - (1.0 - scale) * 0.50; // 939  => " В"
+    ::scales[1651]  = 1.0 - (1.0 - scale) * 0.50; // 1651 => " О"
 
     // -- Popular EN parts
 
-    ::scales[263]   = 1.0 - (1.0 - scale) * 0.20; // 263 => " a"
-    ::scales[278]   = 1.0 - (1.0 - scale) * 0.20; // 278 => " the"
-    ::scales[297]   = 1.0 - (1.0 - scale) * 0.20; // 297 => " in"
-    ::scales[304]   = 1.0 - (1.0 - scale) * 0.20; // 304 => " to"
-    ::scales[310]   = 1.0 - (1.0 - scale) * 0.20; // 310 => " of"
-    ::scales[322]   = 1.0 - (1.0 - scale) * 0.20; // 322 => " and"
+    ::scales[263]   = 1.0 - (1.0 - scale) * 0.30; // 263 => " a"
+    ::scales[278]   = 1.0 - (1.0 - scale) * 0.30; // 278 => " the"
+    ::scales[297]   = 1.0 - (1.0 - scale) * 0.30; // 297 => " in"
+    ::scales[304]   = 1.0 - (1.0 - scale) * 0.30; // 304 => " to"
+    ::scales[310]   = 1.0 - (1.0 - scale) * 0.30; // 310 => " of"
+    ::scales[322]   = 1.0 - (1.0 - scale) * 0.30; // 322 => " and"
 
-    ::scales[363]   = 1.0 - (1.0 - scale) * 0.25; // 363 => " for"
-    ::scales[372]   = 1.0 - (1.0 - scale) * 0.25; // 372 => " it"
-    ::scales[373]   = 1.0 - (1.0 - scale) * 0.25; // 373 => " on"
-    ::scales[385]   = 1.0 - (1.0 - scale) * 0.25; // 385 => " an"
-    ::scales[393]   = 1.0 - (1.0 - scale) * 0.25; // 393 => " that"
-    ::scales[408]   = 1.0 - (1.0 - scale) * 0.25; // 408 => " as"
-    ::scales[411]   = 1.0 - (1.0 - scale) * 0.25; // 411 => " with"
+    ::scales[363]   = 1.0 - (1.0 - scale) * 0.35; // 363 => " for"
+    ::scales[372]   = 1.0 - (1.0 - scale) * 0.35; // 372 => " it"
+    ::scales[373]   = 1.0 - (1.0 - scale) * 0.35; // 373 => " on"
+    ::scales[385]   = 1.0 - (1.0 - scale) * 0.35; // 385 => " an"
+    ::scales[393]   = 1.0 - (1.0 - scale) * 0.35; // 393 => " that"
+    ::scales[408]   = 1.0 - (1.0 - scale) * 0.35; // 408 => " as"
+    ::scales[411]   = 1.0 - (1.0 - scale) * 0.35; // 411 => " with"
     
-    ::scales[470]   = 1.0 - (1.0 - scale) * 0.30; // 470 => " or"
-    ::scales[472]   = 1.0 - (1.0 - scale) * 0.30; // 472 => " at"
-    ::scales[526]   = 1.0 - (1.0 - scale) * 0.30; // 526 => " are"
+    ::scales[470]   = 1.0 - (1.0 - scale) * 0.40; // 470 => " or"
+    ::scales[472]   = 1.0 - (1.0 - scale) * 0.40; // 472 => " at"
+    ::scales[526]   = 1.0 - (1.0 - scale) * 0.40; // 526 => " are"
 
-    ::scales[319]   = 1.0 - (1.0 - scale) * 0.30; // 319 => " A"
+    ::scales[319]   = 1.0 - (1.0 - scale) * 0.50; // 319 => " A"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
@@ -539,7 +539,7 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    // return; // !!!
+     return; // !!!
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
