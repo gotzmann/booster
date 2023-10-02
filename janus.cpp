@@ -177,7 +177,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.95;
+        params.scale = 0.94;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -189,7 +189,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.95;
+        params.lo = 0.96;
     }
 
     // -- init tokens with some heuristic rules
@@ -205,7 +205,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
         // -- pedantic tokens
 
         if (isPedantic(id)) {
-            ::scales[id] = 1.0 - (1.0 - scale) * 0.05;
+            ::scales[id] = 1.0 - (1.0 - scale) * 0.10;
             continue;
         }   
 
@@ -214,14 +214,13 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
         if (tokenType == LANG_RU && lower) {
             // NB! Size in bytes is 2x of UTF-8 chars for RU
-            //float prob = (float) tokSize(ctx, id) * 0.1;
             size_t len = tokSize(ctx, id);
-            float prob = 0.15;
+            float prob = 0.2;
             for (size_t i = 2; i < len;) {
                 i+=2;
-                prob += 0.15 / (i / 2);
+                prob += 0.2 / (i / 2);
             }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.15, 0.22, 0.27 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.2, 0.3, 0.36 ...
             continue;
         }
 
@@ -229,14 +228,13 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
         tokenType = tokType(ctx, id);
         if (tokenType == LANG_EN && lower) {
-            //float prob = (float) tokSize(ctx, id) * 0.2;
             size_t len = tokSize(ctx, id);
-            float prob = 0.15;
+            float prob = 0.2;
             for (size_t i = 1; i < len;) {
                 i++;
-                prob += 0.15 / i;
+                prob += 0.2 / i;
             }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.15, 0.22, 0.27 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.2, 0.3, 0.36 ...
             continue;
         }
 
@@ -250,14 +248,15 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
-    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.1; // newline
+    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
 
     ::scales[259]   = 1.0 - (1.0 - scale) * 0.10; //   259 => "  "
     ::scales[268]   = 1.0 - (1.0 - scale) * 0.10; //   268 => "    "
     ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
 
-    ::scales[29892] = 1.0 - (1.0 - scale) * 0.1;  // 29892 => ","
+    ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
     ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
+    ::scales[29899] = 1.0 - (1.0 - scale) * 0.20; // 29899 => "-" [ used as bullet point ]
 
     ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
     ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
@@ -295,18 +294,18 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     // -- Popular EN parts
 
-    ::scales[263]   = 1.0 - (1.0 - scale) * 0.15; // 263 => " a"
-    ::scales[278]   = 1.0 - (1.0 - scale) * 0.15; // 278 => " the"
-    ::scales[297]   = 1.0 - (1.0 - scale) * 0.15; // 297 => " in"
-    ::scales[304]   = 1.0 - (1.0 - scale) * 0.15; // 304 => " to"
-    ::scales[310]   = 1.0 - (1.0 - scale) * 0.15; // 310 => " of"
+    ::scales[263]   = 1.0 - (1.0 - scale) * 0.20; // 263 => " a"
+    ::scales[278]   = 1.0 - (1.0 - scale) * 0.20; // 278 => " the"
+    ::scales[297]   = 1.0 - (1.0 - scale) * 0.20; // 297 => " in"
+    ::scales[304]   = 1.0 - (1.0 - scale) * 0.20; // 304 => " to"
+    ::scales[310]   = 1.0 - (1.0 - scale) * 0.20; // 310 => " of"
+    ::scales[322]   = 1.0 - (1.0 - scale) * 0.20; // 322 => " and"
 
-    ::scales[322]   = 1.0 - (1.0 - scale) * 0.15; // 322 => " and"
-    ::scales[363]   = 1.0 - (1.0 - scale) * 0.20; // 363 => " for"
-    ::scales[372]   = 1.0 - (1.0 - scale) * 0.20; // 372 => " it"
-    ::scales[373]   = 1.0 - (1.0 - scale) * 0.20; // 373 => " on"
-    ::scales[385]   = 1.0 - (1.0 - scale) * 0.20; // 385 => " an"
-    ::scales[393]   = 1.0 - (1.0 - scale) * 0.20; // 393 => " that"
+    ::scales[363]   = 1.0 - (1.0 - scale) * 0.25; // 363 => " for"
+    ::scales[372]   = 1.0 - (1.0 - scale) * 0.25; // 372 => " it"
+    ::scales[373]   = 1.0 - (1.0 - scale) * 0.25; // 373 => " on"
+    ::scales[385]   = 1.0 - (1.0 - scale) * 0.25; // 385 => " an"
+    ::scales[393]   = 1.0 - (1.0 - scale) * 0.25; // 393 => " that"
     ::scales[408]   = 1.0 - (1.0 - scale) * 0.25; // 408 => " as"
     ::scales[411]   = 1.0 - (1.0 - scale) * 0.25; // 411 => " with"
     
