@@ -22,7 +22,7 @@ llama_token llama_sample_token(
                   struct llama_context * ctx,
                   struct llama_context * ctx_guidance,
                   struct llama_grammar * grammar,
-               const struct gpt_params & params,
+                     struct gpt_params & params,
         const std::vector<llama_token> & last_tokens,
          std::vector<llama_token_data> & candidates,
                                const int pos,
@@ -343,7 +343,96 @@ int64_t do_inference(
     std::vector<llama_token> embd_inp;
     embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
     // embd_inp = ::llama_tokenize(ctx, text, false); // leading space IS already there thanks Go preprocessing
+
+    // DEBUG
+    // fprintf(stderr, "\n\nTOKENS: [ ");
+    // for(int i = 0; i < embd_inp.size(); i++) {
+    //     fprintf(stderr, "%d, ", embd_inp.data()[i]);
+    // }
+    // fprintf(stderr, "]");
+
+    // -- DEBUG | Draft RU token statistics research
+    
+ /*   
+    std::string doc = "Ты виртуальная ассистентка. Дай развернутый ответ на вопрос. Используй русский язык!\
+\n\n### Instruction:\n\n\
+Напиши черновик новости для Телеграм-канала, описывающий последние новости зеленой политики западных стран\
+\n\n### Response:\n\n\
+The Guardian: большинство компенсационных проектов, по которым было продано больше всего квот на выбросы углерода, скорее всего являются бесполезными для климата — то есть они не обеспечивают тех экологических преимуществ, которые они обещают. Bloomberg замолвился об этом ещё весной, но тут провели целое исследование по CO2 диллерам и выяснилось, что 94% из них с высокой вероятностью тупо продают лохам воздух, а последние ещё верят, что они тем самым спасают планету.\n\
+\n\
+И вдруг купнейшая еропейская нефтяная компания Shell втихую отложила радикальный план по сокращению своего углеродного следа, а Fortescue Metals Group, занимающая четвертое место в мире по производству железной руды, сделала это даже с гордостью, заявив «мы — единственный в мире крупный эмитент [парниковых газов], прекративший закупки добровольных квот».\n\
+\n\
+Но самое неожиданное — это недавний переподвыподверт Билла Гейтса, который признался, что «ни одна страна с умеренным климатом не станет непригодной для жизни». Тут важно понимать, что до сего момента Гейтс трубил об апокалипсе в случае недостижения нулевого уровня выбросов к 2050 году, написал книгу «Как избежать климатической катастрофы», и говорил, что миграция из Сирии частнично связана с климатом, а из США она будет в 10 раз больше, потому что экваториальные районы станут непригодными для жизни.\n\
+\n\
+Гейтс умён. Он понимает, что зелёная повестка несмотря на все сопротивления плавно сворачивается, и потому ещё более плавно решил ретироваться. На этом фоне удручающе забавно смотрится сообщение о том, что на Сахалине на днях запустили первый в России проект по достижению целым регионом углеродной нейтральности и установкой квот. Там, представьте, у губернатора есть даже советник по вопросам климата и ESG. То есть родоначальники зелёной повестки её уже потихоньку сворачивают, а у нас только начинают разворачивать. Товарищи, проснитесь, вы обхезались. #esg\n\
+";
+*/
+
 /*
+    std::string doc = "\
+AI Engineer - LLM (Machine Learning Engineer) at Alias\n\
+\n\
+Do you want to help create a new world that lets you reimagine the line between human and AI generated content while solving technical problems that you won’t find anywhere else? We are Alias, and we are building a video-based social media application utilizing generative AI models to bring AI generated creators and creations to anyone with a mobile phone. We are looking for talented engineers to help us develop new features leveraging large language models (LLM’s).\n\
+\n\
+Our entire team is fully remote and international. We are creative, fast-paced, nimble and understand that employees thrive when their work has purpose.\n\
+\n\
+Responsibilities and Qualifications\n\
+\n\
+• Passion for AI-driven generative media and a strong desire to push the boundaries of technology.\n\
+\n\
+• Proven experience profiling and optmizing deep neural networks and large language models such as ChatGPT or GPT-4.\n\
+\n\
+• Ability to work independently and proactively solve problems.\n\
+\n\
+• Comfortable working independently in a fast-paced fully remote environment across time zones.\n\
+Alias at a glance\n\
+A community-based pseudonymous video platform for free expression and exploration\n\
+Alias focuses on Mobile, Social Media, and Artificial Intelligence / Machine Learning. Their company has offices in Nashville. They have a small team that's between 11-50 employees.\n\
+\n\
+You can view their website at https://alias-app.com/ or find them on LinkedIn.\n\
+";
+*/
+
+/*
+    auto tokens = ::llama_tokenize(ctx, doc, true); 
+    std::unordered_map<llama_token, size_t> tokmap;
+    for(int i = 0; i < tokens.size(); i++) {
+        auto id = tokens[i];
+        tokmap[id]++;
+    }
+    std::vector<llama_token_data> candidates;
+    candidates.clear();
+    for(const auto& elem : tokmap)
+    {
+        //fprintf(stderr, "\nID %d | \"%s\" | P %d", elem.first, llama_token_to_str(ctx, elem.first).c_str(), elem.second);
+        //std::cout << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
+        candidates.emplace_back(llama_token_data{elem.first, (float)elem.second, 0.0f});
+    }
+    std::sort(
+        candidates.data(), 
+        candidates.data() + candidates.size(), 
+        [](const llama_token_data & a, const llama_token_data & b) { 
+            return a.logit > b.logit; 
+        }
+    );
+    fprintf(stderr, "\n\n==== TOKENS %d ====", tokens.size());
+    fprintf(stderr, "\n\n==== TOKMAP ====\n");
+    for (size_t i = 0; i < candidates.size(); i++) {
+        auto id =candidates.data()[i].id;
+        auto logit = candidates.data()[i].logit;
+        fprintf(stderr, 
+            "\n  -- %5d [ %.1f ~ %.2f ] \"%s\"", 
+            id,
+            logit,
+            logit / tokens.size(),
+            llama_token_to_str(ctx, id).c_str()
+        );
+    }    
+    exit(1);
+*/    
+    
+/*
+
     // -- DEBUG
     fprintf(stderr, "\n\nTOKENS: [ ");
     for(int i = 0; i < embd_inp.size(); i++) {
