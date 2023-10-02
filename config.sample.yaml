@@ -37,9 +37,9 @@ models:
 
     janus: 1
     depth: 200
-    scale: 0.94
+    scale: 0.95
     hi: 0.99
-    lo: 0.92
+    lo: 0.95
 
     temp: 0.1
     topk: 8
@@ -65,9 +65,9 @@ models:
 
     janus: 1
     depth: 200
-    scale: 0.94
+    scale: 0.95
     hi: 0.99
-    lo: 0.92
+    lo: 0.95
 
     temp: 0.1
     topk: 8

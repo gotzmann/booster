@@ -177,7 +177,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- safe defaults
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.94;
+        params.scale = 0.95;
     }
 
     if (params.depth <= 0 || params.depth > params.n_predict) {
@@ -189,7 +189,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.92;
+        params.lo = 0.95;
     }
 
     // -- init tokens with some heuristic rules
@@ -199,7 +199,8 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // how it was before [ with penalty = 1.06 ] : logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
     for (llama_token id = 0; id < vocabSize; id++) {
 
-        auto tokenType = tokType(ctx, id);      
+        auto tokenType = tokType(ctx, id);
+        auto lower = isLower(ctx, id);  
 
         // -- pedantic tokens
 
@@ -211,31 +212,31 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
         // -- Special case for complex languages like Russian
         //    Do not penalise much tokens that might work as other word parts!
 
-        if (tokenType == LANG_RU) {
+        if (tokenType == LANG_RU && lower) {
             // NB! Size in bytes is 2x of UTF-8 chars for RU
             //float prob = (float) tokSize(ctx, id) * 0.1;
             size_t len = tokSize(ctx, id);
-            float prob = 0.2;
+            float prob = 0.15;
             for (size_t i = 2; i < len;) {
                 i+=2;
-                prob += 0.2 / (i / 2);
+                prob += 0.15 / (i / 2);
             }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.2, 0.3, 0.36 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.15, 0.22, 0.27 ...
             continue;
         }
 
         // -- Similar hack for EN
 
         tokenType = tokType(ctx, id);
-        if (tokenType == LANG_EN) {
+        if (tokenType == LANG_EN && lower) {
             //float prob = (float) tokSize(ctx, id) * 0.2;
             size_t len = tokSize(ctx, id);
-            float prob = 0.2;
+            float prob = 0.15;
             for (size_t i = 1; i < len;) {
                 i++;
-                prob += 0.2 / i;
+                prob += 0.15 / i;
             }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.2, 0.3, 0.36 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.15, 0.22, 0.27 ...
             continue;
         }
 
@@ -245,53 +246,75 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     }
 
     // -- Assign manually specific penalties for high-frequency tokens
+    // TODO: Need more work with real texts and statistical probabilities
 
     ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
-    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
+    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.1; // newline
 
-    ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
-    ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
-    ::scales[29871] = 1.0 - (1.0 - scale) * 0.30; // 29871 => " "
+    ::scales[259]   = 1.0 - (1.0 - scale) * 0.10; //   259 => "  "
+    ::scales[268]   = 1.0 - (1.0 - scale) * 0.10; //   268 => "    "
+    ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
 
-    ::scales[29892] = 1.0 - (1.0 - scale) * 0.20; // 29892 => ","
+    ::scales[29892] = 1.0 - (1.0 - scale) * 0.1;  // 29892 => ","
     ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
 
     ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
-    ::scales[29936] = 1.0 - (1.0 - scale) * 0.40; // 29936 => ";"
-    
-    ::scales[313]   = 1.0 - (1.0 - scale) * 0.30; // 313   => " ("
-    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.30; // 1723  => " )"
-    ::scales[29897] = 1.0 - (1.0 - scale) * 0.40; // 29897 => ")"
-    ::scales[29898] = 1.0 - (1.0 - scale) * 0.40; // 29898 => "("
+    ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
+    ::scales[813]   = 1.0 - (1.0 - scale) * 0.50; // 813   => " —"
+
+    ::scales[313]   = 1.0 - (1.0 - scale) * 0.20; // 313   => " ("
+    ::scales[467]   = 1.0 - (1.0 - scale) * 0.30; // 467   => ")."
+    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.40; // 1723  => " )"
+    ::scales[29897] = 1.0 - (1.0 - scale) * 0.60; // 29897 => ")"
+    ::scales[29898] = 1.0 - (1.0 - scale) * 0.60; // 29898 => "("
+
+    //::scales[859]   = 1.0 - (1.0 - scale) * 0.30; // 859 => " «"
     
     // -- Popular RU parts
 
-    ::scales[490]   = 1.0 - (1.0 - scale) * 0.20; // 490 => " в"
-    ::scales[531]   = 1.0 - (1.0 - scale) * 0.20; // 531 => " с"
-    ::scales[606]   = 1.0 - (1.0 - scale) * 0.20; // 606 => " и"
-    ::scales[614]   = 1.0 - (1.0 - scale) * 0.20; // 614 => " о"
+    ::scales[490]   = 1.0 - (1.0 - scale) * 0.20; // 490  => " в"
+    ::scales[531]   = 1.0 - (1.0 - scale) * 0.20; // 531  => " с"
+    ::scales[606]   = 1.0 - (1.0 - scale) * 0.20; // 606  => " и"
+    ::scales[614]   = 1.0 - (1.0 - scale) * 0.20; // 614  => " о"
+    ::scales[665]   = 1.0 - (1.0 - scale) * 0.20; // 665  => " на"
+    ::scales[733]   = 1.0 - (1.0 - scale) * 0.25; // 733  => " по"
+    ::scales[863]   = 1.0 - (1.0 - scale) * 0.25; // 863  => " у"
+    ::scales[1077]  = 1.0 - (1.0 - scale) * 0.30; // 1077 => " за"
+    ::scales[1097]  = 1.0 - (1.0 - scale) * 0.30; // 1097 => " а"
+    ::scales[1186]  = 1.0 - (1.0 - scale) * 0.30; // 1186 => " к"
+    ::scales[1447]  = 1.0 - (1.0 - scale) * 0.35; // 1447 => " до"
+    ::scales[1538]  = 1.0 - (1.0 - scale) * 0.35; // 1538 => " не"
+    ::scales[1604]  = 1.0 - (1.0 - scale) * 0.35; // 1604 => " об"
+    ::scales[1685]  = 1.0 - (1.0 - scale) * 0.35; // 1685 => " от"
+    ::scales[4281]  = 1.0 - (1.0 - scale) * 0.40; // 4281 => " что"
 
-    ::scales[665]   = 1.0 - (1.0 - scale) * 0.30; // 665 => " на"
-    ::scales[733]   = 1.0 - (1.0 - scale) * 0.30; // 733 => " по"
-    ::scales[863]   = 1.0 - (1.0 - scale) * 0.30; // 863 => " у"
-
-    ::scales[857]   = 1.0 - (1.0 - scale) * 0.40; // 857  => " С"
-    ::scales[939]   = 1.0 - (1.0 - scale) * 0.40; // 939  => " В"
+    ::scales[857]   = 1.0 - (1.0 - scale) * 0.30; // 857  => " С"
+    ::scales[939]   = 1.0 - (1.0 - scale) * 0.30; // 939  => " В"
     ::scales[1651]  = 1.0 - (1.0 - scale) * 0.40; // 1651 => " О"
 
     // -- Popular EN parts
 
-    ::scales[263]   = 1.0 - (1.0 - scale) * 0.20; // 263 => " a"
-    ::scales[278]   = 1.0 - (1.0 - scale) * 0.20; // 278 => " the"
-    ::scales[297]   = 1.0 - (1.0 - scale) * 0.20; // 297 => " in"
-    ::scales[304]   = 1.0 - (1.0 - scale) * 0.20; // 304 => " to"
-    ::scales[310]   = 1.0 - (1.0 - scale) * 0.20; // 310 => " of"
+    ::scales[263]   = 1.0 - (1.0 - scale) * 0.15; // 263 => " a"
+    ::scales[278]   = 1.0 - (1.0 - scale) * 0.15; // 278 => " the"
+    ::scales[297]   = 1.0 - (1.0 - scale) * 0.15; // 297 => " in"
+    ::scales[304]   = 1.0 - (1.0 - scale) * 0.15; // 304 => " to"
+    ::scales[310]   = 1.0 - (1.0 - scale) * 0.15; // 310 => " of"
 
-    ::scales[322]   = 1.0 - (1.0 - scale) * 0.30; // 322 => " and"
-    ::scales[372]   = 1.0 - (1.0 - scale) * 0.30; // 372 => " it"
-    ::scales[373]   = 1.0 - (1.0 - scale) * 0.30; // 373 => " on"
-    ::scales[385]   = 1.0 - (1.0 - scale) * 0.30; // 385 => " an"
+    ::scales[322]   = 1.0 - (1.0 - scale) * 0.15; // 322 => " and"
+    ::scales[363]   = 1.0 - (1.0 - scale) * 0.20; // 363 => " for"
+    ::scales[372]   = 1.0 - (1.0 - scale) * 0.20; // 372 => " it"
+    ::scales[373]   = 1.0 - (1.0 - scale) * 0.20; // 373 => " on"
+    ::scales[385]   = 1.0 - (1.0 - scale) * 0.20; // 385 => " an"
+    ::scales[393]   = 1.0 - (1.0 - scale) * 0.20; // 393 => " that"
+    ::scales[408]   = 1.0 - (1.0 - scale) * 0.25; // 408 => " as"
+    ::scales[411]   = 1.0 - (1.0 - scale) * 0.25; // 411 => " with"
+    
+    ::scales[470]   = 1.0 - (1.0 - scale) * 0.30; // 470 => " or"
+    ::scales[472]   = 1.0 - (1.0 - scale) * 0.30; // 472 => " at"
+    ::scales[526]   = 1.0 - (1.0 - scale) * 0.30; // 526 => " are"
+
+    ::scales[319]   = 1.0 - (1.0 - scale) * 0.30; // 319 => " A"
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),
@@ -333,8 +356,8 @@ llama_token pedanticTokens[] = {
     29961, // "["
     29962, // "]"
 
-    376,   //  " ""
-    613,   // "","
+    // 376,   //  " ""
+    // 613,   // "","
 };
 
 bool isPedantic(llama_token id) {
@@ -408,7 +431,9 @@ int tokType(const llama_context *ctx, const llama_token token) {
 
         if (buf[i] == std::byte{0xD0} && (i + 1 < buf.size())) {
             i++;
-            if ((buf[i] >= std::byte{0x90} && buf[i] <= std::byte{0xBF}))
+            if ((buf[i] >= std::byte{0x90} && buf[i] <= std::byte{0xBF}) || 
+                (buf[i] == std::byte{0x81}) // "Ё"
+            )    
                 ru++;
             else
                 other++;     
@@ -461,6 +486,38 @@ int tokType(const llama_context *ctx, const llama_token token) {
     return LANG_ZERO;
 }
 
+// NB! isLower works only for RU and EN 
+bool isLower(const llama_context *ctx, const llama_token token) {
+
+    std::string in = llama_token_to_str(ctx, token);
+    auto buf = getBytes(in);
+
+    if (buf.size() <= 0) return false; 
+
+    // -- ASCII Letters
+    if (buf[0] >= std::byte{0x61} && buf[0] <= std::byte{0x7A}) {
+        return true;
+    }
+
+    // -- UTF-8 RU 
+    // https://www.utf8-chartable.de/unicode-utf8-table.pl?start=1024
+
+    if (buf[0] == std::byte{0xD0} && buf.size() >= 2) {
+        if ((buf[1] >= std::byte{0xB0} && buf[1] <= std::byte{0xBF}))
+            return true;
+    }
+
+    if (buf[0] == std::byte{0xD1} && buf.size() >= 2) {
+        if (
+            (buf[1] >= std::byte{0x80} && buf[1] <= std::byte{0x8F}) || 
+            (buf[1] == std::byte{0x91}) // "ё"
+        )
+            return true;
+    }
+
+    return false;
+}
+
 int tokSize(const llama_context *ctx, const llama_token token) {
     return llama_token_to_str(ctx, token).size();
 }
@@ -483,7 +540,7 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    return; // !!!
+    // return; // !!!
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
