@@ -61,7 +61,7 @@ llama_token sample_janus_token(
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
-fprintf(stderr, " [[[ 1 ]]] ");    
+   
 /*
     // -- Normalize all tokens agains their scales before doing anything
 
@@ -102,34 +102,22 @@ fprintf(stderr, " [[[ 1 ]]] ");
 
     // TODO: This should work right for the first system prompt, but what's about the next ones [ second, third, etc ] ?!
     size_t diveDepth = std::min(depth, pos - promptLen);
-fprintf(stderr, " [[[ 2 ]]] ");
-fprintf(stderr, " [ diveDepth = %d ] ", diveDepth); 
     for (size_t i = 0; i < diveDepth; i++) {
-        // FIXME: [ id = -1948240008 ]
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
-        auto id = last_tokens.data()[ last_tokens.size() - i ];
-        fprintf(stderr, " [ id = %d ] ", id);
-        fprintf(stderr, " [ last = %d ] ", last_tokens.size());
+        auto id = last_tokens.data()[ last_tokens.size() - 1 - i ];
 
-        fprintf(stderr, " [ last[4k] = %d ] ", last_tokens.data()[ last_tokens.size() ]);
-        fprintf(stderr, " [ last[4k-1] = %d ] ", last_tokens.data()[ last_tokens.size() - 1]);
-        fprintf(stderr, " [ last[4k-2] = %d ] ", last_tokens.data()[ last_tokens.size() - 2]);
-
-fprintf(stderr, " [[[ 2+ ]]] ");
         // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages
         // TODO: Maybe we need to skip the last token itself [ with check of i > 0 ] ?! 
         if ((lastType == SPACE_RU || lastType == LANG_RU) && ::types[id] == LANG_RU) {
             logits[id] *= 1.0 - (1.0 - ::scales[id]) * 0.20;
-fprintf(stderr, " [[[ 2+! ]]] ");
             continue;
         }
-fprintf(stderr, " [[[ 2++ ]]] "); 
+
         // TODO: Should we process negative probabilities by scale division?
         // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-        logits[id] *= ::scales[id];
-fprintf(stderr, " [[[ 2+++ ]]] ");         
+        logits[id] *= ::scales[id];       
     }
-fprintf(stderr, " [[[ 3 ]]] ");    
+   
     // -- Double down incompatible tokens (like word endings in some other language)
 
     for (size_t id = 0; id < vocabSize; id++) {
@@ -144,7 +132,7 @@ fprintf(stderr, " [[[ 3 ]]] ");
             logits[id] *= 0.50; 
         }
     }        
-fprintf(stderr, " [[[ 4 ]]] ");    
+   
     // -- Sort all logits
 
     std::vector<llama_token_data> candidates;
@@ -165,7 +153,7 @@ fprintf(stderr, " [[[ 4 ]]] ");
             return a.logit > b.logit; 
         }
     );           
-fprintf(stderr, " [[[ 5 ]]] ");    
+    
     // -- Final choice [ with experimental cutoff ]
     //    We'll use some general cutoff for most of tokens
     //    and pedantic cutoff for sensitive ones
