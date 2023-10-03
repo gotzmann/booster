@@ -111,6 +111,10 @@ fprintf(stderr, " [ diveDepth = %d ] ", diveDepth);
         fprintf(stderr, " [ id = %d ] ", id);
         fprintf(stderr, " [ last = %d ] ", last_tokens.size());
 
+        fprintf(stderr, " [ last[4k] = %d ] ", last_tokens.data()[ last_tokens.size() ]);
+        fprintf(stderr, " [ last[4k-1] = %d ] ", last_tokens.data()[ last_tokens.size() - 1]);
+        fprintf(stderr, " [ last[4k-2] = %d ] ", last_tokens.data()[ last_tokens.size() - 2]);
+
 fprintf(stderr, " [[[ 2+ ]]] ");
         // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages
         // TODO: Maybe we need to skip the last token itself [ with check of i > 0 ] ?! 
