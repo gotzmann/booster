@@ -59,7 +59,7 @@ llama_token sample_janus_token(
     size_t depth     = params.depth;
     //float scale      = params.scale;
 
-    auto lastToken = last_tokens.data()[last_tokens.size() - 1];
+    auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
 /*
     // -- Normalize all tokens agains their scales before doing anything
@@ -99,17 +99,16 @@ llama_token sample_janus_token(
     // -- Smart pessimization for repeated tokens
     //    For better performance we are excluding prompt tokens
 
-    llama_token id;
-    size_t d = std::min(depth, pos - promptLen);
-    for (size_t i = 0; i < d; i++) {
+    size_t diveDepth = std::min(depth, pos - promptLen);
+    for (size_t i = 0; i < diveDepth; i++) {
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
-        id = last_tokens.data()[ last_tokens.size() - i ]; 
-        //if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
-        auto curType = ::types[id];
+        auto id = last_tokens.data()[ last_tokens.size() - i ]; 
 
-        // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages 
-        if ((lastType == SPACE_RU || lastType == LANG_RU) && curType == LANG_RU) {
+        // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages
+        // TODO: Maybe we need to skip the last token itself [ with check of i > 0 ] ?! 
+        if ((lastType == SPACE_RU || lastType == LANG_RU) && ::types[id] == LANG_RU) {
             logits[id] *= 1.0 - (1.0 - ::scales[id]) * 0.20;
+            continue;
         }
 
         // well, let just ignore negative probabilities
@@ -255,7 +254,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[0]     = 1.0;   // to be safe
     ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
-    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.20; // newline
+    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
 
     ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
     ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
@@ -569,7 +568,7 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
 
     for (size_t i = 0; i < size; i++) {
 
-        auto id =candidates.data()[i].id;
+        auto id    = candidates.data()[i].id;
         auto logit = candidates.data()[i].logit;
         std::string zero = "";
 
