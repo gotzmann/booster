@@ -23,7 +23,9 @@
 // https://www.theguardian.com/info/2000/mar/24/neither-pedantic-nor-wild
 
 bool isJanusInitialized = false;
-float * scales;
+
+float * scales; // precomputed scales (penalties) for each token
+float * types;  // precoputed types for each token
 
 // -- Experimental approach Janus Sampling by gotzmann [ paper is coming ]
 
@@ -58,7 +60,7 @@ llama_token sample_janus_token(
     //float scale      = params.scale;
 
     auto lastToken = last_tokens.data()[last_tokens.size() - 1];
-    auto lastType  = tokType(ctx, lastToken);
+    auto lastType  = ::types[lastToken];
 /*
     // -- Normalize all tokens agains their scales before doing anything
 
@@ -76,7 +78,7 @@ llama_token sample_janus_token(
         //    topLogit = logits[i];
         //}       
     }
-    //auto topType = tokType(ctx, topToken);
+    //auto topType = types[topToken];
 
     // -- Slightly boost the top token when the word continuation expected
     //    It should allow better coherence for languages with complex grammar
@@ -103,7 +105,7 @@ llama_token sample_janus_token(
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
         id = last_tokens.data()[ last_tokens.size() - i ]; 
         //if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
-        auto curType = tokType(ctx, id);
+        auto curType = ::types[id];
 
         // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages 
         if ((lastType == SPACE_RU || lastType == LANG_RU) && curType == LANG_RU) {
@@ -118,7 +120,7 @@ llama_token sample_janus_token(
     // -- Double down incompatible tokens (like word endings in some other language)
 
     for (size_t id = 0; id < vocabSize; id++) {
-        auto curType = tokType(ctx, id);
+        auto curType = ::types[id];
 
         if (
             ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
@@ -156,7 +158,7 @@ llama_token sample_janus_token(
     //    and pedantic cutoff for sensitive ones
 
     auto topToken = candidates.data()[0].id;
-    auto topType = tokType(ctx, topToken);
+    auto topType  = types[topToken];
     auto topLogit = candidates.data()[0].logit;
 
     float cutoff = params.lo;
@@ -184,6 +186,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     const int vocabSize = llama_n_vocab(ctx);
     ::scales = new float[vocabSize] {};
+    ::types = new float[vocabSize] {};
 
     // -- safe defaults
 
@@ -203,15 +206,18 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
         params.lo = 0.96;
     }
 
-    // -- init tokens with some heuristic rules
+    // -- init tokens with some heuristics
+    //    how it was before [ with penalty = 1.06 ] : logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
 
     float scale = params.scale;
 
-    // how it was before [ with penalty = 1.06 ] : logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
     for (llama_token id = 0; id < vocabSize; id++) {
 
-        auto tokenType = tokType(ctx, id);
-        auto lower = isLower(ctx, id);  
+        auto type  = tokType(ctx, id);
+        auto lower = isLower(ctx, id);
+        size_t len = tokSize(ctx, id);
+
+        ::types[id] = type;
 
         // -- pedantic tokens
 
@@ -220,34 +226,25 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
             continue;
         }   
 
-        // -- Special case for complex languages like Russian
-        //    Do not penalise much tokens that might work as other word parts!
+        // -- special case for complex languages like Russian. Do not penalise
+        //    much tokens that might work as other word parts!
 
-        if (tokenType == LANG_RU && lower) {
+        float probes[] = { 0.20, 0.22, 0.25, 0.28, 0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.44, 0.48, 0.50 };
+
+        if (type == LANG_RU && lower) {
             // NB! Size in bytes is 2x of UTF-8 chars for RU
-            size_t len = tokSize(ctx, id);
-            float prob = 0.20;
-            for (size_t i = 2; i < len; i+=2) {
-                prob += 0.05 * (i / 2);
-            }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.20, 0.25, 0.30 ...
+            ::scales[id] = 1.0 - (1.0 - scale) * probes[len/2];
             continue;
         }
 
-        // -- Similar hack for EN
+        // -- similar hack for EN
 
-        tokenType = tokType(ctx, id);
-        if (tokenType == LANG_EN && lower) {
-            size_t len = tokSize(ctx, id);
-            float prob = 0.20;
-            for (size_t i = 1; i < len; i++) {
-                prob += 0.05 * i;
-            }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.20, 0.25, 0.30 ...
+        if (type == LANG_EN && lower) {
+            ::scales[id] = 1.0 - (1.0 - scale) * probes[len];
             continue;
         }
 
-        // -- Full penalization for other tokens
+        // -- full penalization for other tokens
 
         ::scales[id] = scale;
     }
@@ -277,8 +274,6 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[1723]  = 1.0 - (1.0 - scale) * 0.40; // 1723  => " )"
     ::scales[29897] = 1.0 - (1.0 - scale) * 0.60; // 29897 => ")"
     ::scales[29898] = 1.0 - (1.0 - scale) * 0.60; // 29898 => "("
-
-    //::scales[859]   = 1.0 - (1.0 - scale) * 0.30; // 859 => " «"
     
     // -- Popular RU parts
 
