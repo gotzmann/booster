@@ -103,6 +103,12 @@ llama_token sample_janus_token(
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
         id = last_tokens.data()[ last_tokens.size() - i ]; 
         //if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
+        auto curType = tokType(ctx, id);
+
+        // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages 
+        if ((lastType == SPACE_RU || lastType == LANG_RU) && curType == LANG_RU) {
+            logits[id] *= 1.0 - (1.0 - ::scales[id]) * 0.20;
+        }
 
         // well, let just ignore negative probabilities
         // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
@@ -114,13 +120,13 @@ llama_token sample_janus_token(
     for (size_t id = 0; id < vocabSize; id++) {
         auto curType = tokType(ctx, id);
 
-        if(
+        if (
             ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
             ||
             ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // Europeans mix ASCII and UTF-8
         ) {
             // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
-            logits[id] *= 0.5; 
+            logits[id] *= 0.50; 
         }
     }        
 
@@ -219,13 +225,12 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
         if (tokenType == LANG_RU && lower) {
             // NB! Size in bytes is 2x of UTF-8 chars for RU
-            size_t len = tokSize(ctx, id);
-            float prob = 0.2;
-            for (size_t i = 2; i < len;) {
-                i+=2;
-                prob += 0.2 / (i / 2);
-            }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.2, 0.3, 0.36 ...
+            // size_t len = tokSize(ctx, id);
+            float prob = 0.20;
+            // for (size_t i = 2; i < len; i+=2) {
+            //     prob += 0.05 * (i / 2);
+            // }
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.20, 0.25, 0.30 ...
             continue;
         }
 
@@ -233,13 +238,12 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
         tokenType = tokType(ctx, id);
         if (tokenType == LANG_EN && lower) {
-            size_t len = tokSize(ctx, id);
-            float prob = 0.2;
-            for (size_t i = 1; i < len;) {
-                i++;
-                prob += 0.2 / i;
-            }
-            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.2, 0.3, 0.36 ...
+            // size_t len = tokSize(ctx, id);
+            float prob = 0.20;
+            // for (size_t i = 1; i < len; i++) {
+            //     prob += 0.05 * i;
+            // }
+            ::scales[id] = 1.0 - (1.0 - scale) * prob; // 0.20, 0.25, 0.30 ...
             continue;
         }
 
