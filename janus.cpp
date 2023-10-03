@@ -70,15 +70,6 @@ llama_token sample_janus_token(
     }
 */
 /*
-    //llama_token topToken = 0;
-    //float topLogit = logits[0];
-    for (size_t i = 1; i < vocabSize; i++) {
-        logits[i] *= scales[i];
-        //if (logits[i] > topLogit) {
-        //    topToken = i;
-        //    topLogit = logits[i];
-        //}       
-    }
     //auto topType = types[topToken];
 
     // -- Slightly boost the top token when the word continuation expected
@@ -95,7 +86,7 @@ llama_token sample_janus_token(
     // -- Boost <EOS> token when we are closer to the limit
     //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
-    logits[EOS] *= 1.0 + log(1.0 + float(pos - promptLen) / float(max)) * 0.05;
+    logits[EOS] *= 1.0 + log(1.0 + float(pos - promptLen) / float(max)) * 0.03;
 
     // -- Smart pessimization for repeated tokens
     //    For better performance we are excluding prompt tokens
@@ -191,12 +182,12 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     // -- safe defaults
 
-    if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.96;
-    }
-
     if (params.depth <= 0 || params.depth > params.n_predict) {
         params.depth = 200;
+    }
+
+    if (params.scale <= 0.0 || params.scale > 1.0) {
+        params.scale = 0.96;
     }
 
     if (params.hi <= 0.0 || params.hi > 1.0) {
@@ -253,7 +244,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- Assign manually specific penalties for high-frequency tokens
     // TODO: Need more work with real texts and statistical probabilities
 
-    ::scales[0]     = 1.0;   // to be safe
+    ::scales[0]     = 1.0;   // just to be safe
     ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
     ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
@@ -265,16 +256,16 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[29892] = 1.0 - (1.0 - scale) * 0.20; // 29892 => ","
     ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
 
+    ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"
     ::scales[29899] = 1.0 - (1.0 - scale) * 0.30; // 29899 => "-" [ used as bullet point ]
     ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
     ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
-    ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"
 
     ::scales[313]   = 1.0 - (1.0 - scale) * 0.30; // 313   => " ("
     ::scales[467]   = 1.0 - (1.0 - scale) * 0.30; // 467   => ")."
-    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.40; // 1723  => " )"
-    ::scales[29897] = 1.0 - (1.0 - scale) * 0.60; // 29897 => ")"
-    ::scales[29898] = 1.0 - (1.0 - scale) * 0.60; // 29898 => "("
+    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.30; // 1723  => " )"
+    ::scales[29897] = 1.0 - (1.0 - scale) * 0.30; // 29897 => ")"
+    ::scales[29898] = 1.0 - (1.0 - scale) * 0.30; // 29898 => "("
     
     // -- Popular RU parts
 
@@ -351,15 +342,15 @@ llama_token pedanticTokens[] = {
 
     // -- JSON
 
-    426,   // " {"
-    500,   // " }"
-    518,   // " ["
-    4514,  // " ]"
-
     29912, // "{"
     29913, // "}"
     29961, // "["
     29962, // "]"
+
+    426,   // " {"
+    500,   // " }"
+    518,   // " ["
+    4514,  // " ]"
 
     // 376,   //  " ""
     // 613,   // "","
@@ -545,7 +536,7 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    // return; // !!!
+    return; // !!!
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
