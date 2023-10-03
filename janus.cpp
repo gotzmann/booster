@@ -105,15 +105,18 @@ fprintf(stderr, " [[[ 1 ]]] ");
 fprintf(stderr, " [[[ 2 ]]] ");
 fprintf(stderr, " [ diveDepth = %d ] ", diveDepth); 
     for (size_t i = 0; i < diveDepth; i++) {
+        // FIXME: [ id = -1948240008 ]
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
         auto id = last_tokens.data()[ last_tokens.size() - i ];
-        fprintf(stderr, " [ id = %d ] ", id); 
-fprintf(stderr, " [[[ 2+ ]]] "); 
+        fprintf(stderr, " [ id = %d ] ", id);
+        fprintf(stderr, " [ last = %d ] ", last_tokens.size());
+
+fprintf(stderr, " [[[ 2+ ]]] ");
         // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages
         // TODO: Maybe we need to skip the last token itself [ with check of i > 0 ] ?! 
         if ((lastType == SPACE_RU || lastType == LANG_RU) && ::types[id] == LANG_RU) {
             logits[id] *= 1.0 - (1.0 - ::scales[id]) * 0.20;
-fprintf(stderr, " [[[ 2+! ]]] ");             
+fprintf(stderr, " [[[ 2+! ]]] ");
             continue;
         }
 fprintf(stderr, " [[[ 2++ ]]] "); 
