@@ -25,8 +25,9 @@ llama_token llama_sample_token(
                      struct gpt_params & params,
         const std::vector<llama_token> & last_tokens,
          std::vector<llama_token_data> & candidates,
-                               const int pos,
-                               const int max) {                              
+                            const size_t promptLen,
+                            const size_t pos,
+                            const size_t max) {                              
 
     const int n_ctx   = llama_n_ctx(ctx);
     const int n_vocab = llama_n_vocab(ctx);
@@ -40,7 +41,7 @@ llama_token llama_sample_token(
 
     // Experimental sampling both creative for text and pedantic for math / coding
     if (params.janus > 0) {
-        return sample_janus_token(ctx, params, last_tokens, pos, max);
+        return sample_janus_token(ctx, params, last_tokens, promptLen, pos, max);
     }
 
     // Deterministic sampling with great performance
@@ -352,7 +353,7 @@ int64_t do_inference(
     // fprintf(stderr, "]");
 
     // -- DEBUG | Draft RU token statistics research
-    
+
  /*   
     std::string doc = "Ты виртуальная ассистентка. Дай развернутый ответ на вопрос. Используй русский язык!\
 \n\n### Instruction:\n\n\
@@ -580,7 +581,16 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
 
             struct llama_context * guidance = NULL;
             struct llama_grammar * grammar = NULL;
-            llama_token id = llama_sample_token(ctx, guidance, grammar, ::params[idx], last_tokens, candidates, (const int) n_past - n_consumed, (const int) ::params[idx].n_predict);
+            llama_token id = llama_sample_token(
+                ctx,
+                guidance,
+                grammar,
+                ::params[idx],
+                last_tokens,
+                candidates,
+                embd_inp.size(),
+                n_past /* - n_consumed*/,
+                ::params[idx].n_predict);
 
             last_tokens.erase(last_tokens.begin());
             last_tokens.push_back(id);

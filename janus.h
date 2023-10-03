@@ -20,11 +20,12 @@ const int LANG_OTHER = 4;
 const int SPACE_OTHER = 40;
 
 llama_token sample_janus_token(
-        struct llama_context * ctx, 
-        struct gpt_params & params, 
-        const std::vector<llama_token> & last_tokens, 
-        const int pos, 
-        const int max);
+    struct llama_context * ctx, 
+    struct gpt_params & params, 
+    const std::vector<llama_token> & last_tokens, 
+    const size_t promptLen,
+    const size_t pos,
+    const size_t max);
 
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 

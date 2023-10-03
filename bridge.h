@@ -160,14 +160,15 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
 //  - candidates: vector of candidate tokens
 //
 llama_token llama_sample_token(
-                  struct llama_context * ctx,
-                  struct llama_context * ctx_guidance,
-                  struct llama_grammar * grammar,
-                     struct gpt_params & params,
-        const std::vector<llama_token> & last_tokens,
-         std::vector<llama_token_data> & candidates,
-                               const int pos, 
-                               const int max);
+                struct llama_context * ctx,
+                struct llama_context * ctx_guidance,
+                struct llama_grammar * grammar,
+                   struct gpt_params & params,
+      const std::vector<llama_token> & last_tokens,
+       std::vector<llama_token_data> & candidates,
+                        const size_t   promptLen,
+                        const size_t   pos, 
+                        const size_t   max);
 
 std::vector<llama_token> llama_tokenize(struct llama_context * ctx, const std::string & text, bool   add_bos);
 static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);

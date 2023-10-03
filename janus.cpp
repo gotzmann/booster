@@ -28,11 +28,13 @@ float * scales;
 // -- Experimental approach Janus Sampling by gotzmann [ paper is coming ]
 
 llama_token sample_janus_token(
+
         struct llama_context * ctx, 
-        struct gpt_params & params, 
-        const std::vector<llama_token> & last_tokens, 
-        const int pos, 
-        const int max) {
+        struct gpt_params & params,
+        const std::vector<llama_token> & last_tokens,
+        const size_t promptLen,
+        const size_t pos,
+        const size_t max) {
 
     if (!isJanusInitialized) {
         initJanus(ctx, params);
@@ -89,15 +91,17 @@ llama_token sample_janus_token(
     // -- Boost <EOS> token when we are closer to the limit
     //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
-    float mult = 1.0 + log(1.0 + float(pos) / float(max)) * 0.05;
-    logits[EOS] *= mult;
+    logits[EOS] *= 1.0 + log(1.0 + float(pos - promptLen) / float(max)) * 0.05;
 
     // -- Smart pessimization for repeated tokens
+    //    For better performance we are excluding prompt tokens
 
-    for (size_t i = last_tokens.size() - 1; i >= depth; i--) {
-
-        llama_token id = last_tokens.data()[i]; 
-        if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
+    llama_token id;
+    size_t d = std::min(depth, pos - promptLen);
+    for (size_t i = 0; i < d; i++) {
+        //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
+        id = last_tokens.data()[ last_tokens.size() - i ]; 
+        //if (id == 0) break; // stop looping after reaching the end of previously generated tokens 
 
         // well, let just ignore negative probabilities
         // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
@@ -246,6 +250,7 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     // -- Assign manually specific penalties for high-frequency tokens
     // TODO: Need more work with real texts and statistical probabilities
 
+    ::scales[0]     = 1.0;   // to be safe
     ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
     
     ::scales[NL]    = 1.0 - (1.0 - scale) * 0.20; // newline
@@ -539,7 +544,7 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-     return; // !!!
+    // return; // !!!
 
     float * logits = llama_get_logits(ctx);
     const int vocabSize = llama_n_vocab(ctx);
