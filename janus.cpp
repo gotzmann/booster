@@ -36,8 +36,9 @@ llama_token sample_janus_token(
         const size_t pos,
         const size_t max) {
 
-    if (!isJanusInitialized) {
+    if (!::isJanusInitialized) {
         initJanus(ctx, params);
+        ::isJanusInitialized = true;
     }
 
     printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG
