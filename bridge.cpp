@@ -752,9 +752,9 @@ void * initContext(
     
     ::params[idx].seed            = seed;
     
-    //hide();
+    hide();
     auto res = init_context(idx);
-    //show();
+    show();
 
     return res;
 }
