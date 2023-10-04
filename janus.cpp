@@ -54,35 +54,13 @@ llama_token sample_janus_token(
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
+    auto model = llama_get_model(ctx);
     float * logits   = llama_get_logits(ctx);
-    size_t vocabSize = llama_n_vocab(ctx);
-    size_t depth     = params.depth;
-    //float scale      = params.scale;
+    size_t vocabSize = llama_n_vocab(model);
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
    
-/*
-    // -- Normalize all tokens agains their scales before doing anything
-
-    for (size_t i = 1; i < vocabSize; i++) {
-        logits[i] *= scales[i];
-    }
-*/
-/*
-    //auto topType = types[topToken];
-
-    // -- Slightly boost the top token when the word continuation expected
-    //    It should allow better coherence for languages with complex grammar
-
-    if (
-        ((lastType == LANG_RU || lastType == SPACE_RU) && (topType == LANG_EN || topType == LANG_OTHER))
-        ||
-        ((lastType == LANG_EN || lastType == SPACE_EN) && topType == LANG_RU) // Europeans mix ASCII and UTF-8
-    ) {
-        logits[topToken] *= 1.0 + (1.0 / scale - 1.0) * 0.05; 
-    } 
-*/
     // -- Boost <EOS> token when we are closer to the limit
     //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
@@ -92,8 +70,8 @@ llama_token sample_janus_token(
     //    For better performance we are excluding prompt tokens
 
     // TODO: This should work right for the first system prompt, but what's about the next ones [ second, third, etc ] ?!
-    size_t diveDepth = std::min(depth, pos - promptLen);
-    for (size_t i = 0; i < diveDepth; i++) {
+    size_t depth = std::min((size_t) params.depth, pos - promptLen);
+    for (size_t i = 0; i < depth; i++) {
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
         auto id = last_tokens.data()[ last_tokens.size() - 1 - i ];
 
@@ -176,7 +154,8 @@ llama_token sample_janus_token(
 
 void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
-    const int vocabSize = llama_n_vocab(ctx);
+    auto model = llama_get_model(ctx);
+    auto vocabSize = llama_n_vocab(model);
     ::scales = new float[vocabSize] {};
     ::types = new float[vocabSize] {};
 
@@ -517,16 +496,14 @@ bool isLower(const llama_context *ctx, const llama_token token) {
 int tokSize(const llama_context *ctx, const llama_token token) {
     return llama_token_to_str(ctx, token).size();
 }
-
+/*
 // TODO: It's duplicate
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
-
+std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
-
+    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
     if (n_tokens < 0) {
         result.resize(-n_tokens);
-        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
         GGML_ASSERT(check == -n_tokens);
     } else {
         result.resize(n_tokens);
@@ -534,12 +511,13 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 
     return std::string(result.data(), result.size());
 }
-
+*/
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
     return; // !!!
 
+    auto model = llama_get_model(ctx);
     float * logits = llama_get_logits(ctx);
-    const int vocabSize = llama_n_vocab(ctx);
+    const int vocabSize = llama_n_vocab(model);
 
     std::vector<llama_token_data> candidates;
     candidates.clear();
