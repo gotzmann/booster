@@ -317,7 +317,7 @@ int64_t do_inference(
     // tokenize the prompt
     std::vector<llama_token> embd_inp;
     const bool add_bos = llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM;
-    fprintf(stderr, "\n\n add_bos = %d\n\n", add_bos);
+    //fprintf(stderr, "\n\n add_bos = %d\n\n", add_bos);
     embd_inp = llama_tokenize(model, text, add_bos); // leading space IS already there thanks Go preprocessing
 
     // DEBUG
@@ -854,5 +854,3 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
 
     return id;
 }
-
-
