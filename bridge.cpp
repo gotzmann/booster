@@ -483,6 +483,12 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
     std::vector<llama_token> embd;
     std::vector<llama_token> embd_guidance;
 
+    // -- fix hallucinations from previous cache 
+    llama_kv_cache_tokens_rm(ctx, -1, -1);
+    //fprintf(stderr, "\nllama_kv_cache_tokens_rm(ctx, -1, -1)");
+    // llama_kv_cache_tokens_rm(ctx, n_past, -1);
+    //fprintf(stderr, "\nllama_kv_cache_tokens_rm(ctx, %d, -1)", n_past);
+
     // -- batching
 /*
     llama_batch batch = llama_batch_init(n_batch, 0);
@@ -746,9 +752,9 @@ void * initContext(
     
     ::params[idx].seed            = seed;
     
-    hide();
+    //hide();
     auto res = init_context(idx);
-    show();
+    //show();
 
     return res;
 }
