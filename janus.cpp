@@ -54,8 +54,9 @@ llama_token sample_janus_token(
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
+    auto model = llama_get_model(ctx);
     float * logits   = llama_get_logits(ctx);
-    size_t vocabSize = llama_n_vocab(ctx);
+    size_t vocabSize = llama_n_vocab(model);
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
@@ -153,7 +154,8 @@ llama_token sample_janus_token(
 
 void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
-    const int vocabSize = llama_n_vocab(ctx);
+    auto model = llama_get_model(ctx);
+    auto vocabSize = llama_n_vocab(model);
     ::scales = new float[vocabSize] {};
     ::types = new float[vocabSize] {};
 
@@ -494,16 +496,14 @@ bool isLower(const llama_context *ctx, const llama_token token) {
 int tokSize(const llama_context *ctx, const llama_token token) {
     return llama_token_to_str(ctx, token).size();
 }
-
+/*
 // TODO: It's duplicate
-static std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
-
+std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
-
+    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
     if (n_tokens < 0) {
         result.resize(-n_tokens);
-        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
         GGML_ASSERT(check == -n_tokens);
     } else {
         result.resize(n_tokens);
@@ -511,12 +511,13 @@ static std::string llama_token_to_str(const struct llama_context * ctx, llama_to
 
     return std::string(result.data(), result.size());
 }
-
+*/
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
     return; // !!!
 
+    auto model = llama_get_model(ctx);
     float * logits = llama_get_logits(ctx);
-    const int vocabSize = llama_n_vocab(ctx);
+    const int vocabSize = llama_n_vocab(model);
 
     std::vector<llama_token_data> candidates;
     candidates.clear();

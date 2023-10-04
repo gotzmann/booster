@@ -30,7 +30,7 @@ llama_token llama_sample_token(
                             const size_t max) {                              
 
     const int n_ctx   = llama_n_ctx(ctx);
-    const int n_vocab = llama_n_vocab(ctx);
+    const int n_vocab = llama_n_vocab(llama_get_model(ctx));
 
     const int32_t top_k           = params.top_k <= 0 ? n_vocab : params.top_k;
     const int32_t repeat_last_n   = params.repeat_last_n < 0 ? n_ctx : params.repeat_last_n;
@@ -86,19 +86,11 @@ llama_token llama_sample_token(
             }
         }
     }
-/*
-    // -- DEBUG 
-    candidates.clear();
-    for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
-        candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
-    }
-    std::sort(candidates.data(), candidates.data() + candidates.size(), [](const llama_token_data & a, const llama_token_data & b) { return a.logit > b.logit; });
-    printDebug(ctx, candidates, pos, "AFTER PENALTIES"); 
 
     if (grammar != NULL) {
         llama_sample_grammar(ctx, &cur_p, grammar);
     }
-*/
+
     if (params.temp <= 0) {
         // Greedy sampling
         id = llama_sample_token_greedy(ctx, &cur_p);
@@ -106,7 +98,7 @@ llama_token llama_sample_token(
         if (params.mirostat == 1) {
             static float mirostat_mu = 2.0f * params.mirostat_tau;
             const int mirostat_m = 100;
-            llama_sample_temperature(ctx, &cur_p, params.temp);
+            llama_sample_temp(ctx, &cur_p, params.temp);
             id = llama_sample_token_mirostat(ctx, &cur_p, params.mirostat_tau, params.mirostat_eta, mirostat_m, &mirostat_mu);
         } else if (params.mirostat == 2) {
             static float mirostat_mu = 2.0f * params.mirostat_tau;
@@ -114,7 +106,7 @@ llama_token llama_sample_token(
             if (top_k > 0) {
                 llama_sample_top_k(ctx, &cur_p, top_k, 1);
             }
-            llama_sample_temperature(ctx, &cur_p, params.temp);
+            llama_sample_temp(ctx, &cur_p, params.temp);
             id = llama_sample_token_mirostat_v2(ctx, &cur_p, params.mirostat_tau, params.mirostat_eta, &mirostat_mu);
         } else {
             // Temperature sampling
@@ -122,8 +114,8 @@ llama_token llama_sample_token(
             //llama_sample_tail_free  (ctx, &cur_p, tfs_z, 1);
             llama_sample_typical    (ctx, &cur_p, params.typical_p, 1);
             llama_sample_top_p      (ctx, &cur_p, params.top_p, 1);
-            llama_sample_temperature(ctx, &cur_p, params.temp);
-            id = llama_sample_token(ctx, &cur_p);
+            llama_sample_temp       (ctx, &cur_p, params.temp);
+            id = llama_sample_token (ctx, &cur_p);
         }
     }
 
@@ -195,74 +187,56 @@ bool stopInferenceFlags[8];
 
 std::string path_session;
 
+// -- init_context
+
 struct llama_context * init_context(int idx) {
 
-    bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
+    auto modelName = params[idx].model.c_str();
 
-    auto lparams = llama_context_default_params();
+    // -- initialize the model
 
-    //if (isGPU) {
-    //    lparams.mul_mat_q = true; // FIXME: Experimental, move to config!
-    //}
+    llama_model_params settings = llama_model_default_params();
 
-    // NB! [lparams] is of type llama_context_params and have no all parameters from bigger gpt_params
-    //     [params]  is of type gpt_params and has n_threads parameter
+    settings.main_gpu     = ::params[idx].main_gpu;
+    settings.n_gpu_layers = ::params[idx].n_gpu_layers;
+    settings.tensor_split = ::params[idx].tensor_split;
 
-    lparams.n_ctx        = params[idx].n_ctx;
-    //lparams.seed         = params[idx].seed;
-
-    // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
-    // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
-    lparams.n_batch = isGPU ? 512 : params[idx].n_ctx;
-
-    // -- Init GPU inference params right
-
-    // 100% model layers should be placed into the one GPU
-    // and main_gpu (for computing scratch buffers) is always 
-    // the same as GPU for big tensors compute
-
-    // int32_t n_gpu_layers;                    // number of layers to store in VRAM
-    // int32_t main_gpu;                        // the GPU that is used for scratch and small tensors
-    // float   tensor_split[LLAMA_MAX_DEVICES]; // how to split layers across multiple GPUs
-
-    lparams.main_gpu = params[idx].main_gpu;
-    lparams.n_gpu_layers = params[idx].n_gpu_layers;
-
-    //for (size_t i = 0; i < LLAMA_MAX_DEVICES; ++i) {
-    //    lparams.tensor_split[i] = 0.0f;
-    //}
-
-    //lparams.tensor_split[0] = params[idx].tensor_split[0];
-    //lparams.tensor_split[1] = params[idx].tensor_split[1];
-
-    lparams.tensor_split = params[idx].tensor_split;
-
-    fprintf(stderr, "== %s: n_ctx = %d\n", __func__, (int) lparams.n_ctx);
-    fprintf(stderr, "== %s: n_batch = %d\n", __func__, (int) lparams.n_batch);
-    //fprintf(stderr, "\n== %s: params[%d].main_gpu = %d\n", __func__, (int) idx, (int) params[idx].main_gpu);
-    //fprintf(stderr, "== %s: params[%d].gpu_layers = %d\n\n", __func__, (int) idx, (int) params[idx].n_gpu_layers);
-
-    llama_model * model  = llama_load_model_from_file(params[idx].model.c_str(), lparams);
+    llama_model * model = llama_load_model_from_file(modelName, settings);
     if (model == NULL) {
-        fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, params[idx].model.c_str());
+        fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, modelName);
         // return std::make_tuple(nullptr, nullptr);
         return NULL;
     }
 
     models[idx] = model;
 
-    llama_context * lctx = llama_new_context_with_model(model, lparams);
-    if (lctx == NULL) {
-        fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, params[idx].model.c_str());
+    // -- initialize the context
+
+    auto defaults = llama_context_default_params();
+
+    defaults.n_ctx           = ::params[idx].n_ctx;
+    defaults.seed            = ::params[idx].seed;
+    defaults.n_threads       = ::params[idx].n_threads;
+    defaults.n_threads_batch = ::params[idx].n_threads_batch;
+
+    // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
+    // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
+
+    bool isGPU = ::params[idx].n_gpu_layers > 0 ? true : false;
+    defaults.n_batch = isGPU ? 512 : ::params[idx].n_ctx;
+
+    llama_context * ctx = llama_new_context_with_model(model, defaults);
+    if (ctx == NULL) {
+        fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, modelName);
         llama_free_model(model);
         // return std::make_tuple(nullptr, nullptr);
         return NULL;
     }
 
-    contexts[idx] = lctx;
+    contexts[idx] = ctx;
 
     // return std::make_tuple(model, lctx);
-    return lctx;
+    return ctx;
 }
 
 // Process prompt and compute output, return total number of tokens processed
@@ -275,11 +249,15 @@ int64_t do_inference(
     const std::string & text) {
 
     stopInferenceFlags[idx] = false;
-    bool isGPU = params[idx].n_gpu_layers > 0 ? true : false;
-    // llama_token BOS = llama_token_bos(ctx); 
-    // llama_token EOS = llama_token_eos(ctx);
 
     llama_reset_timings(ctx);
+
+    bool isGPU     = params[idx].n_gpu_layers > 0 ? true : false;
+    auto model     = models[idx];
+    auto vocabSize = llama_n_vocab(model);
+    
+    // llama_token BOS = llama_token_bos(ctx); 
+    // llama_token EOS = llama_token_eos(ctx);
 
     std::string sessionFile;
     if (!isGPU &&
@@ -291,9 +269,8 @@ int64_t do_inference(
 
     // FIXME: Do not always use RANDOM seed
     //if (::params[idx].seed <= 0) {
-        ::params[idx].seed = time(NULL);
+    ::params[idx].seed = time(NULL);
     //}
-
     llama_set_rng_seed(ctx, ::params[idx].seed);
 
     // --- SESSIONS ---
@@ -313,11 +290,8 @@ int64_t do_inference(
         if (fp != NULL) {
             std::fclose(fp);
 
-            // FIXME: Allow to store 2x context size to allow experiments with context swap, etc...
-            // session_tokens.resize(2 * params[idx].n_ctx);
-
             session_tokens.resize(params[idx].n_ctx);
-            fprintf(stderr, "%s: session_tokens capacity = %d tokens\n", __func__, (int) session_tokens.capacity());
+            //fprintf(stderr, "%s: session_tokens capacity = %d tokens\n", __func__, (int) session_tokens.capacity());
 
             size_t n_token_count_out = 0;
             if (!llama_load_session_file(ctx, /*path_session*/sessionFile.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
@@ -342,8 +316,9 @@ int64_t do_inference(
 
     // tokenize the prompt
     std::vector<llama_token> embd_inp;
-    embd_inp = ::llama_tokenize(ctx, text, true); // leading space IS already there thanks Go preprocessing
-    // embd_inp = ::llama_tokenize(ctx, text, false); // leading space IS already there thanks Go preprocessing
+    const bool add_bos = llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM;
+    fprintf(stderr, "\n\n add_bos = %d\n\n", add_bos);
+    embd_inp = llama_tokenize(model, text, add_bos); // leading space IS already there thanks Go preprocessing
 
     // DEBUG
     // fprintf(stderr, "\n\nTOKENS: [ ");
@@ -508,8 +483,34 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
     std::vector<llama_token> embd;
     std::vector<llama_token> embd_guidance;
 
+    // -- batching
+/*
+    llama_batch batch = llama_batch_init(n_batch, 0);
+    batch.n_tokens = embd_inp.size();
+
+    for (int32_t i = 0; i < batch.n_tokens; i++) {
+        batch.token[i]  = embd_inp[i];
+        batch.pos[i]    = i;
+        batch.seq_id[i] = 0;
+        batch.logits[i] = false;
+    }
+
+    // llama_decode will output logits only for the last token of the prompt
+    batch.logits[batch.n_tokens - 1] = true;
+*/
     // -- MAIN LOOP --
 
+/* NEWER
+
+    int n_cur    = batch.n_tokens;
+    int n_decode = 0;
+
+    const auto t_main_start = ggml_time_us();
+
+    // total length of the sequence including the prompt
+    const int n_len = 32;
+    while (n_cur <= n_len) {
+*/
     while (n_remain && 
         n_past < (n_ctx - 4) &&
         !stopInferenceFlags[idx]) { 
@@ -539,6 +540,9 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
                 if (i > 0) {
                     embd.erase(embd.begin(), embd.begin() + i);
                 }
+
+                // remove any "future" tokens that we might have inherited from the session from the KV cache
+                llama_kv_cache_tokens_rm(ctx, n_past, -1);
             }
 
             // evaluate tokens in batches
@@ -553,7 +557,8 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
                     n_eval = n_batch;
                 }
 
-                if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
+                // WAS: if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
+                if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
                     fprintf(stderr, "%s : failed to eval\n", __func__);
                     return 0;
                 }
@@ -577,7 +582,7 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
             // --- out of user input, sample next token
 
             std::vector<llama_token_data> candidates;
-            candidates.reserve(llama_n_vocab(ctx));
+            candidates.reserve(vocabSize);
 
             struct llama_context * guidance = NULL;
             struct llama_grammar * grammar = NULL;
@@ -694,6 +699,7 @@ void init(char * sessionPath) {
     llama_backend_init(false); // NUMA = false
 }
 
+// TODO: support n_threads_batch
 void * initContext(
     int idx, 
     char * modelName, 
@@ -707,37 +713,38 @@ void * initContext(
     int32_t janus, int32_t depth, float scale, float hi, float lo,
     int32_t seed) {
     
-    ::params[idx].model          = modelName;
-    ::params[idx].n_threads      = threads;
+    ::params[idx].model           = modelName;
+    ::params[idx].n_threads       = threads;
+    ::params[idx].n_threads_batch = ::params[idx].n_threads_batch == -1 ? threads : ::params[idx].n_threads_batch;
 
-    ::params[idx].main_gpu       = 0; // TODO: Main GPU depending on tensor split
-    ::params[idx].n_gpu_layers   = gpu1 + gpu2;
+    ::params[idx].main_gpu        = 0; // TODO: Main GPU depending on tensor split
+    ::params[idx].n_gpu_layers    = gpu1 + gpu2;
     ::params[idx].tensor_split[0] = gpu1;
     ::params[idx].tensor_split[1] = gpu2;
 
-    ::params[idx].n_ctx          = context;
-    ::params[idx].n_predict      = predict;
+    ::params[idx].n_ctx           = context;
+    ::params[idx].n_predict       = predict;
 
-    ::params[idx].mirostat       = mirostat;
-    ::params[idx].mirostat_tau   = mirostat_tau; 
-    ::params[idx].mirostat_eta   = mirostat_eta;
+    ::params[idx].mirostat        = mirostat;
+    ::params[idx].mirostat_tau    = mirostat_tau; 
+    ::params[idx].mirostat_eta    = mirostat_eta;
 
-    ::params[idx].temp           = temp;
-    ::params[idx].top_k          = top_k;
-    ::params[idx].top_p          = top_p;
+    ::params[idx].temp            = temp;
+    ::params[idx].top_k           = top_k;
+    ::params[idx].top_p           = top_p;
 
-    ::params[idx].typical_p      = typical_p > 0 ? typical_p : 1.0f;
+    ::params[idx].typical_p       = typical_p > 0 ? typical_p : 1.0f;
 
-    ::params[idx].repeat_penalty = repeat_penalty;
-    ::params[idx].repeat_last_n  = repeat_last_n;
+    ::params[idx].repeat_penalty  = repeat_penalty;
+    ::params[idx].repeat_last_n   = repeat_last_n;
 
-    ::params[idx].janus          = janus;
-    ::params[idx].depth          = depth;
-    ::params[idx].scale          = scale;
-    ::params[idx].hi             = hi;
-    ::params[idx].lo             = lo;
+    ::params[idx].janus           = janus;
+    ::params[idx].depth           = depth;
+    ::params[idx].scale           = scale;
+    ::params[idx].hi              = hi;
+    ::params[idx].lo              = lo;
     
-    ::params[idx].seed           = seed;
+    ::params[idx].seed            = seed;
     
     //hide();
     auto res = init_context(idx);
@@ -790,17 +797,21 @@ int64_t timing(char * jobID) {
 
 }  // ------------------------------------------------------
 
+//
+// Vocab utils
+//
+
 std::vector<llama_token> llama_tokenize(
-        struct llama_context * ctx,
+    const struct llama_model * model,
            const std::string & text,
                         bool   add_bos) {
     // upper limit for the number of tokens
     int n_tokens = text.length() + add_bos;
     std::vector<llama_token> result(n_tokens);
-    n_tokens = llama_tokenize(ctx, text.data(), text.length(), result.data(), result.size(), add_bos);
+    n_tokens = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos);
     if (n_tokens < 0) {
         result.resize(-n_tokens);
-        int check = llama_tokenize(ctx, text.data(), text.length(), result.data(), result.size(), add_bos);
+        int check = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos);
         GGML_ASSERT(check == -n_tokens);
     } else {
         result.resize(n_tokens);
@@ -810,10 +821,10 @@ std::vector<llama_token> llama_tokenize(
 
 std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
+    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
     if (n_tokens < 0) {
         result.resize(-n_tokens);
-        int check = llama_token_to_piece(ctx, token, result.data(), result.size());
+        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
         GGML_ASSERT(check == -n_tokens);
     } else {
         result.resize(n_tokens);
