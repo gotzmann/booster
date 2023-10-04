@@ -1,27 +1,13 @@
 package main
 
 // TODO: Init Janus Sampling from CLI
-// TODO: Show real port => [ INIT ] REST API running on localhost:8080
-// TODO: Hardcode RANDOM seed for ALL generations
-// TODO: Rename --mirostat-lr N: Set the Mirostat learning rate, parameter eta (default: 0.1).
-// TODO: Rename --mirostat-ent N: Set the Mirostat target entropy, parameter tau (default: 5.0).
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
 // TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
-// TODO: Option to disable params.use_mmap
 // TODO: Replace [ END ] token with some UTF visual sign (end of the paragraph, etc.)
-// TODO: Read mirostat paper https://arxiv.org/pdf/2007.14966.pdf
-// TODO: Support instruct prompts for Vicuna and other
-// TODO: model = 13B/ggml-model-q4_0.bin + TopK = 40 + seed = 1683553932 => Why Golang is not so popular in Pakistan?
-// TODO: TopP and TopK as CLI parameters
-// Perplexity graph for different models https://github.com/ggerganov/llama.cpp/pull/1004
-// Yet another graph, LLaMA 7B, 30B, 65B | 4Q | F16  https://github.com/ggerganov/llama.cpp/pull/835
-// Read about quantization and perplexity experiments https://github.com/saharNooby/rwkv.cpp/issues/12
 // wiki-raw datasets https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/
-// Perplexity for all models https://github.com/ggerganov/llama.cpp/discussions/406
-// GPTQ vs RTN Perplexity https://github.com/qwopqwop200/GPTQ-for-LLaMa
 
 /*
 #include <stdlib.h>
@@ -57,7 +43,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.28.0"
+const VERSION = "0.29.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -77,8 +63,8 @@ type Options struct {
 	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
 	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`
 	Mirostat      uint32  `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
-	MirostatTAU   float32 `long:"mirostat-tau" description:"Mirostat TAU value [ 0.1 by default ]"`
-	MirostatETA   float32 `long:"mirostat-eta" description:"Mirostat ETA value [ 0.1 by default ]"`
+	MirostatENT   float32 `long:"mirostat-ent" description:"Mirostat target entropy or TAU value [ 0.1 by default ]"`
+	MirostatLR    float32 `long:"mirostat-lr" description:"Mirostat Learning Rate or ETA value [ 0.1 by default ]"`
 	Temp          float32 `long:"temp" description:"Model temperature hyper parameter [ 0.1 by default ]"`
 	TopK          int     `long:"top-k" description:"TopK parameter for the model [ 8 by default ]"`
 	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.4 by default ]"`
@@ -225,7 +211,7 @@ func main() {
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
 			int(opts.Context), int(opts.Predict),
-			opts.Mirostat, opts.MirostatTAU, opts.MirostatETA,
+			opts.Mirostat, opts.MirostatENT, opts.MirostatLR,
 			opts.Temp, opts.TopK, opts.TopP,
 			opts.TypicalP,
 			opts.RepeatPenalty, opts.RepeatLastN,
@@ -271,12 +257,7 @@ func main() {
 		}()
 	}
 
-	if !opts.Server || opts.Debug {
-		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", opts.Host, opts.Port)
-	}
-	log.Infof("[START] REST API running on %s:%s", opts.Host, opts.Port)
-
-	server.Run()
+	server.Run(!opts.Server || opts.Debug)
 }
 
 func parseOptions() *Options {
@@ -298,10 +279,6 @@ func parseOptions() *Options {
 		Colorize("\n[magenta][ ERROR ][white] Please specify correct prompt with [light_magenta]--prompt[white] parameter!\n\n")
 		os.Exit(0)
 	}
-
-	// if opts.Pods == 0 {
-	// 	  opts.Pods = 1
-	// }
 
 	// Allow to use ALL cores for the program itself and CLI specified number of cores for the parallel tensor math
 	// TODO Optimize default settings for CPUs with P and E cores like M1 Pro = 8 performant and 2 energy cores
@@ -326,12 +303,12 @@ func parseOptions() *Options {
 		opts.Predict = 1024
 	}
 
-	if opts.MirostatTAU == 0 {
-		opts.MirostatTAU = 0.1
+	if opts.MirostatENT == 0 {
+		opts.MirostatENT = 0.1
 	}
 
-	if opts.MirostatETA == 0 {
-		opts.MirostatETA = 0.1
+	if opts.MirostatLR == 0 {
+		opts.MirostatLR = 0.1
 	}
 
 	if opts.Temp == 0 {

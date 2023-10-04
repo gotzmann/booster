@@ -56,33 +56,10 @@ llama_token sample_janus_token(
 
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(ctx);
-    size_t depth     = params.depth;
-    //float scale      = params.scale;
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
    
-/*
-    // -- Normalize all tokens agains their scales before doing anything
-
-    for (size_t i = 1; i < vocabSize; i++) {
-        logits[i] *= scales[i];
-    }
-*/
-/*
-    //auto topType = types[topToken];
-
-    // -- Slightly boost the top token when the word continuation expected
-    //    It should allow better coherence for languages with complex grammar
-
-    if (
-        ((lastType == LANG_RU || lastType == SPACE_RU) && (topType == LANG_EN || topType == LANG_OTHER))
-        ||
-        ((lastType == LANG_EN || lastType == SPACE_EN) && topType == LANG_RU) // Europeans mix ASCII and UTF-8
-    ) {
-        logits[topToken] *= 1.0 + (1.0 / scale - 1.0) * 0.05; 
-    } 
-*/
     // -- Boost <EOS> token when we are closer to the limit
     //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
@@ -92,8 +69,8 @@ llama_token sample_janus_token(
     //    For better performance we are excluding prompt tokens
 
     // TODO: This should work right for the first system prompt, but what's about the next ones [ second, third, etc ] ?!
-    size_t diveDepth = std::min(depth, pos - promptLen);
-    for (size_t i = 0; i < diveDepth; i++) {
+    size_t depth = std::min((size_t) params.depth, pos - promptLen);
+    for (size_t i = 0; i < depth; i++) {
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
         auto id = last_tokens.data()[ last_tokens.size() - 1 - i ];
 

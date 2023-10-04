@@ -50,7 +50,6 @@ import (
 	"time"
 	"unsafe"
 
-	//"github.com/gofiber/fiber/v2"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/goodsign/monday"
 	"github.com/google/uuid"
@@ -69,7 +68,6 @@ import (
 // TODO: Guard access with API Tokens
 // TODO: Each use of C.CString() should be complemented with C.free() operation
 // TODO: GetStatus - update partial output if processing within C++ core
-// TODO: Looks like all generations use THE SAME seed?
 
 // Unix timestamps VS ISO-8601 Stripe perspective:
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
@@ -543,7 +541,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 
 // --- init and run Fiber server
 
-func Run() {
+func Run(showStatus bool) {
 
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
@@ -557,6 +555,12 @@ func Run() {
 	app.Get("/health", GetHealth)
 
 	go Engine(app)
+
+	if showStatus {
+		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", Host, Port)
+	}
+
+	log.Infof("[START] REST API running on %s:%s", Host, Port)
 
 	err := app.Listen(Host + ":" + Port)
 	if err != nil {
