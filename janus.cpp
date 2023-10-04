@@ -513,7 +513,7 @@ std::string llama_token_to_str(const struct llama_context * ctx, llama_token tok
 }
 */
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    // return; // !!!
+    return; // !!!
 
     auto model = llama_get_model(ctx);
     float * logits = llama_get_logits(ctx);
