@@ -6,7 +6,7 @@
 
 # nvcc --list-gpu-arch
 # https://developer.nvidia.com/cuda-gpus
-# NVCCFLAGS += -arch=sm_86
+# NVCCFLAGS += -arch=sm_86 -std=c++11
 
 # clean: rm -f *.a bridge.o janus.o llamazoo
 
@@ -25,10 +25,10 @@ mac: bridge.o janus.o ggml.o ggml-alloc.o llama.o k_quants.o ggml-metal.o $(OBJS
 	CGO_ENABLED=1 go build llamazoo.go
 
 bridge.o: bridge.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -std=c++17 -c $< -o $@
 
 janus.o: janus.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -std=c++17 -c $< -o $@
 
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = main quantize quantize-stats perplexity embedding vdot q8dot train-text-from-scratch convert-llama2c-to-ggml simple batched save-load-state server embd-input-test gguf llama-bench baby-llama beam-search speculative infill benchmark-matmult parallel finetune export-lora tests/test-c.o
@@ -141,8 +141,8 @@ endif
 
 # keep standard at C11 and C++11
 MK_CPPFLAGS = -I. -Icommon
-MK_CFLAGS   = -std=c17   -fPIC
-MK_CXXFLAGS = -std=c++17 -fPIC
+MK_CFLAGS   = -std=c11   -fPIC
+MK_CXXFLAGS = -std=c++11 -fPIC
 
 # -Ofast tends to produce faster code, but may not be available for some compilers.
 ifdef LLAMA_FAST
