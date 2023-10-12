@@ -561,7 +561,7 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
                 }
 
                 // remove any "future" tokens that we might have inherited from the session from the KV cache
-                // llama_kv_cache_tokens_rm(ctx, n_past, -1); // FIXME: Not needed?
+                llama_kv_cache_tokens_rm(ctx, n_past, -1); // FIXME: Not needed?
             }
 
             // evaluate tokens in batches
