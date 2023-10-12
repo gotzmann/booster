@@ -22,7 +22,7 @@ llama_token llama_sample_token(
                   struct llama_context * ctx,
                   struct llama_context * ctx_guidance,
                   struct llama_grammar * grammar,
-                     struct gpt_params & params,
+          struct llama_sampling_params & params,
         const std::vector<llama_token> & last_tokens,
          std::vector<llama_token_data> & candidates,
                             const size_t promptLen,
@@ -173,11 +173,12 @@ void show() {
     freopen(TTY_DEVICE, "w", stderr);
 }
 
-// --- Global params for all pods. Do anyone needs more than 8 pods per machine?
+// --- Globals for all pods. Do anyone needs more than 8 pods per machine?
 
-gpt_params params[8];
-llama_model * models[8];
-llama_context * contexts[8];
+gpt_params params[8];             // main params 
+llama_sampling_params sparams[8]; // sampling params
+llama_model * models[8];          // models
+llama_context * contexts[8];      // contexts
 
 // Flags to stop particular inference thread from the Go code
 
@@ -457,6 +458,9 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
             fprintf(stderr, "%s: session file matches %zu / %zu tokens of prompt\n",
                 __func__, n_matching_session_tokens, embd_inp.size());
         }
+
+        // remove any "future" tokens that we might have inherited from the previous session
+        llama_kv_cache_tokens_rm(ctx, n_matching_session_tokens, -1);
     }
 
     // if we will use the cache for the full prompt without reaching the end of the cache, force
@@ -483,7 +487,9 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
     std::vector<llama_token> embd;
     std::vector<llama_token> embd_guidance;
 
-    // -- fix hallucinations from previous cache 
+    // llama_sampling_context ctx_sampling = llama_sampling_context_init(params, grammar);
+
+    // -- fix hallucinations from previously polluted cache 
     llama_kv_cache_tokens_rm(ctx, -1, -1);
     //fprintf(stderr, "\nllama_kv_cache_tokens_rm(ctx, -1, -1)");
     // llama_kv_cache_tokens_rm(ctx, n_past, -1);
@@ -548,7 +554,7 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
                 }
 
                 // remove any "future" tokens that we might have inherited from the session from the KV cache
-                llama_kv_cache_tokens_rm(ctx, n_past, -1);
+                // llama_kv_cache_tokens_rm(ctx, n_past, -1); // FIXME: Not needed?
             }
 
             // evaluate tokens in batches
@@ -596,12 +602,16 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
                 ctx,
                 guidance,
                 grammar,
-                ::params[idx],
+                ::sparams[idx],
                 last_tokens,
                 candidates,
                 embd_inp.size(),
                 n_past /* - n_consumed*/,
                 ::params[idx].n_predict);
+
+            // FIXME: New format
+            // TODO: Learn sampling.h / sampling.cpp
+            // const llama_token id = llama_sampling_sample(ctx, ctx_guidance, ctx_sampling, last_tokens, candidates);
 
             last_tokens.erase(last_tokens.begin());
             last_tokens.push_back(id);
@@ -731,24 +741,28 @@ void * initContext(
     ::params[idx].n_ctx           = context;
     ::params[idx].n_predict       = predict;
 
-    ::params[idx].mirostat        = mirostat;
-    ::params[idx].mirostat_tau    = mirostat_tau; 
-    ::params[idx].mirostat_eta    = mirostat_eta;
+    // -- Janus sampling
 
-    ::params[idx].temp            = temp;
-    ::params[idx].top_k           = top_k;
-    ::params[idx].top_p           = top_p;
+    ::sparams[idx].janus           = janus;
+    ::sparams[idx].depth           = depth;
+    ::sparams[idx].scale           = scale;
+    ::sparams[idx].hi              = hi;
+    ::sparams[idx].lo              = lo;
 
-    ::params[idx].typical_p       = typical_p > 0 ? typical_p : 1.0f;
+    // -- other samplings
 
-    ::params[idx].repeat_penalty  = repeat_penalty;
-    ::params[idx].repeat_last_n   = repeat_last_n;
+    ::sparams[idx].mirostat        = mirostat;
+    ::sparams[idx].mirostat_tau    = mirostat_tau; 
+    ::sparams[idx].mirostat_eta    = mirostat_eta;
 
-    ::params[idx].janus           = janus;
-    ::params[idx].depth           = depth;
-    ::params[idx].scale           = scale;
-    ::params[idx].hi              = hi;
-    ::params[idx].lo              = lo;
+    ::sparams[idx].temp            = temp;
+    ::sparams[idx].top_k           = top_k;
+    ::sparams[idx].top_p           = top_p;
+
+    ::sparams[idx].typical_p       = typical_p > 0 ? typical_p : 1.0f;
+
+    ::sparams[idx].repeat_penalty  = repeat_penalty;
+    ::sparams[idx].repeat_last_n   = repeat_last_n;
     
     ::params[idx].seed            = seed;
     
