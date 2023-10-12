@@ -154,6 +154,9 @@ std::unordered_map<std::string, int64_t> promptEvals;
 // Map of vectors storing OUTPUT token evaluation timings [ in milliseconds ]
 std::unordered_map<std::string, int64_t> timings;
 
+// Map of vectors storing seeds for RNG
+std::unordered_map<std::string, uint32_t> seeds;
+
 // Map of vectors storing PROMPT token count
 std::unordered_map<std::string, int64_t> promptTokenCount;
 
@@ -268,12 +271,16 @@ int64_t do_inference(
         sessionFile = path_session + '/' + sessionID;
     }
 
-    // FIXME: Do not always use RANDOM seed
+    // TODO: Do not always use RANDOM seed ?!
     //if (::params[idx].seed <= 0) {
-    ::params[idx].seed = time(NULL);
+    auto seed = time(NULL);
+    llama_set_rng_seed(ctx, seed);
+    mutex.lock();
+    ::params[idx].seed = seed;
+    ::seeds[jobID] = seed;
+    mutex.unlock();
     //}
-    llama_set_rng_seed(ctx, ::params[idx].seed);
-
+    
     // --- SESSIONS ---
 
     //std::string path_session = "./session.data.bin";
@@ -708,6 +715,14 @@ int64_t timingCPP(const std::string & jobID) {
     return res;
 }
 
+// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+uint32_t getSeedCPP(const std::string & jobID) {
+    mutex.lock_shared();
+    uint32_t res = ::seeds[jobID];
+    mutex.unlock_shared();
+    return res;
+}
+
 extern "C" { // ------------------------------------------------------
 
 void init(char * sessionPath) {
@@ -727,7 +742,7 @@ void * initContext(
     float typical_p, 
     float repeat_penalty, int repeat_last_n,
     int32_t janus, int32_t depth, float scale, float hi, float lo,
-    int32_t seed) {
+    uint32_t seed) {
     
     ::params[idx].model           = modelName;
     ::params[idx].n_threads       = threads;
@@ -813,6 +828,11 @@ int64_t getPromptTokenCount(char * jobID) {
 int64_t timing(char * jobID) {
     std::string id = jobID;
     return timingCPP(id);
+}
+
+uint32_t getSeed(char * jobID) {
+    std::string id = jobID;
+    return getSeedCPP(id);
 }
 
 }  // ------------------------------------------------------

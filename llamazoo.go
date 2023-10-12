@@ -13,6 +13,7 @@ package main
 #include <stdlib.h>
 #include <stdint.h>
 const char * status(char * jobID);
+uint32_t getSeed(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 #cgo linux CFLAGS:   -std=c17   -O3 -I.           -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include
 #cgo linux CXXFLAGS: -std=c++17 -O3 -I. -Icommon  -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include
@@ -43,7 +44,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.32.0"
+const VERSION = "0.33.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -237,7 +238,7 @@ func main() {
 						output = output[1:]
 					}
 
-					Colorize("\n[light_magenta]%s [light_green][ %s ] [dark_gray][ %s ] [dark_gray]%d => %d tokens | %d => %d ms.[light_blue]\n\n%s\n",
+					Colorize("\n[light_magenta]%s [light_green][ %s ] [dark_gray][ %s ] [dark_gray]%d => %d tokens | %d => %d ms. | seed %d [light_blue]\n\n%s\n",
 						job.ID,
 						job.Status,
 						job.Model,
@@ -245,6 +246,7 @@ func main() {
 						job.OutputTokenCount,
 						job.PromptEval,
 						job.TokenEval,
+						C.getSeed(C.CString(job.ID)),
 						output)
 				}
 

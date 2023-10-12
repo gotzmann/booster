@@ -228,6 +228,7 @@ const char * statusCPP(const std::string & jobID);
 int64_t promptEvalCPP(const std::string & jobID);
 int64_t getPromptTokenCountCPP(const std::string & jobID);
 int64_t timingCPP(const std::string & jobID);
+uint32_t getSeedCPP(const std::string & jobID);
 
 extern "C" { // -----    
 
@@ -248,7 +249,7 @@ void * initContext(
 	float scale,
 	float hi,
 	float lo,
-    int32_t seed);
+    uint32_t seed);
 
 int64_t doInference(
     int idx, 
@@ -261,7 +262,8 @@ void stopInference(int idx);
 const char * status(char * jobID);
 int64_t promptEval(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
-int64_t timing(char * jobID);   
+int64_t timing(char * jobID);  
+uint32_t getSeed(char * jobID);  
 
 } // ------- extern "C"
 
