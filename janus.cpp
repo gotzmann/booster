@@ -32,7 +32,7 @@ float * types;  // precoputed types for each token
 llama_token sample_janus_token(
 
         struct llama_context * ctx, 
-        struct gpt_params & params,
+        struct llama_sampling_params & params,
         const std::vector<llama_token> & last_tokens,
         const size_t promptLen,
         const size_t pos,
@@ -54,9 +54,10 @@ llama_token sample_janus_token(
 
     //const int64_t t_start_sample_us = ggml_time_us();
 
-    auto model = llama_get_model(ctx);
+    auto model       = llama_get_model(ctx);
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(model);
+    auto scale       = params.scale;
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
@@ -64,7 +65,7 @@ llama_token sample_janus_token(
     // -- Boost <EOS> token when we are closer to the limit
     //    NB! It looks like it enough just do not penalize it at all [ allowing scale == 1.0 ] ?
 
-    logits[EOS] *= 1.0 + log(1.0 + float(pos - promptLen) / float(max)) * 0.03;
+    logits[EOS] *= 1.0 + log(1.0 + float(pos - promptLen) / float(max)) * 0.05;
 
     // -- Smart pessimization for repeated tokens
     //    For better performance we are excluding prompt tokens
@@ -87,7 +88,7 @@ llama_token sample_janus_token(
         logits[id] *= ::scales[id];       
     }
    
-    // -- Double down incompatible tokens (like word endings in some other language)
+    // -- Triple down incompatible tokens (like word endings in some other language)
 
     for (size_t id = 0; id < vocabSize; id++) {
         auto curType = ::types[id];
@@ -98,7 +99,7 @@ llama_token sample_janus_token(
             ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // Europeans mix ASCII and UTF-8
         ) {
             // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
-            logits[id] *= 0.50; 
+            logits[id] *= scale * scale * scale; 
         }
     }        
    
@@ -152,7 +153,7 @@ llama_token sample_janus_token(
 
 // -- initJanus prefills base scaling penalties for each token depending on Janus Sampling euristics
 
-void initJanus(struct llama_context * ctx, struct gpt_params & params) {
+void initJanus(struct llama_context * ctx, struct llama_sampling_params & params) {
 
     auto model = llama_get_model(ctx);
     auto vocabSize = llama_n_vocab(model);
@@ -161,9 +162,9 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
 
     // -- safe defaults
 
-    if (params.depth <= 0 || params.depth > params.n_predict) {
-        params.depth = 200;
-    }
+    //if (params.depth <= 0 || params.depth > params.n_predict) {
+    //    params.depth = 200;
+    //}
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
         params.scale = 0.96;
@@ -231,8 +232,8 @@ void initJanus(struct llama_context * ctx, struct gpt_params & params) {
     ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
     ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
 
-    ::scales[29871] = 1.0 - (1.0 - scale) * 0.20; // 29871 => " "
-    ::scales[29892] = 1.0 - (1.0 - scale) * 0.20; // 29892 => ","
+    ::scales[29871] = 1.0 - (1.0 - scale) * 0.10; // 29871 => " "
+    ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
     ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
 
     ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"

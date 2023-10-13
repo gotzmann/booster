@@ -1,3 +1,5 @@
+#pragma once
+
 #include "llama.h"
 #include <string>
 #include <vector>
@@ -21,7 +23,7 @@ const int SPACE_OTHER = 40;
 
 llama_token sample_janus_token(
     struct llama_context * ctx, 
-    struct gpt_params & params, 
+    struct llama_sampling_params & params, 
     const std::vector<llama_token> & last_tokens, 
     const size_t promptLen,
     const size_t pos,
@@ -34,5 +36,5 @@ bool isPedantic(llama_token id);
 bool isLower(const llama_context *ctx, const llama_token token);
 int tokType(const llama_context *ctx, const llama_token token);
 int tokSize(const llama_context *ctx, const llama_token token);
-void initJanus(struct llama_context * ctx, struct gpt_params & params);
+void initJanus(struct llama_context * ctx, struct llama_sampling_params & params);
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text);
