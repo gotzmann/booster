@@ -326,7 +326,7 @@ int64_t do_inference(
     std::vector<llama_token> embd_inp;
     const bool add_bos = llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM;
     //fprintf(stderr, "\n\n add_bos = %d\n\n", add_bos);
-    embd_inp = llama_tokenize(model, text, add_bos); // leading space IS already there thanks Go preprocessing
+    embd_inp = llama_tokenize(model, text, add_bos, true);
 
     // DEBUG
     // fprintf(stderr, "\n\nTOKENS: [ ");
@@ -844,14 +844,15 @@ uint32_t getSeed(char * jobID) {
 std::vector<llama_token> llama_tokenize(
     const struct llama_model * model,
            const std::string & text,
-                        bool   add_bos) {
+                        bool   add_bos,
+                        bool   special) {
     // upper limit for the number of tokens
     int n_tokens = text.length() + add_bos;
     std::vector<llama_token> result(n_tokens);
-    n_tokens = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos);
+    n_tokens = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos, special);
     if (n_tokens < 0) {
         result.resize(-n_tokens);
-        int check = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos);
+        int check = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos, special);
         GGML_ASSERT(check == -n_tokens);
     } else {
         result.resize(n_tokens);
@@ -893,4 +894,25 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
     //}
 
     return id;
+}
+
+void llama_batch_clear(struct llama_batch & batch) {
+    batch.n_tokens = 0;
+}
+
+void llama_batch_add(
+                 struct llama_batch & batch,
+                        llama_token   id,
+                          llama_pos   pos,
+    const std::vector<llama_seq_id> & seq_ids,
+                               bool   logits) {
+    batch.token   [batch.n_tokens] = id;
+    batch.pos     [batch.n_tokens] = pos,
+    batch.n_seq_id[batch.n_tokens] = seq_ids.size();
+    for (size_t i = 0; i < seq_ids.size(); ++i) {
+        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
+    }
+    batch.logits  [batch.n_tokens] = logits;
+
+    batch.n_tokens++;
 }

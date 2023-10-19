@@ -1,12 +1,12 @@
 # How to remove older files and build fresh executable?
-# make clean && LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.2 CUDA_DOCKER_ARCH=sm_86 make <platform>
+# make clean && LLAMA_CUBLAS=1 CUDA_PATH=/usr/local/cuda-12.2 CUDA_DOCKER_ARCH=sm_80 make <platform>
 
 # How to run server with debug output?
 # ./llamazoo --server --debug
 
 # nvcc --list-gpu-arch
 # https://developer.nvidia.com/cuda-gpus
-# NVCCFLAGS += -arch=sm_86 -std=c++11
+# NVCCFLAGS += -arch=sm_80 -std=c++11
 
 # clean: rm -f *.a bridge.o janus.o llamazoo
 
@@ -33,7 +33,7 @@ janus.o: janus.cpp
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = \
 	main quantize quantize-stats perplexity embedding vdot q8dot train-text-from-scratch convert-llama2c-to-ggml \
-	simple batched batched-bench save-load-state server embd-input-test gguf llama-bench baby-llama beam-search  \
+	simple batched batched-bench save-load-state server embd-input-test gguf llama-bench llava baby-llama beam-search  \
 	speculative infill benchmark-matmult parallel finetune export-lora tests/test-c.o
 
 # Binaries only useful for tests
@@ -577,7 +577,7 @@ llama.o: llama.cpp ggml.h ggml-alloc.h ggml-backend.h ggml-cuda.h ggml-metal.h l
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 COMMON_H_DEPS = common/common.h common/sampling.h build-info.h common/log.h
-COMMON_DEPS   = $(COMMON_H_DEPS) common.o sampling.o
+COMMON_DEPS   = $(COMMON_H_DEPS) common.o sampling.o grammar-parser.o
 
 common.o: common/common.cpp $(COMMON_H_DEPS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -658,6 +658,9 @@ convert-llama2c-to-ggml: examples/convert-llama2c-to-ggml/convert-llama2c-to-ggm
 
 llama-bench: examples/llama-bench/llama-bench.cpp build-info.h ggml.o llama.o $(COMMON_DEPS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
+
+llava: examples/llava/llava.cpp examples/llava/llava-utils.h examples/llava/clip.cpp examples/llava/clip.h common/stb_image.h ggml.o llama.o $(COMMON_DEPS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS) -Wno-cast-qual
 
 baby-llama: examples/baby-llama/baby-llama.cpp ggml.o llama.o $(COMMON_DEPS) train.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
