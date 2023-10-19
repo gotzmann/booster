@@ -6,7 +6,6 @@ package main
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
-// TODO: Replace [ END ] token with some UTF visual sign (end of the paragraph, etc.)
 // wiki-raw datasets https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/
 
 /*
@@ -44,7 +43,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.34.0"
+const VERSION = "0.35.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`

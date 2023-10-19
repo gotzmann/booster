@@ -170,6 +170,10 @@ struct gpt_params {
     bool export_cgraph     = false; // export the computation graph
     bool verbose_prompt    = false; // print prompt tokens before generation
     bool infill            = false; // use infill mode
+
+    // multimodal models (see examples/llava)
+    std::string mmproj = ""; // path to multimodal projector
+    std::string image = "";  // path to an image file
 };
 
 //
@@ -209,7 +213,8 @@ llama_token llama_sample_token(
 std::vector<llama_token> llama_tokenize(
     const struct llama_model * model,
            const std::string & text,
-                        bool   add_bos);
+                        bool   add_bos,
+                        bool   special = false);
 
 std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
@@ -271,3 +276,14 @@ std::vector<std::byte> getBytes(std::string const &s);
 bool isPedantic(llama_token id);
 int tokType(const llama_context *ctx, const llama_token token);
 int tokSize(const llama_context *ctx, const llama_token token);
+
+// Batch utils
+
+void llama_batch_clear(struct llama_batch & batch);
+
+void llama_batch_add(
+                 struct llama_batch & batch,
+                        llama_token   id,
+                          llama_pos   pos,
+    const std::vector<llama_seq_id> & seq_ids,
+                               bool   logits);
