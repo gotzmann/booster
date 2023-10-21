@@ -17,7 +17,7 @@ void * initContext(
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
 	float temp, int topK, float topP,
 	float typicalP,
-	float repeat_penalty, int repeat_last_n,
+	float penalty_repeat, int penalty_last_n,
 	int32_t janus,
 	int32_t depth,
 	float scale,
@@ -100,8 +100,8 @@ type HyperParams struct {
 
 	TypicalP float32
 
-	RepeatPenalty float32
-	RepeatLastN   int
+	PenaltyRepeat float32
+	PenaltyLastN  int
 }
 
 type Model struct {
@@ -138,8 +138,8 @@ type Model struct {
 
 	TypicalP float32
 
-	RepeatPenalty float32
-	RepeatLastN   int
+	PenaltyRepeat float32
+	PenaltyLastN  int
 }
 
 // TODO: Logging setup
@@ -286,7 +286,7 @@ func Init(
 	mirostat uint32, mirostatTAU float32, mirostatETA float32,
 	temp float32, topK int, topP float32,
 	typicalP float32,
-	repeatPenalty float32, repeatLastN int,
+	penaltyRepeat float32, penaltyLastN int,
 	deadlineIn int64,
 	seed uint32,
 	sessionPath string) {
@@ -341,7 +341,7 @@ func Init(
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temp), C.int(topK), C.float(topP),
 			C.float(typicalP),
-			C.float(repeatPenalty), C.int(repeatLastN),
+			C.float(penaltyRepeat), C.int(penaltyLastN),
 			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
 			C.int32_t(seed))
 
@@ -369,8 +369,8 @@ func Init(
 			TopK: topK,
 			TopP: topP,
 
-			RepeatPenalty: repeatPenalty,
-			RepeatLastN:   repeatLastN,
+			PenaltyRepeat: penaltyRepeat,
+			PenaltyLastN:  penaltyLastN,
 		}
 	}
 }
@@ -495,7 +495,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
 				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.TypicalP),
-				C.float(model.RepeatPenalty), C.int(model.RepeatLastN),
+				C.float(model.PenaltyRepeat), C.int(model.PenaltyLastN),
 				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
 				C.int32_t(-1))
 
@@ -532,8 +532,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				TopK: model.TopK,
 				TopP: model.TopP,
 
-				RepeatPenalty: model.RepeatPenalty,
-				RepeatLastN:   model.RepeatLastN,
+				PenaltyRepeat: model.PenaltyRepeat,
+				PenaltyLastN:  model.PenaltyLastN,
 			}
 		}
 	}
@@ -930,7 +930,7 @@ func Do(jobID string, pod *Pod) {
 
 	   			sampleStart := time.Now().UnixNano()
 	   			id := llama.SampleTopPTopK( / * ctx, * / ctx.Logits,
-	   				lastNTokens, params.RepeatLastN,
+	   				lastNTokens, params.PenaltyLastN,
 	   				params.TopK, params.TopP,
 	   				params.Temp, params.RepeatPenalty)
 	   			samplePerformance = append(samplePerformance, time.Now().UnixNano()-sampleStart)

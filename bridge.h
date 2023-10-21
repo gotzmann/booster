@@ -46,35 +46,36 @@ typedef struct llama_sampling_params {
 
     // -- Janus Sampling
 
-    int32_t janus = 1;   // 0 = off or Janus Sampling version
-    int32_t depth = 200; // last n tokens to penalize [ -1 = context size ]
-    float scale = 0.936; // janus scale factor for penalty and other heuristics
-    float hi = 0.982;    // 1.0 = max pedantic [ 100% strict ]
-    float lo = 0.948;    // 0.0 = min pedantic [ 100% random ]
-
+    int32_t janus = 1;    // 0 = off or Janus Sampling version
+    int32_t depth = 200;  // last n tokens to penalize [ -1 = context size ]
+    float   scale = 0.96; // janus scale factor for penalty and other heuristics
+    float   hi    = 0.99; // 1.0 = max pedantic [ 100% strict ]
+    float   lo    = 0.96; // 0.0 = min pedantic [ 100% random ]
+    
     // -- mainstream samplings
 
+    int32_t n_prev            = 64;    // number of previous tokens to remember
+    int32_t n_probs           = 0;     // if greater than 0, output the probabilities of top n_probs tokens.
     int32_t top_k             = 40;    // <= 0 to use vocab size
     float   top_p             = 0.95f; // 1.0 = disabled
     float   tfs_z             = 1.00f; // 1.0 = disabled
     float   typical_p         = 1.00f; // 1.0 = disabled
     float   temp              = 0.80f; // 1.0 = disabled
-    float   repeat_penalty    = 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
-    float   frequency_penalty = 0.00f; // 0.0 = disabled
-    float   presence_penalty  = 0.00f; // 0.0 = disabled
+    int32_t penalty_last_n    = 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
+    float   penalty_repeat    = 1.10f; // 1.0 = disabled
+    float   penalty_freq      = 0.00f; // 0.0 = disabled
+    float   penalty_present   = 0.00f; // 0.0 = disabled
     int32_t mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float   mirostat_tau      = 5.00f; // target entropy
     float   mirostat_eta      = 0.10f; // learning rate
-
     bool    penalize_nl       = true;  // consider newlines as a repeatable token
 
-    int32_t n_probs           = 0;     // if greater than 0, output the probabilities of top n_probs tokens.
+    std::string grammar;  // optional BNF-like grammar to constrain sampling
 
     // Classifier-Free Guidance
     // https://arxiv.org/abs/2306.17806
-    std::string cfg_negative_prompt;   // string to help guidance
-    float       cfg_scale     = 1.f;   // How strong is guidance
+    std::string cfg_negative_prompt; // string to help guidance
+    float       cfg_scale     = 1.f; // how strong is guidance
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
@@ -105,22 +106,8 @@ struct gpt_params {
     float   rope_freq_base                  = 0.0f; // RoPE base frequency
     float   rope_freq_scale                 = 0.0f; // RoPE frequency scaling factor
 
-    struct llama_sampling_params sampling_params;
-/*
     // sampling parameters
-    int32_t top_k             = 8;     // 40;    // <= 0 to use vocab size
-    float   top_p             = 0.1;   // 0.95f; // 1.0 = disabled
-    float   tfs_z             = 1.00f; // 1.0 = disabled
-    float   typical_p         = 1.00f; // 1.0 = disabled
-    float   temp              = 0.1;   // 0.80f; // 1.0 = disabled
-    float   repeat_penalty    = 1.10f; // 1.0 = disabled
-    int32_t repeat_last_n     = -1;    // 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
-    float   frequency_penalty = 0.00f; // 0.0 = disabled
-    float   presence_penalty  = 0.00f; // 0.0 = disabled
-    int32_t mirostat          = 2;     // 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 0.1;   // 5.00f; // target entropy
-    float   mirostat_eta      = 0.1;   // 0.10f; // learning rate
-*/
+    struct llama_sampling_params sparams;
 
     std::string model             = "models/7B/ggml-model-f16.gguf"; // model path
     std::string model_draft       = "";                              // draft model for speculative decoding
@@ -130,7 +117,6 @@ struct gpt_params {
     std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
     std::string input_prefix      = "";  // string to prefix user inputs with
     std::string input_suffix      = "";  // string to suffix user inputs with
-    std::string grammar           = "";  // optional BNF-like grammar to constrain sampling
     std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
     std::string logdir            = "";  // directory in which to save YAML log files
 
@@ -248,7 +234,7 @@ void * initContext(
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p,
     float typical_p,
-    float repeat_penalty, int repeat_last_n,
+    float penalty_repeat, int penalty_last_n,
     int32_t janus,
 	int32_t depth,
 	float scale,
@@ -287,3 +273,5 @@ void llama_batch_add(
                           llama_pos   pos,
     const std::vector<llama_seq_id> & seq_ids,
                                bool   logits);
+
+                              
