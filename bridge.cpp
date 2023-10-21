@@ -79,13 +79,23 @@ llama_token llama_sample_token(
 
     // apply penalties
     if (!last_tokens.empty()) {
-        const float nl_logit = logits[llama_token_nl(ctx)];
-        const int last_n_repeat = std::min(std::min((int)last_tokens.size(), penalty_last_n), n_ctx);
 
-        llama_sample_repetition_penalties(ctx, &cur_p,
-                last_tokens.data() + last_tokens.size() - penalty_last_n,
-                penalty_last_n, params.penalty_repeat,
-                params.penalty_freq, params.penalty_present);
+        const float nl_logit = logits[llama_token_nl(ctx)];
+        const int last_n = std::min(
+            std::min(
+                (int)last_tokens.size(), 
+                penalty_last_n), 
+            n_ctx);
+
+        llama_sample_repetition_penalties(
+                ctx, 
+                &cur_p,
+                last_tokens.data() + last_tokens.size() - last_n, 
+                last_n, 
+                params.penalty_repeat,
+                params.penalty_freq, 
+                params.penalty_present
+            );
 
         if (!params.penalize_nl) {
             for (size_t idx = 0; idx < cur_p.size; idx++) {
