@@ -32,8 +32,20 @@ llama_token llama_sample_token(
     const int n_ctx   = llama_n_ctx(ctx);
     const int n_vocab = llama_n_vocab(llama_get_model(ctx));
 
-    const int32_t top_k           = params.top_k <= 0 ? n_vocab : params.top_k;
-    const int32_t repeat_last_n   = params.repeat_last_n < 0 ? n_ctx : params.repeat_last_n;
+    const int32_t top_k          = params.top_k <= 0 ? n_vocab : params.top_k;
+    const int32_t penalty_last_n = params.penalty_last_n < 0 ? n_ctx : params.penalty_last_n;
+
+    /* DEBUG
+    fprintf(stderr, "\n * n_ctx = %d", n_ctx);
+    fprintf(stderr, "\n * n_vocab = %d", n_vocab);
+    fprintf(stderr, "\n * temp = %f", params.temp);
+    fprintf(stderr, "\n * top_k = %d", top_k);
+    fprintf(stderr, "\n * top_p = %f", params.top_p);
+    fprintf(stderr, "\n * penalty_last_n = %d", penalty_last_n);
+    fprintf(stderr, "\n * penalty_repeat = %f", params.penalty_repeat);
+    fprintf(stderr, "\n * mirostat = %d", params.mirostat);
+    fprintf(stderr, "\n * mirostat_eta = %f", params.mirostat_eta);
+    fprintf(stderr, "\n * mirostat_tau = %f", params.mirostat_tau); */
 
     llama_token id = 0;
     float * logits = llama_get_logits(ctx);
@@ -68,14 +80,12 @@ llama_token llama_sample_token(
     // apply penalties
     if (!last_tokens.empty()) {
         const float nl_logit = logits[llama_token_nl(ctx)];
-        const int last_n_repeat = std::min(std::min((int)last_tokens.size(), repeat_last_n), n_ctx);
+        const int last_n_repeat = std::min(std::min((int)last_tokens.size(), penalty_last_n), n_ctx);
 
-        llama_sample_repetition_penalty(ctx, &cur_p,
-                last_tokens.data() + last_tokens.size() - last_n_repeat,
-                last_n_repeat, params.repeat_penalty);
-        //llama_sample_frequency_and_presence_penalties(ctx, &cur_p,
-        //        last_tokens.data() + last_tokens.size() - last_n_repeat,
-        //        last_n_repeat, alpha_frequency, alpha_presence);
+        llama_sample_repetition_penalties(ctx, &cur_p,
+                last_tokens.data() + last_tokens.size() - penalty_last_n,
+                penalty_last_n, params.penalty_repeat,
+                params.penalty_freq, params.penalty_present);
 
         if (!params.penalize_nl) {
             for (size_t idx = 0; idx < cur_p.size; idx++) {
@@ -112,7 +122,7 @@ llama_token llama_sample_token(
             // Temperature sampling
             llama_sample_top_k      (ctx, &cur_p, top_k, 1);
             //llama_sample_tail_free  (ctx, &cur_p, tfs_z, 1);
-            llama_sample_typical    (ctx, &cur_p, params.typical_p, 1);
+            //llama_sample_typical    (ctx, &cur_p, params.typical_p, 1);
             llama_sample_top_p      (ctx, &cur_p, params.top_p, 1);
             llama_sample_temp       (ctx, &cur_p, params.temp);
             id = llama_sample_token (ctx, &cur_p);
@@ -335,48 +345,6 @@ int64_t do_inference(
     // }
     // fprintf(stderr, "]");
 
-    // -- DEBUG | Draft RU token statistics research
-
- /*   
-    std::string doc = "Ты виртуальная ассистентка. Дай развернутый ответ на вопрос. Используй русский язык!\
-\n\n### Instruction:\n\n\
-Напиши черновик новости для Телеграм-канала, описывающий последние новости зеленой политики западных стран\
-\n\n### Response:\n\n\
-The Guardian: большинство компенсационных проектов, по которым было продано больше всего квот на выбросы углерода, скорее всего являются бесполезными для климата — то есть они не обеспечивают тех экологических преимуществ, которые они обещают. Bloomberg замолвился об этом ещё весной, но тут провели целое исследование по CO2 диллерам и выяснилось, что 94% из них с высокой вероятностью тупо продают лохам воздух, а последние ещё верят, что они тем самым спасают планету.\n\
-\n\
-И вдруг купнейшая еропейская нефтяная компания Shell втихую отложила радикальный план по сокращению своего углеродного следа, а Fortescue Metals Group, занимающая четвертое место в мире по производству железной руды, сделала это даже с гордостью, заявив «мы — единственный в мире крупный эмитент [парниковых газов], прекративший закупки добровольных квот».\n\
-\n\
-Но самое неожиданное — это недавний переподвыподверт Билла Гейтса, который признался, что «ни одна страна с умеренным климатом не станет непригодной для жизни». Тут важно понимать, что до сего момента Гейтс трубил об апокалипсе в случае недостижения нулевого уровня выбросов к 2050 году, написал книгу «Как избежать климатической катастрофы», и говорил, что миграция из Сирии частнично связана с климатом, а из США она будет в 10 раз больше, потому что экваториальные районы станут непригодными для жизни.\n\
-\n\
-Гейтс умён. Он понимает, что зелёная повестка несмотря на все сопротивления плавно сворачивается, и потому ещё более плавно решил ретироваться. На этом фоне удручающе забавно смотрится сообщение о том, что на Сахалине на днях запустили первый в России проект по достижению целым регионом углеродной нейтральности и установкой квот. Там, представьте, у губернатора есть даже советник по вопросам климата и ESG. То есть родоначальники зелёной повестки её уже потихоньку сворачивают, а у нас только начинают разворачивать. Товарищи, проснитесь, вы обхезались. #esg\n\
-";
-*/
-
-/*
-    std::string doc = "\
-AI Engineer - LLM (Machine Learning Engineer) at Alias\n\
-\n\
-Do you want to help create a new world that lets you reimagine the line between human and AI generated content while solving technical problems that you won’t find anywhere else? We are Alias, and we are building a video-based social media application utilizing generative AI models to bring AI generated creators and creations to anyone with a mobile phone. We are looking for talented engineers to help us develop new features leveraging large language models (LLM’s).\n\
-\n\
-Our entire team is fully remote and international. We are creative, fast-paced, nimble and understand that employees thrive when their work has purpose.\n\
-\n\
-Responsibilities and Qualifications\n\
-\n\
-• Passion for AI-driven generative media and a strong desire to push the boundaries of technology.\n\
-\n\
-• Proven experience profiling and optmizing deep neural networks and large language models such as ChatGPT or GPT-4.\n\
-\n\
-• Ability to work independently and proactively solve problems.\n\
-\n\
-• Comfortable working independently in a fast-paced fully remote environment across time zones.\n\
-Alias at a glance\n\
-A community-based pseudonymous video platform for free expression and exploration\n\
-Alias focuses on Mobile, Social Media, and Artificial Intelligence / Machine Learning. Their company has offices in Nashville. They have a small team that's between 11-50 employees.\n\
-\n\
-You can view their website at https://alias-app.com/ or find them on LinkedIn.\n\
-";
-*/
-
 /*
     auto tokens = ::llama_tokenize(ctx, doc, true); 
     std::unordered_map<llama_token, size_t> tokmap;
@@ -416,7 +384,6 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
 */    
     
 /*
-
     // -- DEBUG
     fprintf(stderr, "\n\nTOKENS: [ ");
     for(int i = 0; i < embd_inp.size(); i++) {
@@ -684,6 +651,7 @@ You can view their website at https://alias-app.com/ or find them on LinkedIn.\n
 }
 
 // TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+
 const char * statusCPP(const std::string & jobID) {
     mutex.lock_shared();
     const char * res = jobs[jobID].c_str();
@@ -691,7 +659,6 @@ const char * statusCPP(const std::string & jobID) {
     return res;
 }
 
-// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 int64_t promptEvalCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = promptEvals[jobID];
@@ -699,7 +666,6 @@ int64_t promptEvalCPP(const std::string & jobID) {
     return res;
 }
 
-// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 int64_t getPromptTokenCountCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = promptTokenCount[jobID];
@@ -707,7 +673,6 @@ int64_t getPromptTokenCountCPP(const std::string & jobID) {
     return res;
 }
 
-// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 int64_t timingCPP(const std::string & jobID) {
     mutex.lock_shared();
     int64_t res = ::timings[jobID];
@@ -715,7 +680,6 @@ int64_t timingCPP(const std::string & jobID) {
     return res;
 }
 
-// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 uint32_t getSeedCPP(const std::string & jobID) {
     mutex.lock_shared();
     uint32_t res = ::seeds[jobID];
@@ -742,7 +706,7 @@ void * initContext(
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temp, int top_k, float top_p,
     float typical_p, 
-    float repeat_penalty, int repeat_last_n,
+    float penalty_repeat, int penalty_last_n,
     int32_t janus, int32_t depth, float scale, float hi, float lo,
     uint32_t seed) {
     
@@ -778,8 +742,8 @@ void * initContext(
 
     ::sparams[idx].typical_p       = typical_p > 0 ? typical_p : 1.0f;
 
-    ::sparams[idx].repeat_penalty  = repeat_penalty;
-    ::sparams[idx].repeat_last_n   = repeat_last_n;
+    ::sparams[idx].penalty_repeat   = penalty_repeat;
+    ::sparams[idx].penalty_last_n   = penalty_last_n;
     
     ::params[idx].seed            = seed;
     

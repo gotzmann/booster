@@ -62,6 +62,7 @@ type Options struct {
 	GPUs          []int64 `long:"gpus" description:"Specify GPU split for each pod when there GPUs (one or more) are available"`
 	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
 	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`
+	Janus         uint32  `long:"janus" description:"Janus Sampling version [ not used by default ]"`
 	Mirostat      uint32  `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
 	MirostatENT   float32 `long:"mirostat-ent" description:"Mirostat target entropy or TAU value [ 0.1 by default ]"`
 	MirostatLR    float32 `long:"mirostat-lr" description:"Mirostat Learning Rate or ETA value [ 0.1 by default ]"`
@@ -69,8 +70,8 @@ type Options struct {
 	TopK          int     `long:"top-k" description:"TopK parameter for the model [ 8 by default ]"`
 	TopP          float32 `long:"top-p" description:"TopP parameter for the model [ 0.4 by default ]"`
 	TypicalP      float32 `long:"typical-p" description:"TypicalP parameter for the sampling [ 1.0 by default == disabled ]"`
-	RepeatPenalty float32 `long:"repeat-penalty" description:"RepeatPenalty [ 1.1 by default ]"`
-	RepeatLastN   int     `long:"repeat-last-n" description:"RepeatLastN [ -1 by default ]"`
+	PenaltyRepeat float32 `long:"penalty-repeat" description:"PenaltyRepeat [ 1.1 by default ]"`
+	PenaltyLastN  int     `long:"penalty-last-n" description:"PenaltyLastN [ -1 by default ]"`
 	Silent        bool    `long:"silent" description:"Hide welcome logo and other output [ shown by default ]"`
 	Chat          bool    `long:"chat" description:"Chat with user in interactive mode instead of compute over static prompt"`
 	Dir           string  `long:"dir" description:"Directory used to download .bin model specified with --model parameter [ current by default ]"`
@@ -214,7 +215,7 @@ func main() {
 			opts.Mirostat, opts.MirostatENT, opts.MirostatLR,
 			opts.Temp, opts.TopK, opts.TopP,
 			opts.TypicalP,
-			opts.RepeatPenalty, opts.RepeatLastN,
+			opts.PenaltyRepeat, opts.PenaltyLastN,
 			opts.Deadline,
 			opts.Seed,
 			opts.Sessions)
@@ -328,12 +329,12 @@ func parseOptions() *Options {
 		opts.TypicalP = 1.0 // disabled
 	}
 
-	if opts.RepeatPenalty == 0 {
-		opts.RepeatPenalty = 1.1
+	if opts.PenaltyRepeat == 0 {
+		opts.PenaltyRepeat = 1.1
 	}
 
-	if opts.RepeatLastN == 0 {
-		opts.RepeatLastN = -1
+	if opts.PenaltyLastN == 0 {
+		opts.PenaltyLastN = -1
 	}
 
 	if opts.Server && !opts.Debug {

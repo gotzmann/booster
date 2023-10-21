@@ -45,11 +45,11 @@ models:
     topk: 8
     topp: 0.4
     typicalp: 1.0
-    repeatpenalty: 1.1
-    repeatlastn: -1
+    penaltyrepeat: 1.1
+    penaltylastn: -1
     mirostat: 2
-    mirostattau: 0.1
-    mirostateta: 0.1     
+    mirostatent: 0.1
+    mirostatlr: 0.1     
 
   -
     id: wizard
@@ -73,8 +73,8 @@ models:
     topk: 8
     topp: 0.4
     typicalp: 1.0
-    repeatpenalty: 1.1
-    repeatlastn: -1
+    penaltyrepeat: 1.1
+    penaltylastn: -1
     mirostat: 0
     mirostatent: 0
     mirostatlr: 0

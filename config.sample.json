@@ -46,8 +46,8 @@
             "topK": 8,
             "topP": 0.4,
             "typicalP": 1.0,
-            "repeatPenalty": 1.1,
-            "repeatLastN": -1,
+            "penaltyRepeat": 1.1,
+            "penaltyLastN": -1,
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0
@@ -75,8 +75,8 @@
             "topK": 8,
             "topP": 0.4,
             "typicalP": 1.0,
-            "repeatPenalty": 1.1,
-            "repeatLastN": -1,
+            "penaltyRepeat": 1.1,
+            "penaltyLastN": -1,
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0
