@@ -57,7 +57,7 @@ llama_token sample_janus_token(
     auto model       = llama_get_model(ctx);
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(model);
-    auto scale       = params.scale;
+    // auto scale       = params.scale;
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
