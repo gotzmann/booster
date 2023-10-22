@@ -57,7 +57,7 @@ llama_token sample_janus_token(
     auto model       = llama_get_model(ctx);
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(model);
-    auto scale       = params.scale;
+    // auto scale       = params.scale;
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
     auto lastType  = ::types[lastToken];
@@ -75,10 +75,11 @@ llama_token sample_janus_token(
     for (size_t i = 0; i < depth; i++) {
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
         auto id = last_tokens.data()[ last_tokens.size() - 1 - i ];
+        auto curType = ::types[id];
 
         // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages
         // TODO: Maybe we need to skip the last token itself [ with check of i > 0 ] ?! 
-        if ((lastType == SPACE_RU || lastType == LANG_RU) && ::types[id] == LANG_RU) {
+        if ((lastType == SPACE_RU || lastType == LANG_RU) && curType == LANG_RU) {
             logits[id] *= 1.0 - (1.0 - ::scales[id]) * 0.20;
             continue;
         }
@@ -88,18 +89,17 @@ llama_token sample_janus_token(
         logits[id] *= ::scales[id];       
     }
    
-    // -- Triple down incompatible tokens (like word endings in some other language)
+    // -- Double down incompatible tokens (like word endings in some other language)
 
     for (size_t id = 0; id < vocabSize; id++) {
         auto curType = ::types[id];
 
         if (
-            ((lastType == LANG_RU || lastType == SPACE_RU) && (curType == LANG_EN || curType == LANG_OTHER))
-            ||
-            ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // Europeans mix ASCII and UTF-8
+            ((lastType == SPACE_RU || lastType == LANG_RU) && (curType == LANG_EN || curType == LANG_OTHER))
+            // ||
+            // ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // Europeans mix ASCII and UTF-8
         ) {
-            // was: logits[id] /= 1.0 + (penalty - 1.0) * 3.00;
-            logits[id] *= scale * scale * scale; 
+            logits[id] *= 0.5; // scale * scale * scale; 
         }
     }        
    
@@ -125,8 +125,8 @@ llama_token sample_janus_token(
     );           
     
     // -- Final choice [ with experimental cutoff ]
-    //    We'll use some general cutoff for most of tokens
-    //    and pedantic cutoff for sensitive ones
+    //    We'll use some general cutoff value for most of tokens
+    //    and pedantic cutoff for the sensitive ones
 
     auto topToken = candidates.data()[0].id;
     auto topType  = types[topToken];
@@ -167,7 +167,7 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     //}
 
     if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.96;
+        params.scale = 0.97;
     }
 
     if (params.hi <= 0.0 || params.hi > 1.0) {
@@ -175,7 +175,7 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.96;
+        params.lo = 0.95;
     }
 
     // -- init tokens with some heuristics
