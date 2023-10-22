@@ -564,7 +564,7 @@ func Run(showStatus bool) {
 
 	err := app.Listen(Host + ":" + Port)
 	if err != nil {
-		Colorize("[ERROR] Can't start REST API on %s:%s", Host, Port)
+		Colorize("\n[light_magenta][ERROR][light_blue] Can't start REST API on [light_magenta]%s:%s", Host, Port)
 		log.Infof("[ERROR] Can't start REST API on %s:%s", Host, Port)
 	}
 }
