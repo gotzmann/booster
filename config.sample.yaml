@@ -39,7 +39,7 @@ models:
     depth: 200
     scale: 0.97
     hi: 0.99
-    lo: 0.95
+    lo: 0.96
 
     temp: 0.1
     topk: 8
@@ -67,7 +67,7 @@ models:
     depth: 200
     scale: 0.97
     hi: 0.99
-    lo: 0.95
+    lo: 0.96
 
     temp: 0.1
     topk: 8

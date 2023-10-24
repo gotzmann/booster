@@ -175,7 +175,7 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     }
 
     if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.95;
+        params.lo = 0.96;
     }
 
     // -- init tokens with some heuristics

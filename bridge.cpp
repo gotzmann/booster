@@ -29,6 +29,8 @@ llama_token llama_sample_token(
                             const size_t pos,
                             const size_t max) {                              
 
+    auto model = llama_get_model(ctx);
+
     const int n_ctx   = llama_n_ctx(ctx);
     const int n_vocab = llama_n_vocab(llama_get_model(ctx));
 
@@ -80,7 +82,7 @@ llama_token llama_sample_token(
     // apply penalties
     if (!last_tokens.empty()) {
 
-        const float nl_logit = logits[llama_token_nl(ctx)];
+        const float nl_logit = logits[llama_token_nl(model)];
         const int last_n = std::min(
             std::min(
                 (int)last_tokens.size(), 
@@ -99,7 +101,7 @@ llama_token llama_sample_token(
 
         if (!params.penalize_nl) {
             for (size_t idx = 0; idx < cur_p.size; idx++) {
-                if (cur_p.data[idx].id == llama_token_nl(ctx)) {
+                if (cur_p.data[idx].id == llama_token_nl(model)) {
                     cur_p.data[idx].logit = nl_logit;
                     break;
                 }
@@ -630,7 +632,7 @@ int64_t do_inference(
         mutex.unlock();
 
         // end of text token
-        if (!embd.empty() && embd.back() == llama_token_eos(ctx)) {
+        if (!embd.empty() && embd.back() == llama_token_eos(model)) {
                 break;
         }
     }
