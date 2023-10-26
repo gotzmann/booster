@@ -1840,7 +1840,7 @@ struct llama_model_loader {
                   //  "\n [ %s => %s ] ", 
                     //llama_format_tensor_shape(cur).c_str(), 
                     //llama_format_tensor_shape(ne).c_str());
-                //return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA 
+                return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA 
                 //throw std::runtime_error(
                   //      format("%s: tensor '%s' has wrong shape; expected %s, got %s",
                     //        __func__, name.c_str(),
@@ -1849,8 +1849,8 @@ struct llama_model_loader {
             }
         }
         
-        //return create_tensor_for(ctx, cur, backend);
-        return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA
+        return create_tensor_for(ctx, cur, backend);
+        //return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA
     }
 
     void done_getting_tensors() const {
@@ -2047,7 +2047,7 @@ static void llm_load_hparams(
     // n_head_kv is optional, default to n_head
     hparams.n_head_kv = hparams.n_head;
     GGUF_GET_KEY(ctx, hparams.n_head_kv, gguf_get_val_u32, GGUF_TYPE_UINT32, false, kv(LLM_KV_ATTENTION_HEAD_COUNT_KV));
-    hparams.n_head_kv = 16; // = 8 // DEBUG MHA
+    hparams.n_head_kv = 8; // = 8 // DEBUG MHA
 
     // rope_freq_base (optional)
     hparams.rope_freq_base_train = 10000.0f;
@@ -3317,9 +3317,9 @@ static struct ggml_cgraph * llm_build_llama(
 // LLAMA_LOG_INFO("\n [ 120 ] "); // DEBUG HMA
             // cur = cur*attn_norm(broadcasted)
 // DEBUG HMA            
-LLAMA_LOG_INFO("\ncur = %s | model.layers[il].attn_norm = %s ", 
-llama_format_tensor_shape(cur).c_str(), 
-llama_format_tensor_shape(model.layers[il].attn_norm).c_str());
+//LLAMA_LOG_INFO("\ncur = %s | model.layers[il].attn_norm = %s ", 
+//llama_format_tensor_shape(cur).c_str(), 
+//llama_format_tensor_shape(model.layers[il].attn_norm).c_str());
 
             cur = ggml_mul(ctx0, cur, model.layers[il].attn_norm);
 //LLAMA_LOG_INFO("\n [ 120+ ] "); // DEBUG HMA
@@ -3523,7 +3523,7 @@ llama_format_tensor_shape(model.layers[il].attn_norm).c_str());
     ggml_build_forward_expand(gf, cur);
 
     ggml_free(ctx0);
- LLAMA_LOG_INFO("\n [ 148 ] "); // DEBUG HMA
+ //LLAMA_LOG_INFO("\n [ 148 ] "); // DEBUG HMA
     return gf;
 }
 
