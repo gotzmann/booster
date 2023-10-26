@@ -1826,7 +1826,10 @@ struct llama_model_loader {
             }
             if (!is_ok) {
                 // DEBUG MHA
-                fprintf(stderr, "\n [ %s => %s ] ", llama_format_tensor_shape(ne).c_str(), llama_format_tensor_shape(cur).c_str());
+                fprintf(stderr, 
+                    "\n [ %s => %s ] ", 
+                    llama_format_tensor_shape(cur).c_str(), 
+                    llama_format_tensor_shape(ne).c_str());
                 //throw std::runtime_error(
                   //      format("%s: tensor '%s' has wrong shape; expected %s, got %s",
                     //        __func__, name.c_str(),
@@ -8905,37 +8908,37 @@ struct llama_context * llama_new_context_with_model(
             llama_free(ctx);
             return nullptr;
         }
-
+LLAMA_LOG_INFO("\n [ 01 ] "); // DEBUG HMA
         {
             const size_t memory_size = ggml_nbytes(ctx->kv_self.k) + ggml_nbytes(ctx->kv_self.v);
             LLAMA_LOG_INFO("%s: kv self size  = %7.2f MB\n", __func__, memory_size / 1024.0 / 1024.0);
         }
-
+LLAMA_LOG_INFO("\n [ 02 ] "); // DEBUG HMA
         // resized during inference
         if (params.logits_all) {
             ctx->logits.reserve(cparams.n_ctx*hparams.n_vocab);
         } else {
             ctx->logits.reserve(hparams.n_vocab);
         }
-
+LLAMA_LOG_INFO("\n [ 03 ] "); // DEBUG HMA
         if (params.embedding){
             ctx->embedding.resize(hparams.n_embd);
         }
-
+ LLAMA_LOG_INFO("\n [ 04 ] "); // DEBUG HMA
         {
             static const size_t tensor_alignment = 32;
             // the compute buffer is used to store the tensor and graph structs, while the allocator buffer is used for the tensor data
             ctx->buf_compute.resize(ggml_tensor_overhead()*GGML_MAX_NODES + ggml_graph_overhead());
-
+ LLAMA_LOG_INFO("\n [ 05 ] "); // DEBUG HMA
             // create measure allocator
             ctx->alloc = ggml_allocr_new_measure(tensor_alignment);
-
+ LLAMA_LOG_INFO("\n [ 06 ] "); // DEBUG HMA
             // build worst-case graph
             int n_tokens = (int)std::min(cparams.n_ctx, cparams.n_batch);
             int n_past = cparams.n_ctx - n_tokens;
             llama_token token = llama_token_bos(&ctx->model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
             ggml_cgraph * gf = llama_build_graph(*ctx, llama_batch_get_one(&token, n_tokens, n_past, 0));
-
+ LLAMA_LOG_INFO("\n [ 07 ] "); // DEBUG HMA
 #ifdef GGML_USE_METAL
             if (model->n_gpu_layers > 0) {
                 ggml_metal_log_set_callback(llama_log_callback_default, NULL);
@@ -8952,14 +8955,15 @@ struct llama_context * llama_new_context_with_model(
 #endif
             // measure memory requirements for the graph
             size_t alloc_size = ggml_allocr_alloc_graph(ctx->alloc, gf) + tensor_alignment;
-
+ LLAMA_LOG_INFO("\n [ 08 ] "); // DEBUG HMA
             LLAMA_LOG_INFO("%s: compute buffer total size = %.2f MB\n", __func__, (ctx->buf_compute.size + alloc_size) / 1024.0 / 1024.0);
 
             // recreate allocator with exact memory requirements
             ggml_allocr_free(ctx->alloc);
-
+ LLAMA_LOG_INFO("\n [ 09 ] "); // DEBUG HMA
             ctx->buf_alloc.resize(alloc_size);
             ctx->alloc = ggml_allocr_new(ctx->buf_alloc.data, ctx->buf_alloc.size, tensor_alignment);
+ LLAMA_LOG_INFO("\n [ 10 ] "); // DEBUG HMA            
 #ifdef GGML_USE_METAL
             if (ctx->ctx_metal) {
                 //ggml_allocr_set_parse_seq(ctx->alloc, ggml_metal_get_concur_list(ctx->ctx_metal), ggml_metal_if_optimized(ctx->ctx_metal));
