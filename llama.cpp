@@ -3306,8 +3306,15 @@ static struct ggml_cgraph * llm_build_llama(
             ggml_set_name(cur, "rms_norm_0");
  LLAMA_LOG_INFO("\n [ 120 ] "); // DEBUG HMA
             // cur = cur*attn_norm(broadcasted)
+// DEBUG HMA            
+LLAMA_LOG_INFO("\ncur = %s | model.layers[il].attn_norm = ", 
+llama_format_tensor_shape(cur).c_str(), 
+llama_format_tensor_shape(model.layers[il].attn_norm).c_str());
+
             cur = ggml_mul(ctx0, cur, model.layers[il].attn_norm);
+LLAMA_LOG_INFO("\n [ 120+ ] "); // DEBUG HMA
             offload_func(cur);
+ LLAMA_LOG_INFO("\n [ 120++ ] "); // DEBUG HMA
             ggml_set_name(cur, "attention_norm_0");
         }
  LLAMA_LOG_INFO("\n [ 121 ] "); // DEBUG HMA
