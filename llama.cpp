@@ -1839,7 +1839,7 @@ struct llama_model_loader {
         }
 
         // DEBUG MHA
-        return create_tensor_for(ctx, ne, backend);
+        return create_tensor_for(ctx, cur, backend);
         //return create_tensor_for_debug(ctx, cur, ne, backend);
     }
 
