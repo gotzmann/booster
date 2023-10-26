@@ -422,7 +422,7 @@ Vocab: TypeAlias = 'BpeVocab | SentencePieceVocab'
 #
 
 def permute(weights: NDArray, n_head: int, n_head_kv: int) -> NDArray:
-    #print( "permute debug " + str(weights.shape[0]) + " x " + str(weights.shape[1]) + " nhead " + str(n_head) + " nheadkv " + str(n_kv_head) )
+    print( "permute debug " + str(weights.shape[0]) + " x " + str(weights.shape[1]) + " nhead " + str(n_head) + " nheadkv " + str(n_head_kv) )
     if n_head_kv is not None and n_head != n_head_kv:
         n_head = n_head_kv
     return (weights.reshape(n_head, 2, weights.shape[0] // n_head // 2, *weights.shape[1:])
@@ -866,7 +866,7 @@ class OutputFile:
         data_nbytes = tensor.data_type.elements_to_bytes(n_elements)
         # DEBUG HMA
         if "attn_k.weight" in name or "attn_v.weight" in name:
-            self.gguf.add_tensor_info(name, [2048, 8192], data_type, data_nbytes, raw_dtype = raw_dtype)
+            self.gguf.add_tensor_info(name, [8192, 2048], data_type, data_nbytes, raw_dtype = raw_dtype)
         else:
             self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
 
