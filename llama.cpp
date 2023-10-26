@@ -1799,11 +1799,11 @@ struct llama_model_loader {
         struct ggml_tensor * tensor;
         if (ne.size() == 1) {
             tensor = ggml_new_tensor_1d(ctx, meta->type, ne[0]);
-        } else (ne.size() == 2) {
+        } else if (ne.size() == 2) {
             tensor = ggml_new_tensor_2d(ctx, meta->type, ne[0], ne[1]);
-        } else (ne.size() == 3) {
+        } else if (ne.size() == 3) {
             tensor = ggml_new_tensor_3d(ctx, meta->type, ne[0], ne[1], ne[2]);
-        } else (ne.size() == 4) {
+        } else if (ne.size() == 4) {
             tensor = ggml_new_tensor_4d(ctx, meta->type, ne[0], ne[1], ne[2], ne[3]);
         }
         
