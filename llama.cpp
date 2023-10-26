@@ -3317,7 +3317,7 @@ static struct ggml_cgraph * llm_build_llama(
  LLAMA_LOG_INFO("\n [ 120 ] "); // DEBUG HMA
             // cur = cur*attn_norm(broadcasted)
 // DEBUG HMA            
-LLAMA_LOG_INFO("\ncur = %s | model.layers[il].attn_norm = ", 
+LLAMA_LOG_INFO("\ncur = %s | model.layers[il].attn_norm = %s ", 
 llama_format_tensor_shape(cur).c_str(), 
 llama_format_tensor_shape(model.layers[il].attn_norm).c_str());
 
