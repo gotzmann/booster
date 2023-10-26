@@ -1839,8 +1839,8 @@ struct llama_model_loader {
         }
 
         // DEBUG MHA
-        // return create_tensor_for(ctx, ne, backend);
-        return create_tensor_for_debug(ctx, cur, ne, backend);
+        return create_tensor_for(ctx, ne, backend);
+        //return create_tensor_for_debug(ctx, cur, ne, backend);
     }
 
     void done_getting_tensors() const {
@@ -2037,7 +2037,7 @@ static void llm_load_hparams(
     // n_head_kv is optional, default to n_head
     hparams.n_head_kv = hparams.n_head;
     GGUF_GET_KEY(ctx, hparams.n_head_kv, gguf_get_val_u32, GGUF_TYPE_UINT32, false, kv(LLM_KV_ATTENTION_HEAD_COUNT_KV));
-    hparams.n_head_kv = 16; // = 8 // DEBUG MHA
+    hparams.n_head_kv = 8; // DEBUG MHA
 
     // rope_freq_base (optional)
     hparams.rope_freq_base_train = 10000.0f;
