@@ -203,7 +203,8 @@ class Params:
         n_layer          = config["num_hidden_layers"]
         n_ff             = config["intermediate_size"]
         n_head           = config["num_attention_heads"]
-        n_head_kv        = config["num_key_value_heads"] if "num_key_value_heads" in config else n_head
+        # DEBUG HMA
+        n_head_kv        = 16 # config["num_key_value_heads"] if "num_key_value_heads" in config else n_head
         f_norm_eps       = config["rms_norm_eps"]
         f_rope_freq_base = config["rope_theta"] if "rope_theta" in config else None
 
@@ -858,15 +859,16 @@ class OutputFile:
         svocab.add_to_gguf(self.gguf)
 
     def add_tensor_info(self, name: str, tensor: LazyTensor) -> None:
-
-
         n_elements = int(np.prod(tensor.shape))
         raw_dtype = getattr(tensor.data_type, 'ggml_type', None)
         data_type = getattr(tensor.data_type, 'quantized_type', None) or tensor.data_type.dtype
         data_nbytes = tensor.data_type.elements_to_bytes(n_elements)
         # DEBUG HMA
         if "attn_k.weight" in name or "attn_v.weight" in name:
-            self.gguf.add_tensor_info(name, [8192, 2048], data_type, data_nbytes, raw_dtype = raw_dtype)
+            size = ' x '.join(f"{dim:6d}" for dim in tensor.shape)
+            print(f"== add_tensor_info == [ Writing tensor {name:38s} | size {size:16} ]")
+            print 
+            self.gguf.add_tensor_info(name, [2048, 8192], data_type, data_nbytes, raw_dtype = raw_dtype)
         else:
             self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
 
