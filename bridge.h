@@ -258,6 +258,9 @@ uint32_t getSeed(char * jobID);
 
 } // ------- extern "C"
 
+// For internal test use
+const std::vector<std::pair<std::string, struct ggml_tensor *>> & llama_internal_get_tensor_map(struct llama_context * ctx);
+
 std::vector<std::byte> getBytes(std::string const &s);
 bool isPedantic(llama_token id);
 int tokType(const llama_context *ctx, const llama_token token);

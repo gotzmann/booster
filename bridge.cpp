@@ -1,8 +1,3 @@
-#include "bridge.h"
-#include "janus.h"
-#include "llama.h"
-#include "ggml.h"
-
 #include <array>
 #include <algorithm>
 #include <string>
@@ -12,6 +7,12 @@
 #include <shared_mutex>
 #include <unordered_map>
 #include <tuple>
+
+#include "ggml.h"
+#include "bridge.h"
+#include "janus.h"
+#include "llama.h"
+#include "llama.cpp"
 
 // pos => index of current position within generation window [ 0 .. max )
 // max => how many tokens were generated via the last iteration?
@@ -37,7 +38,19 @@ llama_token llama_sample_token(
     const int32_t top_k          = params.top_k <= 0 ? n_vocab : params.top_k;
     const int32_t penalty_last_n = params.penalty_last_n < 0 ? n_ctx : params.penalty_last_n;
 
-    /* DEBUG
+    // DEBUG GQA
+    auto hparams = model->hparams;
+    fprintf(stderr, "\n\n === GQA HPARAMS ===");
+    fprintf(stderr, "\n * n_embd = %d", hparams.n_embd);
+    fprintf(stderr, "\n * n_head = %d", hparams.n_head);
+    fprintf(stderr, "\n * n_head = %d", hparams.n_head);
+    fprintf(stderr, "\n * n_head_kv = %d", hparams.n_head_kv);
+    fprintf(stderr, "\n * n_gqa() = n_head/n_head_kv = %d", hparams.n_gqa());
+    fprintf(stderr, "\n * n_embd_head() = n_embd/n_head = %d", hparams.n_embd_head());
+    fprintf(stderr, "\n * n_embd_gqa() = n_embd/n_gqa() = %d", hparams.n_embd_gqa());
+
+    /* DEBUG HPARAMS
+    fprintf(stderr, "\n\n === HPARAMS ===");
     fprintf(stderr, "\n * n_ctx = %d", n_ctx);
     fprintf(stderr, "\n * n_vocab = %d", n_vocab);
     fprintf(stderr, "\n * temp = %f", params.temp);
@@ -189,8 +202,8 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
 void hide() {
-    freopen(NULL_DEVICE, "w", stdout);
-    freopen(NULL_DEVICE, "w", stderr);
+    //freopen(NULL_DEVICE, "w", stdout);
+    //freopen(NULL_DEVICE, "w", stderr);
 }    
 
 void show() {
