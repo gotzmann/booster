@@ -1849,8 +1849,8 @@ struct llama_model_loader {
             }
         }
         
-        return create_tensor_for(ctx, cur, backend);
-        //return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA
+        //return create_tensor_for(ctx, cur, backend);
+        return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA
     }
 
     void done_getting_tensors() const {
