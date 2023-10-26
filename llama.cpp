@@ -1790,6 +1790,25 @@ struct llama_model_loader {
         return tensor;
     }
 
+    // DEBUG MHA
+    struct ggml_tensor * create_tensor_for_debug(struct ggml_context * ctx, struct ggml_tensor * meta, const std::vector<int64_t> & ne, ggml_backend_type backend) {
+        if (backend != GGML_BACKEND_CPU) {
+            ggml_set_no_alloc(ctx, true);
+        }
+
+        struct ggml_tensor * tensor = ggml_new_tensor_2d(ctx, meta->type, ne[0], ne[1]);
+        tensor->backend = backend; // TODO: ggml_set_backend
+        ggml_set_name(tensor, ggml_get_name(meta));
+
+        if (backend != GGML_BACKEND_CPU) {
+            ggml_set_no_alloc(ctx, use_mmap);
+        }
+
+        n_created++;
+
+        return tensor;
+    }
+
     struct ggml_tensor * create_tensor(struct ggml_context * ctx, const std::string & name, const std::vector<int64_t> & ne, ggml_backend_type backend) {
         struct ggml_tensor * cur = ggml_get_tensor(ctx_meta, name.c_str());
 
@@ -1806,15 +1825,19 @@ struct llama_model_loader {
                 }
             }
             if (!is_ok) {
-                throw std::runtime_error(
-                        format("%s: tensor '%s' has wrong shape; expected %s, got %s",
-                            __func__, name.c_str(),
-                            llama_format_tensor_shape(ne).c_str(),
-                            llama_format_tensor_shape(cur).c_str()));
+                // DEBUG MHA
+                fprintf(stderr, "\n [ %s => %s ] ", llama_format_tensor_shape(ne).c_str(), llama_format_tensor_shape(cur).c_str());
+                //throw std::runtime_error(
+                  //      format("%s: tensor '%s' has wrong shape; expected %s, got %s",
+                    //        __func__, name.c_str(),
+                      //      llama_format_tensor_shape(ne).c_str(),
+                        //    llama_format_tensor_shape(cur).c_str()));
             }
         }
 
-        return create_tensor_for(ctx, cur, backend);
+        // DEBUG MHA
+        // return create_tensor_for(ctx, ne, backend);
+        return create_tensor_for_debug(ctx, cur, ne, backend);
     }
 
     void done_getting_tensors() const {
