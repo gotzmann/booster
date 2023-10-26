@@ -858,11 +858,17 @@ class OutputFile:
         svocab.add_to_gguf(self.gguf)
 
     def add_tensor_info(self, name: str, tensor: LazyTensor) -> None:
+
+
         n_elements = int(np.prod(tensor.shape))
         raw_dtype = getattr(tensor.data_type, 'ggml_type', None)
         data_type = getattr(tensor.data_type, 'quantized_type', None) or tensor.data_type.dtype
         data_nbytes = tensor.data_type.elements_to_bytes(n_elements)
-        self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
+        # DEBUG HMA
+        if "attn_k.weight" in name or "attn_v.weight" in name:
+            self.gguf.add_tensor_info(name, [2048, 8192], data_type, data_nbytes, raw_dtype = raw_dtype)
+        else:
+            self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
 
     def write_meta(self) -> None:
         self.gguf.write_header_to_file()
@@ -929,11 +935,16 @@ class OutputFile:
 
         start = time.time()
         for i, ((name, lazy_tensor), ndarray) in enumerate(zip(model.items(), ndarrays)):
+
+
             elapsed = time.time() - start
             size = ' x '.join(f"{dim:6d}" for dim in lazy_tensor.shape)
             padi = len(str(len(model)))
             print(f"[{i+1:{padi}d}/{len(model)}] Writing tensor {name:38s} | size {size:16} | type {lazy_tensor.data_type.name:4} | T+{int(elapsed):4}")
             of.gguf.write_tensor_data(ndarray)
+            # DEBUG HMA
+            if "attn_k.weight" in name or "attn_v.weight" in name:
+                of.gguf.write_tensor_data(ndarray)
 
         of.close()
 
