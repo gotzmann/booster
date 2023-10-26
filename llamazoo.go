@@ -1,5 +1,6 @@
 package main
 
+// TODO: Loading model... before REST API running
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
 // TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]

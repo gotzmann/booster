@@ -43,7 +43,6 @@ llama_token llama_sample_token(
     fprintf(stderr, "\n\n === GQA HPARAMS ===");
     fprintf(stderr, "\n * n_embd = %d", hparams.n_embd);
     fprintf(stderr, "\n * n_head = %d", hparams.n_head);
-    fprintf(stderr, "\n * n_head = %d", hparams.n_head);
     fprintf(stderr, "\n * n_head_kv = %d", hparams.n_head_kv);
     fprintf(stderr, "\n * n_gqa() = n_head/n_head_kv = %d", hparams.n_gqa());
     fprintf(stderr, "\n * n_embd_head() = n_embd/n_head = %d", hparams.n_embd_head());

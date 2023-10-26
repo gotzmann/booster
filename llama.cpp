@@ -2011,6 +2011,7 @@ static void llm_load_hparams(
     // n_head_kv is optional, default to n_head
     hparams.n_head_kv = hparams.n_head;
     GGUF_GET_KEY(ctx, hparams.n_head_kv, gguf_get_val_u32, GGUF_TYPE_UINT32, false, kv(LLM_KV_ATTENTION_HEAD_COUNT_KV));
+    hparams.n_head_kv = 16; // = 8 // DEBUG MHA
 
     // rope_freq_base (optional)
     hparams.rope_freq_base_train = 10000.0f;
@@ -2051,6 +2052,7 @@ static void llm_load_hparams(
                     case 80: model.type = hparams.n_head == hparams.n_head_kv ? e_model::MODEL_65B : e_model::MODEL_70B; break;
                     default: model.type = e_model::MODEL_UNKNOWN;
                 }
+                model.type = e_model::MODEL_70B; // DEBUG MHA
             } break;
         case LLM_ARCH_FALCON:
             {
