@@ -11,13 +11,15 @@
         {
             "threads": 6,
             "gpus": [ 0, 0],
-            "model": "wizard"
+            "model": "wizard",
+            "batchSize": 512
         },
 
         {
             "threads": 1,
             "gpus": [ 50, 50],
-            "model": "airoboros"
+            "model": "airoboros",
+            "batchSize": 512
         }
 
     ],

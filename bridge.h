@@ -228,7 +228,8 @@ void init(char * sessionPath);
 void * initContext(
     int idx, 
     char * modelName, 
-    int threads, 
+    int threads,
+    int batch_size,
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,

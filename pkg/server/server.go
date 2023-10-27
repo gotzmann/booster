@@ -12,6 +12,7 @@ void * initContext(
 	int idx,
 	char * modelName,
 	int threads,
+	int batch_size,
 	int gpu1, int gpu2,
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
@@ -174,10 +175,11 @@ type Config struct {
 type Pod struct {
 	idx int // pod index
 
-	Threads int64  // how many threads in use [ set with config ]
-	GPUs    []int  // GPU split [ set with config ]
-	Model   string // model name [ set with config ]
-	Mode    string // mode [ set with config ]
+	Threads   int64  // how many threads in use [ set with config ]
+	GPUs      []int  // GPU split [ set with config ]
+	Model     string // model name [ set with config ]
+	Mode      string // mode [ set with config ]
+	BatchSize int
 
 	isBusy bool // do pod instance doing some job?
 	isGPU  bool // pod doing some math with GPU
@@ -336,6 +338,7 @@ func Init(
 			C.int(pod),
 			C.CString(model),
 			C.int(threads),
+			C.int(0),                 // TODO: BatchSize
 			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // TODO: Support more than 2 GPUs
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
@@ -436,8 +439,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			isBusy: false,
 			isGPU:  isGPU,
 
-			Threads: pod.Threads,
-			GPUs:    pod.GPUs,
+			Threads:   pod.Threads,
+			BatchSize: pod.BatchSize,
+			GPUs:      pod.GPUs,
 
 			Model: pod.Model,
 			Mode:  pod.Mode,
@@ -489,6 +493,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(idx),
 				C.CString(path),
 				C.int(pod.Threads),
+				C.int(pod.BatchSize),
 				// C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
 				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),

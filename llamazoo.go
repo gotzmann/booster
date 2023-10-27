@@ -60,6 +60,7 @@ type Options struct {
 	Host          string  `long:"host" description:"Host to allow requests from in Server mode [ localhost by default ]"`
 	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
+	BatchSize     int64   `long:"batch-size" description:"Batch size (in tokens) for one GPU inference flow [ 512 by default ]"`
 	GPUs          []int64 `long:"gpus" description:"Specify GPU split for each pod when there GPUs (one or more) are available"`
 	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
 	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`
