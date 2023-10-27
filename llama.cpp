@@ -1790,35 +1790,6 @@ struct llama_model_loader {
         return tensor;
     }
 
-    // DEBUG MHA
-    struct ggml_tensor * create_tensor_for_debug(struct ggml_context * ctx, struct ggml_tensor * meta, const std::vector<int64_t> & ne, ggml_backend_type backend) {
-        if (backend != GGML_BACKEND_CPU) {
-            ggml_set_no_alloc(ctx, true);
-        }
-
-        struct ggml_tensor * tensor;
-        if (ne.size() == 1) {
-            tensor = ggml_new_tensor_1d(ctx, meta->type, ne[0]);
-        } else if (ne.size() == 2) {
-            tensor = ggml_new_tensor_2d(ctx, meta->type, ne[0], ne[1]);
-        } else if (ne.size() == 3) {
-            tensor = ggml_new_tensor_3d(ctx, meta->type, ne[0], ne[1], ne[2]);
-        } else if (ne.size() == 4) {
-            tensor = ggml_new_tensor_4d(ctx, meta->type, ne[0], ne[1], ne[2], ne[3]);
-        }
-        
-        tensor->backend = backend; // TODO: ggml_set_backend
-        ggml_set_name(tensor, ggml_get_name(meta));
-
-        if (backend != GGML_BACKEND_CPU) {
-            ggml_set_no_alloc(ctx, use_mmap);
-        }
-
-        n_created++;
-
-        return tensor;
-    }
-
     struct ggml_tensor * create_tensor(struct ggml_context * ctx, const std::string & name, const std::vector<int64_t> & ne, ggml_backend_type backend) {
         struct ggml_tensor * cur = ggml_get_tensor(ctx_meta, name.c_str());
 
@@ -1835,22 +1806,15 @@ struct llama_model_loader {
                 }
             }
             if (!is_ok) {
-                // DEBUG MHA
-                //fprintf(stderr, 
-                  //  "\n [ %s => %s ] ", 
-                    //llama_format_tensor_shape(cur).c_str(), 
-                    //llama_format_tensor_shape(ne).c_str());
-                return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA 
-                //throw std::runtime_error(
-                  //      format("%s: tensor '%s' has wrong shape; expected %s, got %s",
-                    //        __func__, name.c_str(),
-                      //      llama_format_tensor_shape(ne).c_str(),
-                        //    llama_format_tensor_shape(cur).c_str()));
+                throw std::runtime_error(
+                        format("%s: tensor '%s' has wrong shape; expected %s, got %s",
+                            __func__, name.c_str(),
+                            llama_format_tensor_shape(ne).c_str(),
+                            llama_format_tensor_shape(cur).c_str()));
             }
         }
-        
-        //return create_tensor_for(ctx, cur, backend);
-        return create_tensor_for_debug(ctx, cur, ne, backend); // DEBUG MHA
+
+        return create_tensor_for(ctx, cur, backend);
     }
 
     void done_getting_tensors() const {
@@ -2047,7 +2011,6 @@ static void llm_load_hparams(
     // n_head_kv is optional, default to n_head
     hparams.n_head_kv = hparams.n_head;
     GGUF_GET_KEY(ctx, hparams.n_head_kv, gguf_get_val_u32, GGUF_TYPE_UINT32, false, kv(LLM_KV_ATTENTION_HEAD_COUNT_KV));
-    //hparams.n_head_kv = 8; // = 8 // DEBUG MHA
 
     // rope_freq_base (optional)
     hparams.rope_freq_base_train = 10000.0f;
@@ -2088,7 +2051,6 @@ static void llm_load_hparams(
                     case 80: model.type = hparams.n_head == hparams.n_head_kv ? e_model::MODEL_65B : e_model::MODEL_70B; break;
                     default: model.type = e_model::MODEL_UNKNOWN;
                 }
-                model.type = e_model::MODEL_70B; // DEBUG MHA
             } break;
         case LLM_ARCH_FALCON:
             {
@@ -2294,7 +2256,11 @@ static void llm_load_vocab(
         for (const auto & it : special_token_types) {
             const std::string & key = kv(std::get<0>(it));
             int32_t & id = std::get<1>(it), old_id = id;
+
             GGUF_GET_KEY(ctx, id, gguf_get_val_u32, GGUF_TYPE_UINT32, false, key);
+            // Must be >= -1 and < vocab size. Since the key is unsigned, -1
+            // can only come from the default value, so there's no point in
+            // validating that.
             if (size_t(id + 1) > vocab.id_to_token.size()) {
                 LLAMA_LOG_WARN("%s: bad special token: '%s' = %d, using default id %d\n",
                     __func__, key.c_str(), id, old_id);
@@ -3132,7 +3098,7 @@ static struct ggml_cgraph * llm_build_llama(
     const auto & kv_self = lctx.kv_self;
 
     GGML_ASSERT(!!kv_self.ctx);
- LLAMA_LOG_INFO("\n [ 100 ] "); // DEBUG HMA
+
     const int64_t n_embd      = hparams.n_embd;
     const int64_t n_layer     = hparams.n_layer;
     const int64_t n_ctx       = cparams.n_ctx;
@@ -3141,16 +3107,6 @@ static struct ggml_cgraph * llm_build_llama(
     const int64_t n_embd_head = hparams.n_embd_head();
     const int64_t n_embd_gqa  = hparams.n_embd_gqa();
 
-    // DEBUG GQA // DEBUG HMA
-    //auto hparams = model->hparams;
-    fprintf(stderr, "\n\n === GQA HPARAMS ===");
-    fprintf(stderr, "\n * n_embd = %d", hparams.n_embd);
-    fprintf(stderr, "\n * n_head = %d", hparams.n_head);
-    fprintf(stderr, "\n * n_head_kv = %d", hparams.n_head_kv);
-    fprintf(stderr, "\n * n_gqa() = n_head/n_head_kv = %d", hparams.n_gqa());
-    fprintf(stderr, "\n * n_embd_head() = n_embd/n_head = %d", hparams.n_embd_head());
-    fprintf(stderr, "\n * n_embd_gqa() = n_embd/n_gqa() = %d", hparams.n_embd_gqa());    
-
     GGML_ASSERT(n_embd_head == hparams.n_rot);
 
     const float freq_base    = cparams.rope_freq_base;
@@ -3158,7 +3114,7 @@ static struct ggml_cgraph * llm_build_llama(
     const float norm_rms_eps = hparams.f_norm_rms_eps;
 
     const int n_gpu_layers = model.n_gpu_layers;
-// LLAMA_LOG_INFO("\n [ 101 ] "); // DEBUG HMA
+
     const int32_t n_tokens = batch.n_tokens;
     const int32_t n_kv     = ggml_allocr_is_measure(lctx.alloc) ? n_ctx            : kv_self.n;
     const int32_t kv_head  = ggml_allocr_is_measure(lctx.alloc) ? n_ctx - n_tokens : kv_self.head;
@@ -3174,37 +3130,37 @@ static struct ggml_cgraph * llm_build_llama(
         /*.mem_buffer =*/ buf_compute.data,
         /*.no_alloc   =*/ true,
     };
-// LLAMA_LOG_INFO("\n [ 102 ] "); // DEBUG HMA
+
     struct ggml_context * ctx0 = ggml_init(params);
 
     ggml_cgraph * gf = ggml_new_graph(ctx0);
 
     struct ggml_tensor * cur;
     struct ggml_tensor * inpL;
-// LLAMA_LOG_INFO("\n [ 103 ] "); // DEBUG HMA
+
     if (batch.token) {
         struct ggml_tensor * inp_tokens = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_tokens);
-// LLAMA_LOG_INFO("\n [ 104 ] "); // DEBUG HMA
+
         ggml_allocr_alloc(lctx.alloc, inp_tokens);
         if (!ggml_allocr_is_measure(lctx.alloc)) {
             memcpy(inp_tokens->data, batch.token, n_tokens*ggml_element_size(inp_tokens));
         }
         ggml_set_name(inp_tokens, "inp_tokens");
-// LLAMA_LOG_INFO("\n [ 105 ] "); // DEBUG HMA
+
         inpL = ggml_get_rows(ctx0, model.tok_embeddings, inp_tokens);
     } else {
 #ifdef GGML_USE_MPI
         GGML_ASSERT(false && "not implemented");
 #endif
-// LLAMA_LOG_INFO("\n [ 106 ] "); // DEBUG HMA
+
         inpL = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_embd, n_tokens);
-// LLAMA_LOG_INFO("\n [ 107 ] "); // DEBUG HMA
+
         ggml_allocr_alloc(lctx.alloc, inpL);
         if (!ggml_allocr_is_measure(lctx.alloc)) {
             memcpy(inpL->data, batch.embd, n_tokens * n_embd * ggml_element_size(inpL));
         }
     }
-// LLAMA_LOG_INFO("\n [ 108 ] "); // DEBUG HMA
+
     const int i_gpu_start = n_layer - n_gpu_layers;
     (void) i_gpu_start;
 
@@ -3213,7 +3169,7 @@ static struct ggml_cgraph * llm_build_llama(
     offload_func_t offload_func_nr = llama_nop; // nr = non-repeating
     offload_func_t offload_func_kq = llama_nop;
     offload_func_t offload_func_v  = llama_nop;
- LLAMA_LOG_INFO("\n [ 109 ] "); // DEBUG HMA
+
 #ifdef GGML_USE_CUBLAS
     if (n_gpu_layers > n_layer) {
         offload_func_nr = ggml_cuda_assign_buffers_no_alloc;
@@ -3225,7 +3181,7 @@ static struct ggml_cgraph * llm_build_llama(
         offload_func_kq = ggml_cuda_assign_buffers_no_alloc;
     }
 #endif // GGML_USE_CUBLAS
- LLAMA_LOG_INFO("\n [ 110 ] "); // DEBUG HMA
+
     // KQ_scale
     struct ggml_tensor * KQ_scale = ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, 1);
     ggml_set_name(KQ_scale, "1/sqrt(n_embd_head)");
@@ -3233,7 +3189,7 @@ static struct ggml_cgraph * llm_build_llama(
     if (!ggml_allocr_is_measure(lctx.alloc)) {
         ggml_set_f32(KQ_scale, 1.0f/sqrtf(float(n_embd_head)));
     }
-// LLAMA_LOG_INFO("\n [ 111 ] "); // DEBUG HMA
+
     // KQ_mask (mask for 1 head, it will be broadcasted to all heads)
     struct ggml_tensor * KQ_mask = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_kv, n_tokens, 1);
     offload_func_kq(KQ_mask);
@@ -3242,12 +3198,12 @@ static struct ggml_cgraph * llm_build_llama(
     if (!ggml_allocr_is_measure(lctx.alloc)) {
         float * data = (float *) KQ_mask->data;
         memset(data, 0, ggml_nbytes(KQ_mask));
-// LLAMA_LOG_INFO("\n [ 112 ] "); // DEBUG HMA
+
         for (int h = 0; h < 1; ++h) {
             for (int j = 0; j < n_tokens; ++j) {
                 const llama_pos    pos    = batch.pos[j];
                 const llama_seq_id seq_id = batch.seq_id[j][0];
-// LLAMA_LOG_INFO("\n [ 113 ] "); // DEBUG HMA
+
                 for (int i = 0; i < n_kv; ++i) {
                     if (!kv_self.cells[i].has_seq_id(seq_id) || kv_self.cells[i].pos > pos) {
                         data[h*(n_kv*n_tokens) + j*n_kv + i] = -INFINITY;
@@ -3256,7 +3212,7 @@ static struct ggml_cgraph * llm_build_llama(
             }
         }
     }
-// LLAMA_LOG_INFO("\n [ 114 ] "); // DEBUG HMA
+
     // KQ_pos - contains the positions
     struct ggml_tensor * KQ_pos = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_tokens);
     offload_func_kq(KQ_pos);
@@ -3268,7 +3224,7 @@ static struct ggml_cgraph * llm_build_llama(
             data[i] = batch.pos[i];
         }
     }
-// LLAMA_LOG_INFO("\n [ 115 ] "); // DEBUG HMA
+
     // shift the entire K-cache if needed
     if (do_rope_shift) {
         struct ggml_tensor * K_shift = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_ctx);
@@ -3281,7 +3237,7 @@ static struct ggml_cgraph * llm_build_llama(
                 data[i] = kv_self.cells[i].delta;
             }
         }
-// LLAMA_LOG_INFO("\n [ 116 ] "); // DEBUG HMA
+
         for (int il = 0; il < n_layer; ++il) {
             struct ggml_tensor * tmp =
                     ggml_rope_custom_inplace(ctx0,
@@ -3295,12 +3251,12 @@ static struct ggml_cgraph * llm_build_llama(
             ggml_build_forward_expand(gf, tmp);
         }
     }
-// LLAMA_LOG_INFO("\n [ 117 ] "); // DEBUG HMA
+
     for (int il = 0; il < n_layer; ++il) {
         ggml_format_name(inpL, "layer_inp_%d", il);
 
         offload_func_t offload_func = llama_nop;
-// LLAMA_LOG_INFO("\n [ 118 ] "); // DEBUG HMA
+
 #ifdef GGML_USE_CUBLAS
         if (il >= i_gpu_start) {
             offload_func = ggml_cuda_assign_buffers_no_alloc;
@@ -3308,45 +3264,38 @@ static struct ggml_cgraph * llm_build_llama(
 #endif // GGML_USE_CUBLAS
 
         struct ggml_tensor * inpSA = inpL;
-// LLAMA_LOG_INFO("\n [ 119 ] "); // DEBUG HMA
+
         // norm
         {
             cur = ggml_rms_norm(ctx0, inpL, norm_rms_eps);
             offload_func(cur);
             ggml_set_name(cur, "rms_norm_0");
-// LLAMA_LOG_INFO("\n [ 120 ] "); // DEBUG HMA
-            // cur = cur*attn_norm(broadcasted)
-// DEBUG HMA            
-//LLAMA_LOG_INFO("\ncur = %s | model.layers[il].attn_norm = %s ", 
-//llama_format_tensor_shape(cur).c_str(), 
-//llama_format_tensor_shape(model.layers[il].attn_norm).c_str());
 
+            // cur = cur*attn_norm(broadcasted)
             cur = ggml_mul(ctx0, cur, model.layers[il].attn_norm);
-//LLAMA_LOG_INFO("\n [ 120+ ] "); // DEBUG HMA
             offload_func(cur);
-// LLAMA_LOG_INFO("\n [ 120++ ] "); // DEBUG HMA
             ggml_set_name(cur, "attention_norm_0");
         }
-// LLAMA_LOG_INFO("\n [ 121 ] "); // DEBUG HMA
+
         // self-attention
         {
             // compute Q and K and RoPE them
             struct ggml_tensor * tmpk = ggml_mul_mat(ctx0, model.layers[il].wk, cur);
             offload_func_kq(tmpk);
             ggml_set_name(tmpk, "tmpk");
-// LLAMA_LOG_INFO("\n [ 122 ] "); // DEBUG HMA
+
             struct ggml_tensor * tmpq = ggml_mul_mat(ctx0, model.layers[il].wq, cur);
             offload_func_kq(tmpq);
             ggml_set_name(tmpq, "tmpq");
-// LLAMA_LOG_INFO("\n [ 123 ] "); // DEBUG HMA
+
             struct ggml_tensor * Kcur = ggml_rope_custom(ctx0, ggml_reshape_3d(ctx0, tmpk, n_embd_head, n_head_kv, n_tokens), KQ_pos, n_embd_head, 0, 0, freq_base, freq_scale);
             offload_func_kq(Kcur);
             ggml_set_name(Kcur, "Kcur");
-// LLAMA_LOG_INFO("\n [ 124 ] "); // DEBUG HMA
+
             struct ggml_tensor * Qcur = ggml_rope_custom(ctx0, ggml_reshape_3d(ctx0, tmpq, n_embd_head, n_head,    n_tokens), KQ_pos, n_embd_head, 0, 0, freq_base, freq_scale);
             offload_func_kq(Qcur);
             ggml_set_name(Qcur, "Qcur");
-// LLAMA_LOG_INFO("\n [ 125 ] "); // DEBUG HMA
+
             // store key and value to memory
             {
                 // compute the transposed [n_tokens, n_embd] V matrix
@@ -3354,30 +3303,30 @@ static struct ggml_cgraph * llm_build_llama(
                 struct ggml_tensor * tmpv = ggml_mul_mat(ctx0, model.layers[il].wv, cur);
                 offload_func_v(tmpv);
                 ggml_set_name(tmpv, "tmpv");
-// LLAMA_LOG_INFO("\n [ 126 ] "); // DEBUG HMA
+
                 struct ggml_tensor * Vcur = ggml_transpose(ctx0, ggml_reshape_2d(ctx0, tmpv, n_embd_gqa, n_tokens));
                 offload_func_v(Vcur);
                 ggml_set_name(Vcur, "Vcur");
-// LLAMA_LOG_INFO("\n [ 127 ] "); // DEBUG HMA
+
                 struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, n_tokens*n_embd_gqa, (ggml_element_size(kv_self.k)*n_embd_gqa)*(il*n_ctx + kv_head));
                 offload_func_kq(k);
                 ggml_set_name(k, "k");
-// LLAMA_LOG_INFO("\n [ 128 ] "); // DEBUG HMA
+
                 struct ggml_tensor * v = ggml_view_2d(ctx0, kv_self.v, n_tokens, n_embd_gqa,
                         (   n_ctx)*ggml_element_size(kv_self.v),
                         (il*n_ctx)*ggml_element_size(kv_self.v)*n_embd_gqa + kv_head*ggml_element_size(kv_self.v));
                 offload_func_v(v);
                 ggml_set_name(v, "v");
-// LLAMA_LOG_INFO("\n [ 129 ] "); // DEBUG HMA
+
                 // important: storing RoPE-ed version of K in the KV cache!
                 ggml_build_forward_expand(gf, ggml_cpy(ctx0, Kcur, k));
                 ggml_build_forward_expand(gf, ggml_cpy(ctx0, Vcur, v));
             }
-// LLAMA_LOG_INFO("\n [ 130 ] "); // DEBUG HMA
+
             struct ggml_tensor * Q = ggml_permute(ctx0, Qcur, 0, 2, 1, 3);
             offload_func_kq(Q);
             ggml_set_name(Q, "Q");
-// LLAMA_LOG_INFO("\n [ 131 ] "); // DEBUG HMA
+
             struct ggml_tensor * K =
                 ggml_view_3d(ctx0, kv_self.k,
                         n_embd_head, n_kv, n_head_kv,
@@ -3386,28 +3335,28 @@ static struct ggml_cgraph * llm_build_llama(
                         ggml_element_size(kv_self.k)*n_embd_gqa*n_ctx*il);
             offload_func_kq(K);
             ggml_set_name(K, "K");
-// LLAMA_LOG_INFO("\n [ 132 ] "); // DEBUG HMA
+
             // K * Q
             struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
             offload_func_kq(KQ);
             ggml_set_name(KQ, "KQ");
-// LLAMA_LOG_INFO("\n [ 133 ] "); // DEBUG HMA
+
             // KQ_scaled = KQ / sqrt(n_embd_head)
             // KQ_scaled shape [n_kv, n_tokens, n_head, 1]
             struct ggml_tensor * KQ_scaled = ggml_scale(ctx0, KQ, KQ_scale);
             offload_func_kq(KQ_scaled);
             ggml_set_name(KQ_scaled, "KQ_scaled");
-// LLAMA_LOG_INFO("\n [ 134 ] "); // DEBUG HMA
+
             // KQ_masked = mask_past(KQ_scaled)
             struct ggml_tensor * KQ_masked = ggml_add(ctx0, KQ_scaled, KQ_mask);
             offload_func_kq(KQ_masked);
             ggml_set_name(KQ_masked, "KQ_masked");
-// LLAMA_LOG_INFO("\n [ 135 ] "); // DEBUG HMA
+
             // KQ = soft_max(KQ_masked)
             struct ggml_tensor * KQ_soft_max = ggml_soft_max(ctx0, KQ_masked);
             offload_func_v(KQ_soft_max);
             ggml_set_name(KQ_soft_max, "KQ_soft_max");
-// LLAMA_LOG_INFO("\n [ 136 ] "); // DEBUG HMA
+
             // split cached V into n_head heads
             struct ggml_tensor * V =
                 ggml_view_3d(ctx0, kv_self.v,
@@ -3417,7 +3366,7 @@ static struct ggml_cgraph * llm_build_llama(
                         ggml_element_size(kv_self.v)*n_ctx*n_embd_gqa*il);
             offload_func_v(V);
             ggml_set_name(V, "V");
-// LLAMA_LOG_INFO("\n [ 137 ] "); // DEBUG HMA
+
 #if 1
             struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V, KQ_soft_max);
             offload_func_v(KQV);
@@ -3429,17 +3378,17 @@ static struct ggml_cgraph * llm_build_llama(
             struct ggml_tensor * V_cont = ggml_cpy(ctx0, V, ggml_new_tensor_3d(ctx0, kv_self.v->type, n_ctx, n_embd_head, n_head));
             struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V_cont, KQ_soft_max);
 #endif
- //LLAMA_LOG_INFO("\n [ 138 ] "); // DEBUG HMA
+
             // KQV_merged = KQV.permute(0, 2, 1, 3)
             struct ggml_tensor * KQV_merged = ggml_permute(ctx0, KQV, 0, 2, 1, 3);
             offload_func_v(KQV_merged);
             ggml_set_name(KQV_merged, "KQV_merged");
- //LLAMA_LOG_INFO("\n [ 139 ] "); // DEBUG HMA
+
             // cur = KQV_merged.contiguous().view(n_embd, n_tokens)
             cur = ggml_cont_2d(ctx0, KQV_merged, n_embd, n_tokens);
             offload_func_v(cur);
             ggml_set_name(cur, "KQV_merged_contiguous");
- //LLAMA_LOG_INFO("\n [ 140 ] "); // DEBUG HMA
+
             // projection (no bias)
             cur = ggml_mul_mat(ctx0,
                     model.layers[il].wo,
@@ -3447,7 +3396,7 @@ static struct ggml_cgraph * llm_build_llama(
             offload_func(cur);
             ggml_set_name(cur, "result_wo");
         }
- //LLAMA_LOG_INFO("\n [ 141 ] "); // DEBUG HMA
+
         struct ggml_tensor * inpFF = ggml_add(ctx0, cur, inpSA);
         offload_func(inpFF);
         ggml_set_name(inpFF, "inpFF");
@@ -3459,7 +3408,7 @@ static struct ggml_cgraph * llm_build_llama(
                 cur = ggml_rms_norm(ctx0, inpFF, norm_rms_eps);
                 offload_func(cur);
                 ggml_set_name(cur, "rms_norm_1");
-// LLAMA_LOG_INFO("\n [ 142 ] "); // DEBUG HMA
+
                 // cur = cur*ffn_norm(broadcasted)
                 cur = ggml_mul(ctx0, cur, model.layers[il].ffn_norm);
                 offload_func(cur);
@@ -3471,7 +3420,7 @@ static struct ggml_cgraph * llm_build_llama(
                     cur);
             offload_func(tmp);
             ggml_set_name(tmp, "result_w3");
-// LLAMA_LOG_INFO("\n [ 143 ] "); // DEBUG HMA
+
             cur = ggml_mul_mat(ctx0,
                     model.layers[il].w1,
                     cur);
@@ -3482,7 +3431,7 @@ static struct ggml_cgraph * llm_build_llama(
             cur = ggml_silu(ctx0, cur);
             offload_func(cur);
             ggml_set_name(cur, "silu");
-// LLAMA_LOG_INFO("\n [ 144 ] "); // DEBUG HMA
+
             cur = ggml_mul(ctx0, cur, tmp);
             offload_func(cur);
             ggml_set_name(cur, "silu_x_result_w3");
@@ -3493,7 +3442,7 @@ static struct ggml_cgraph * llm_build_llama(
             offload_func(cur);
             ggml_set_name(cur, "result_w2");
         }
-// LLAMA_LOG_INFO("\n [ 145 ] "); // DEBUG HMA
+
         cur = ggml_add(ctx0, cur, inpFF);
         offload_func(cur);
         ggml_set_name(cur, "inpFF_+_result_w2");
@@ -3501,7 +3450,7 @@ static struct ggml_cgraph * llm_build_llama(
         // input for next layer
         inpL = cur;
     }
-// LLAMA_LOG_INFO("\n [ 146 ] "); // DEBUG HMA
+
     cur = inpL;
 
     // norm
@@ -3515,7 +3464,7 @@ static struct ggml_cgraph * llm_build_llama(
         // offload_func_nr(cur); // TODO CPU + GPU mirrored backend
         ggml_set_name(cur, "result_norm");
     }
-// LLAMA_LOG_INFO("\n [ 147 ] "); // DEBUG HMA
+
     // lm_head
     cur = ggml_mul_mat(ctx0, model.output, cur);
     ggml_set_name(cur, "result_output");
@@ -3523,7 +3472,7 @@ static struct ggml_cgraph * llm_build_llama(
     ggml_build_forward_expand(gf, cur);
 
     ggml_free(ctx0);
- //LLAMA_LOG_INFO("\n [ 148 ] "); // DEBUG HMA
+
     return gf;
 }
 
@@ -8935,37 +8884,37 @@ struct llama_context * llama_new_context_with_model(
             llama_free(ctx);
             return nullptr;
         }
-LLAMA_LOG_INFO("\n [ 01 ] "); // DEBUG HMA
+
         {
             const size_t memory_size = ggml_nbytes(ctx->kv_self.k) + ggml_nbytes(ctx->kv_self.v);
             LLAMA_LOG_INFO("%s: kv self size  = %7.2f MB\n", __func__, memory_size / 1024.0 / 1024.0);
         }
-LLAMA_LOG_INFO("\n [ 02 ] "); // DEBUG HMA
+
         // resized during inference
         if (params.logits_all) {
             ctx->logits.reserve(cparams.n_ctx*hparams.n_vocab);
         } else {
             ctx->logits.reserve(hparams.n_vocab);
         }
-LLAMA_LOG_INFO("\n [ 03 ] "); // DEBUG HMA
+
         if (params.embedding){
             ctx->embedding.resize(hparams.n_embd);
         }
- LLAMA_LOG_INFO("\n [ 04 ] "); // DEBUG HMA
+
         {
             static const size_t tensor_alignment = 32;
             // the compute buffer is used to store the tensor and graph structs, while the allocator buffer is used for the tensor data
             ctx->buf_compute.resize(ggml_tensor_overhead()*GGML_MAX_NODES + ggml_graph_overhead());
- LLAMA_LOG_INFO("\n [ 05 ] "); // DEBUG HMA
+
             // create measure allocator
             ctx->alloc = ggml_allocr_new_measure(tensor_alignment);
- LLAMA_LOG_INFO("\n [ 06 ] "); // DEBUG HMA
+
             // build worst-case graph
             int n_tokens = (int)std::min(cparams.n_ctx, cparams.n_batch);
             int n_past = cparams.n_ctx - n_tokens;
             llama_token token = llama_token_bos(&ctx->model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
             ggml_cgraph * gf = llama_build_graph(*ctx, llama_batch_get_one(&token, n_tokens, n_past, 0));
- LLAMA_LOG_INFO("\n [ 07 ] "); // DEBUG HMA
+
 #ifdef GGML_USE_METAL
             if (model->n_gpu_layers > 0) {
                 ggml_metal_log_set_callback(llama_log_callback_default, NULL);
@@ -8982,15 +8931,14 @@ LLAMA_LOG_INFO("\n [ 03 ] "); // DEBUG HMA
 #endif
             // measure memory requirements for the graph
             size_t alloc_size = ggml_allocr_alloc_graph(ctx->alloc, gf) + tensor_alignment;
- LLAMA_LOG_INFO("\n [ 08 ] "); // DEBUG HMA
+
             LLAMA_LOG_INFO("%s: compute buffer total size = %.2f MB\n", __func__, (ctx->buf_compute.size + alloc_size) / 1024.0 / 1024.0);
 
             // recreate allocator with exact memory requirements
             ggml_allocr_free(ctx->alloc);
- LLAMA_LOG_INFO("\n [ 09 ] "); // DEBUG HMA
+
             ctx->buf_alloc.resize(alloc_size);
             ctx->alloc = ggml_allocr_new(ctx->buf_alloc.data, ctx->buf_alloc.size, tensor_alignment);
- LLAMA_LOG_INFO("\n [ 10 ] "); // DEBUG HMA            
 #ifdef GGML_USE_METAL
             if (ctx->ctx_metal) {
                 //ggml_allocr_set_parse_seq(ctx->alloc, ggml_metal_get_concur_list(ctx->ctx_metal), ggml_metal_if_optimized(ctx->ctx_metal));

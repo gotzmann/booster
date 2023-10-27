@@ -867,7 +867,7 @@ class OutputFile:
         if "attn_k.weight" in name or "attn_v.weight" in name:
             size = ' x '.join(f"{dim:6d}" for dim in tensor.shape)
             print(f"== add_tensor_info == [ Writing tensor {name:38s} | size {size:16} ]")
-            print 
+            #print(f"{tensor[0.]}") 
             self.gguf.add_tensor_info(name, [2048, 8192], data_type, data_nbytes, raw_dtype = raw_dtype)
         else:
             self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
