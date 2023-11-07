@@ -1,5 +1,7 @@
 package main
 
+// TODO: Experiment with the batch size
+// TODO: If there no batch size in config - server do not work
 // TODO: Loading model... before REST API running
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)

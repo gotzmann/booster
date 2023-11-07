@@ -12,7 +12,7 @@
 
 default: llamazoo
 
-# How to build for regular platform with just CPU support
+# How to build for regular Intel / AMD platform with just CPU support
 llamazoo: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o k_quants.o $(OBJS)
 	CGO_ENABLED=1 go build llamazoo.go
 
