@@ -720,7 +720,8 @@ void * initContext(
     float typical_p, 
     float penalty_repeat, int penalty_last_n,
     int32_t janus, int32_t depth, float scale, float hi, float lo,
-    uint32_t seed) {
+    uint32_t seed,
+    int32_t debug) {
     
     ::params[idx].model           = modelName;
     ::params[idx].n_threads       = threads;
@@ -754,14 +755,14 @@ void * initContext(
 
     ::sparams[idx].typical_p       = typical_p > 0 ? typical_p : 1.0f;
 
-    ::sparams[idx].penalty_repeat   = penalty_repeat;
-    ::sparams[idx].penalty_last_n   = penalty_last_n;
+    ::sparams[idx].penalty_repeat  = penalty_repeat;
+    ::sparams[idx].penalty_last_n  = penalty_last_n;
     
     ::params[idx].seed            = seed;
     
-    hide();
+    if (!debug) { hide(); }
     auto res = init_context(idx);
-    show();
+    if (!debug) { show(); }
 
     return res;
 }

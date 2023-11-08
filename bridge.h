@@ -240,7 +240,8 @@ void * initContext(
 	float scale,
 	float hi,
 	float lo,
-    uint32_t seed);
+    uint32_t seed,
+    int32_t debug);
 
 int64_t doInference(
     int idx, 

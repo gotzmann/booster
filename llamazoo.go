@@ -9,8 +9,6 @@ package main
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
 // wiki-raw datasets https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/
 
-// ggml-cuda.o
-
 /*
 #include <stdlib.h>
 #include <stdint.h>
@@ -46,7 +44,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.39.0"
+const VERSION = "0.40.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -221,7 +219,9 @@ func main() {
 			opts.PenaltyRepeat, opts.PenaltyLastN,
 			opts.Deadline,
 			opts.Seed,
-			opts.Sessions)
+			opts.Sessions,
+			"", // TODO: Debug Level
+		)
 	}
 
 	// --- Debug output of results and stop after 1 hour in case of running withous --server flag

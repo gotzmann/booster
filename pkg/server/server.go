@@ -23,7 +23,8 @@ void * initContext(
 	float scale,
 	float hi,
 	float lo,
-	int32_t seed);
+	int32_t seed,
+	int32_t debug);
 int64_t doInference(
 	int idx,
 	void * ctx,
@@ -144,7 +145,8 @@ type Model struct {
 
 // TODO: Logging setup
 type Config struct {
-	ID string // server key, should be unique within cluster
+	ID    string // server key, should be unique within cluster
+	Debug string // cuda, full, janus, etc
 
 	//Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
 	Modes []Mode
@@ -160,8 +162,8 @@ type Config struct {
 	Sessions string // path to store session files
 
 	Pods    []Pod   // pods count
-	Threads []int64 // threads count for each pod
-	GPUs    [][]int // GPU split between pods
+	Threads []int64 // threads count for each pod // TODO: Obsolete
+	GPUs    [][]int // GPU split between pods // TODO: Obsolete
 	// GPULayers []int   // how many layers offload to Apple GPU?
 
 	Models []Model
@@ -221,6 +223,7 @@ const (
 
 var (
 	ServerMode int // LLAMA_CPP by default
+	Debug      string
 
 	Host string
 	Port string
@@ -289,7 +292,8 @@ func Init(
 	penaltyRepeat float32, penaltyLastN int,
 	deadlineIn int64,
 	seed uint32,
-	sessionPath string) {
+	sessionPath string,
+	debug string) {
 
 	ServerMode = LLAMA_CPP
 	Host = host
@@ -302,6 +306,12 @@ func Init(
 	Modes = map[string]string{"default": ""}
 	Models = make([]*Model, 1) // TODO: N models
 	SessionPath = sessionPath
+
+	Debug = debug
+	debugCUDA := 0
+	if Debug == "cuda" {
+		debugCUDA = 1
+	}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -343,7 +353,9 @@ func Init(
 			C.float(typicalP),
 			C.float(penaltyRepeat), C.int(penaltyLastN),
 			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
-			C.int32_t(seed))
+			C.int32_t(seed),
+			C.int32_t(debugCUDA),
+		)
 
 		if ctx == nil {
 			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", pod, pods)
@@ -415,6 +427,12 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	Pods = make([]*Pod, len(conf.Pods))
 	Models = make([]*Model, len(conf.Models))
 	SessionPath = conf.Sessions
+
+	Debug = conf.Debug
+	debugCUDA := 0
+	if Debug == "cuda" {
+		debugCUDA = 1
+	}
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
@@ -497,7 +515,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.float(model.TypicalP),
 				C.float(model.PenaltyRepeat), C.int(model.PenaltyLastN),
 				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
-				C.int32_t(-1))
+				C.int32_t(-1),
+				C.int32_t(debugCUDA),
+			)
 
 			if ctx == nil {
 				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model [ %s ]\n\n", model.ID)
