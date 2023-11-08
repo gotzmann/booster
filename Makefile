@@ -1,5 +1,5 @@
 # How to remove older files and build fresh executable?
-# make clean && LLAMA_CUBLAS=1 PATH=$PATH:/usr/local/go/bin CUDA_PATH=/usr/local/cuda-12 CUDA_DOCKER_ARCH=sm_80 make -j <platform>
+# make clean && LLAMA_CUBLAS=1 PATH=$PATH:/usr/local/go/bin CUDA_PATH=/usr/local/cuda CUDA_DOCKER_ARCH=sm_80 make -j <platform>
 
 # How to run server with debug output?
 # ./llamazoo --server --debug
