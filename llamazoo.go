@@ -3,7 +3,6 @@ package main
 // TODO: --config param to exactly specify config file location
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
-// TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
@@ -44,7 +43,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.40.0"
+const VERSION = "0.41.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`

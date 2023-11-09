@@ -106,9 +106,10 @@ type HyperParams struct {
 }
 
 type Model struct {
-	ID   string // short internal name of the model
-	Name string // public name for humans
-	Path string // path to binary file
+	ID     string // short internal name of the model
+	Name   string // public name for humans
+	Path   string // path to binary file
+	Locale string
 
 	Context unsafe.Pointer // *llama.Context
 
@@ -365,6 +366,7 @@ func Init(
 		Models /*[""]*/ [pod] = &Model{
 			Path:    model,
 			Context: ctx,
+			Locale:  "", // TODO: Set Locale
 
 			Preamble: preamble,
 			Prefix:   prefix,
@@ -525,8 +527,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			}
 
 			Models[idx] = &Model{
-				ID:   model.ID,
-				Name: model.Name,
+				ID:     model.ID,
+				Name:   model.Name,
+				Locale: model.Locale,
 
 				Path:    model.Path,
 				Context: ctx,
@@ -728,13 +731,15 @@ func Do(jobID string, pod *Pod) {
 		}
 	}
 
-	// -- Inject context vars
-	// ${DATE} = понедельник 25 сентября 2023
-	// TODO: Support 20 other locales
-	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.LocaleRuRU)
+	// -- Inject context vars: ${DATE}, etc
+	locale := monday.LocaleEnUS
+	if pod.model.Locale != "" {
+		locale = pod.model.Locale
+	}
+	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
 	date = strings.ToLower(date)
 	preamble := strings.Replace(pod.model.Preamble, "${DATE}", date, 1)
-	//fmt.Printf("\nPREAMBLE: %s", preamble) // DEBUG
+	// fmt.Printf("\nPREAMBLE: %s", preamble) // DEBUG
 	// --
 
 	prompt := Jobs[jobID].Prompt
