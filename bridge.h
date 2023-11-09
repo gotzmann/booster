@@ -223,7 +223,7 @@ uint32_t getSeedCPP(const std::string & jobID);
 
 extern "C" { // -----    
 
-void init(char * sessionPath);
+void init(char * sessionPath, int32_t debug);
 
 void * initContext(
     int idx, 

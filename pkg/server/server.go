@@ -7,7 +7,7 @@ package server
 /*
 #include <stdlib.h>
 #include <stdint.h>
-void * init(char * sessionPath);
+void * init(char * sessionPath, int32_t debug);
 void * initContext(
 	int idx,
 	char * modelName,
@@ -340,7 +340,7 @@ func Init(
 			os.Exit(0)
 		}
 
-		C.init(C.CString(sessionPath))
+		C.init(C.CString(sessionPath), C.int32_t(debugCUDA))
 
 		// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -483,7 +483,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			C.init(C.CString(SessionPath))
+			C.init(C.CString(SessionPath), C.int32_t(debugCUDA))
 
 			// TODO: Refactore temp huck supporting only 2 GPUs split
 

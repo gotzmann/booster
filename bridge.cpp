@@ -701,11 +701,11 @@ uint32_t getSeedCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void init(char * sessionPath) {
+void init(char * sessionPath, int32_t debug) {
     ::path_session = sessionPath;
-    hide();
+    if (!debug) { hide(); }
     llama_backend_init(false); // NUMA = false
-    show();
+    if (!debug) { show(); }
 }
 
 // TODO: support n_threads_batch

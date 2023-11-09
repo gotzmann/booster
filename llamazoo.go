@@ -1,5 +1,6 @@
 package main
 
+// TODO: Watchdog exceptions: CUDA error 2 at ggml-cuda.cu:7233: out of memory
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
@@ -43,7 +44,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.42.0"
+const VERSION = "0.43.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
