@@ -1,6 +1,5 @@
 package main
 
-// TODO: --config param to exactly specify config file location
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
@@ -28,6 +27,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,11 +43,12 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.41.0"
+const VERSION = "0.42.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 	Model         string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
+	Config        string  `long:"config" description:"Use exact config file path [ config.yaml or config.json in current folder by default ]"`
 	Preamble      string  `long:"preamble" description:"Preamble for model prompt, like \"You are a helpful AI assistant\""`
 	Prefix        string  `long:"prefix" description:"Prompt prefix if needed, like \"### Instruction:\""`
 	Suffix        string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
@@ -100,18 +101,32 @@ func main() {
 	var feed config.Feeder
 	if !opts.Ignore {
 
-		if _, err := os.Stat("config.json"); err == nil {
+		if opts.Config != "" {
+			if _, err := os.Stat(opts.Config); err != nil {
+				Colorize("\n[magenta][ ERROR ][white] Can't find specified config file!\n\n")
+				os.Exit(0)
+			}
+		}
+
+		if opts.Config != "" && strings.Contains(opts.Config, ".json") {
+			feed = feeder.Json{Path: opts.Config}
+		} else if opts.Config != "" && strings.Contains(opts.Config, ".yaml") {
+			feed = feeder.Yaml{Path: opts.Config}
+		} else if _, err := os.Stat("config.json"); err == nil {
 			feed = feeder.Json{Path: "config.json"}
 		} else if _, err := os.Stat("config.yaml"); err == nil {
 			feed = feeder.Yaml{Path: "config.yaml"}
 		}
 
-		if feed != nil {
-			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
-			if err != nil {
-				Colorize("\n[magenta][ ERROR ][white] Can't parse config file! %s\n\n", err.Error())
-				os.Exit(0)
-			}
+		if feed == nil {
+			Colorize("\n[magenta][ ERROR ][white] Can't find default config file!\n\n")
+			os.Exit(0)
+		}
+
+		err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
+		if err != nil {
+			Colorize("\n[magenta][ ERROR ][white] Can't parse config file! %s\n\n", err.Error())
+			os.Exit(0)
 		}
 	}
 

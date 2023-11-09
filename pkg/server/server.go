@@ -146,8 +146,9 @@ type Model struct {
 
 // TODO: Logging setup
 type Config struct {
-	ID    string // server key, should be unique within cluster
-	Debug string // cuda, full, janus, etc
+	ID     string // server key, should be unique within cluster
+	Debug  string // cuda, full, janus, etc
+	Config string // exact path to config file if needed
 
 	//Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
 	Modes []Mode
