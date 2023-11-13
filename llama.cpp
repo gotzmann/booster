@@ -2256,7 +2256,11 @@ static void llm_load_vocab(
         for (const auto & it : special_token_types) {
             const std::string & key = kv(std::get<0>(it));
             int32_t & id = std::get<1>(it), old_id = id;
+
             GGUF_GET_KEY(ctx, id, gguf_get_val_u32, GGUF_TYPE_UINT32, false, key);
+            // Must be >= -1 and < vocab size. Since the key is unsigned, -1
+            // can only come from the default value, so there's no point in
+            // validating that.
             if (size_t(id + 1) > vocab.id_to_token.size()) {
                 LLAMA_LOG_WARN("%s: bad special token: '%s' = %d, using default id %d\n",
                     __func__, key.c_str(), id, old_id);

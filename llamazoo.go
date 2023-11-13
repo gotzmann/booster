@@ -1,5 +1,8 @@
 package main
 
+// TODO: Experiment with the batch size
+// TODO: If there no batch size in config - server do not work
+// TODO: Loading model... before REST API running
 // TODO: Watchdog exceptions: CUDA error 2 at ggml-cuda.cu:7233: out of memory
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
@@ -7,8 +10,6 @@ package main
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
 // wiki-raw datasets https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/
-
-// ggml-cuda.o
 
 /*
 #include <stdlib.h>
@@ -18,10 +19,10 @@ uint32_t getSeed(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 #cgo linux CFLAGS:   -std=c17   -O3 -I.           -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
 #cgo linux CXXFLAGS: -std=c++17 -O3 -I. -Icommon  -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
-#cgo linux LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o llama.o k_quants.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda/targets/x86_64-linux/lib
+#cgo linux LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG -mcpu=native
 #cgo darwin CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
-#cgo darwin LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o llama.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
+#cgo darwin LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 */
 import "C"
 
@@ -63,6 +64,7 @@ type Options struct {
 	Host          string  `long:"host" description:"Host to allow requests from in Server mode [ localhost by default ]"`
 	Port          string  `long:"port" description:"Port listen to in Server Mode [ 8080 by default ]"`
 	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
+	BatchSize     int64   `long:"batch-size" description:"Batch size (in tokens) for one GPU inference flow [ 512 by default ]"`
 	GPUs          []int64 `long:"gpus" description:"Specify GPU split for each pod when there GPUs (one or more) are available"`
 	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
 	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`

@@ -203,7 +203,8 @@ class Params:
         n_layer          = config["num_hidden_layers"]
         n_ff             = config["intermediate_size"]
         n_head           = config["num_attention_heads"]
-        n_head_kv        = config["num_key_value_heads"] if "num_key_value_heads" in config else n_head
+        # DEBUG HMA
+        n_head_kv        = 16 # config["num_key_value_heads"] if "num_key_value_heads" in config else n_head
         f_norm_eps       = config["rms_norm_eps"]
         f_rope_freq_base = config["rope_theta"] if "rope_theta" in config else None
 
@@ -422,7 +423,7 @@ Vocab: TypeAlias = 'BpeVocab | SentencePieceVocab'
 #
 
 def permute(weights: NDArray, n_head: int, n_head_kv: int) -> NDArray:
-    #print( "permute debug " + str(weights.shape[0]) + " x " + str(weights.shape[1]) + " nhead " + str(n_head) + " nheadkv " + str(n_kv_head) )
+    print( "permute debug " + str(weights.shape[0]) + " x " + str(weights.shape[1]) + " nhead " + str(n_head) + " nheadkv " + str(n_head_kv) )
     if n_head_kv is not None and n_head != n_head_kv:
         n_head = n_head_kv
     return (weights.reshape(n_head, 2, weights.shape[0] // n_head // 2, *weights.shape[1:])
@@ -862,7 +863,14 @@ class OutputFile:
         raw_dtype = getattr(tensor.data_type, 'ggml_type', None)
         data_type = getattr(tensor.data_type, 'quantized_type', None) or tensor.data_type.dtype
         data_nbytes = tensor.data_type.elements_to_bytes(n_elements)
-        self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
+        # DEBUG HMA
+        if "attn_k.weight" in name or "attn_v.weight" in name:
+            size = ' x '.join(f"{dim:6d}" for dim in tensor.shape)
+            print(f"== add_tensor_info == [ Writing tensor {name:38s} | size {size:16} ]")
+            #print(f"{tensor[0.]}") 
+            self.gguf.add_tensor_info(name, [2048, 8192], data_type, data_nbytes, raw_dtype = raw_dtype)
+        else:
+            self.gguf.add_tensor_info(name, tensor.shape, data_type, data_nbytes, raw_dtype = raw_dtype)
 
     def write_meta(self) -> None:
         self.gguf.write_header_to_file()
@@ -929,11 +937,16 @@ class OutputFile:
 
         start = time.time()
         for i, ((name, lazy_tensor), ndarray) in enumerate(zip(model.items(), ndarrays)):
+
+
             elapsed = time.time() - start
             size = ' x '.join(f"{dim:6d}" for dim in lazy_tensor.shape)
             padi = len(str(len(model)))
             print(f"[{i+1:{padi}d}/{len(model)}] Writing tensor {name:38s} | size {size:16} | type {lazy_tensor.data_type.name:4} | T+{int(elapsed):4}")
             of.gguf.write_tensor_data(ndarray)
+            # DEBUG HMA
+            if "attn_k.weight" in name or "attn_v.weight" in name:
+                of.gguf.write_tensor_data(ndarray)
 
         of.close()
 

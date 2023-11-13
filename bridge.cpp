@@ -1,8 +1,3 @@
-#include "bridge.h"
-#include "janus.h"
-#include "llama.h"
-#include "ggml.h"
-
 #include <array>
 #include <algorithm>
 #include <string>
@@ -12,6 +7,12 @@
 #include <shared_mutex>
 #include <unordered_map>
 #include <tuple>
+
+#include "ggml.h"
+#include "bridge.h"
+#include "janus.h"
+#include "llama.h"
+#include "llama.cpp"
 
 // pos => index of current position within generation window [ 0 .. max )
 // max => how many tokens were generated via the last iteration?
@@ -37,7 +38,18 @@ llama_token llama_sample_token(
     const int32_t top_k          = params.top_k <= 0 ? n_vocab : params.top_k;
     const int32_t penalty_last_n = params.penalty_last_n < 0 ? n_ctx : params.penalty_last_n;
 
-    /* DEBUG
+    /* DEBUG GQA
+    auto hparams = model->hparams;
+    fprintf(stderr, "\n\n === GQA HPARAMS ===");
+    fprintf(stderr, "\n * n_embd = %d", hparams.n_embd);
+    fprintf(stderr, "\n * n_head = %d", hparams.n_head);
+    fprintf(stderr, "\n * n_head_kv = %d", hparams.n_head_kv);
+    fprintf(stderr, "\n * n_gqa() = n_head/n_head_kv = %d", hparams.n_gqa());
+    fprintf(stderr, "\n * n_embd_head() = n_embd/n_head = %d", hparams.n_embd_head());
+    fprintf(stderr, "\n * n_embd_gqa() = n_embd/n_gqa() = %d", hparams.n_embd_gqa()); */
+
+    /* DEBUG HPARAMS
+    fprintf(stderr, "\n\n === HPARAMS ===");
     fprintf(stderr, "\n * n_ctx = %d", n_ctx);
     fprintf(stderr, "\n * n_vocab = %d", n_vocab);
     fprintf(stderr, "\n * temp = %f", params.temp);
@@ -249,7 +261,14 @@ struct llama_context * init_context(int idx) {
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
 
     bool isGPU = ::params[idx].n_gpu_layers > 0 ? true : false;
-    defaults.n_batch = isGPU ? 512 : ::params[idx].n_ctx;
+
+    if (::params[idx].n_batch > 0 && ::params[idx].n_batch <= ::params[idx].n_ctx) {
+        defaults.n_batch = ::params[idx].n_batch;
+    } else if (isGPU) {
+        defaults.n_batch = 512;
+    } else {
+        defaults.n_batch = ::params[idx].n_ctx;
+    }
 
     llama_context * ctx = llama_new_context_with_model(model, defaults);
     if (ctx == NULL) {
@@ -713,6 +732,7 @@ void * initContext(
     int idx, 
     char * modelName, 
     int threads, 
+    int batch_size, 
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
@@ -725,6 +745,7 @@ void * initContext(
     
     ::params[idx].model           = modelName;
     ::params[idx].n_threads       = threads;
+    ::params[idx].n_batch         = batch_size;
     ::params[idx].n_threads_batch = ::params[idx].n_threads_batch == -1 ? threads : ::params[idx].n_threads_batch;
 
     ::params[idx].main_gpu        = 0; // TODO: Main GPU depending on tensor split
@@ -737,23 +758,23 @@ void * initContext(
 
     // -- Janus sampling
 
-    ::sparams[idx].janus           = janus;
-    ::sparams[idx].depth           = depth;
-    ::sparams[idx].scale           = scale;
-    ::sparams[idx].hi              = hi;
-    ::sparams[idx].lo              = lo;
+    ::sparams[idx].janus          = janus;
+    ::sparams[idx].depth          = depth;
+    ::sparams[idx].scale          = scale;
+    ::sparams[idx].hi             = hi;
+    ::sparams[idx].lo             = lo;
 
     // -- other samplings
 
-    ::sparams[idx].mirostat        = mirostat;
-    ::sparams[idx].mirostat_tau    = mirostat_tau; 
-    ::sparams[idx].mirostat_eta    = mirostat_eta;
+    ::sparams[idx].mirostat       = mirostat;
+    ::sparams[idx].mirostat_tau   = mirostat_tau; 
+    ::sparams[idx].mirostat_eta   = mirostat_eta;
 
-    ::sparams[idx].temp            = temp;
-    ::sparams[idx].top_k           = top_k;
-    ::sparams[idx].top_p           = top_p;
+    ::sparams[idx].temp           = temp;
+    ::sparams[idx].top_k          = top_k;
+    ::sparams[idx].top_p          = top_p;
 
-    ::sparams[idx].typical_p       = typical_p > 0 ? typical_p : 1.0f;
+    ::sparams[idx].typical_p      = typical_p > 0 ? typical_p : 1.0f;
 
     ::sparams[idx].penalty_repeat  = penalty_repeat;
     ::sparams[idx].penalty_last_n  = penalty_last_n;

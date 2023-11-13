@@ -14,11 +14,13 @@ debug:
     threads: 6
     gpus: [ 0, 0 ]
     model: wizard
+    batchsize: 512
 
   -
     threads: 1
     gpus: [ 50, 50 ]
     model: airoboros
+    batchsize: 512
 
 # --- models
 

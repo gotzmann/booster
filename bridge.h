@@ -228,7 +228,8 @@ void init(char * sessionPath, int32_t debug);
 void * initContext(
     int idx, 
     char * modelName, 
-    int threads, 
+    int threads,
+    int batch_size,
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
@@ -258,6 +259,9 @@ int64_t timing(char * jobID);
 uint32_t getSeed(char * jobID);  
 
 } // ------- extern "C"
+
+// For internal test use
+const std::vector<std::pair<std::string, struct ggml_tensor *>> & llama_internal_get_tensor_map(struct llama_context * ctx);
 
 std::vector<std::byte> getBytes(std::string const &s);
 bool isPedantic(llama_token id);
