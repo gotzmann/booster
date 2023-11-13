@@ -5,6 +5,7 @@
     "log": "llamazoo.log",
     "deadline": 180,
     "sessions": "/home/sessions",
+    "debug": "",
 
     "pods": [
 
