@@ -5,6 +5,7 @@
     "log": "llamazoo.log",
     "deadline": 180,
     "sessions": "/home/sessions",
+    "debug": "",
 
     "pods": [
 
@@ -30,6 +31,7 @@
             "id": "airoboros",
             "name": "Airoboros 7B",
             "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
+            "locale": "en_US",
 
             "preamble": "",
             "prefix": "USER:",
@@ -59,6 +61,7 @@
             "id": "wizard",
             "name": "WizardLM 7B",
             "path": "~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin",
+            "locale": "en_US",
 
             "preamble": "",
             "prefix": "### Instruction:",

@@ -3,9 +3,9 @@ package main
 // TODO: Experiment with the batch size
 // TODO: If there no batch size in config - server do not work
 // TODO: Loading model... before REST API running
+// TODO: Watchdog exceptions: CUDA error 2 at ggml-cuda.cu:7233: out of memory
 // TODO: Init Janus Sampling from CLI
 // TODO: Update code for maintain session files for GGUF format (tokenization BOS, etc)
-// TODO: Support different languages and time / metric systems within system PROMPT  [ ${DATE}, etc ]
 // TODO: Protect user input from injection of PROMPT attacs, like USER: or ASSISTANT: wording
 // TODO: Use UUID instead of string https://github.com/google/uuid/blob/master/uuid.go
 // TODO: Benchmark map[string] vs map[UUID] by memory and performance for accessing 1 million elements
@@ -17,9 +17,9 @@ package main
 const char * status(char * jobID);
 uint32_t getSeed(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
-#cgo linux CFLAGS:   -std=c17   -O3 -I.           -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include
-#cgo linux CXXFLAGS: -std=c++17 -O3 -I. -Icommon  -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda-12.2/targets/x86_64-linux/include
-#cgo linux LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda-12.2/targets/x86_64-linux/lib
+#cgo linux CFLAGS:   -std=c17   -O3 -I.           -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
+#cgo linux CXXFLAGS: -std=c++17 -O3 -I. -Icommon  -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
+#cgo linux LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG -mcpu=native
 #cgo darwin CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
 #cgo darwin LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
@@ -31,6 +31,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,11 +47,12 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.39.0"
+const VERSION = "0.43.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
 	Model         string  `long:"model" description:"Path and file name of converted .bin LLaMA model [ llama-7b-fp32.bin, etc ]"`
+	Config        string  `long:"config" description:"Use exact config file path [ config.yaml or config.json in current folder by default ]"`
 	Preamble      string  `long:"preamble" description:"Preamble for model prompt, like \"You are a helpful AI assistant\""`
 	Prefix        string  `long:"prefix" description:"Prompt prefix if needed, like \"### Instruction:\""`
 	Suffix        string  `long:"suffix" description:"Prompt suffix if needed, like \"### Response:\""`
@@ -104,18 +106,32 @@ func main() {
 	var feed config.Feeder
 	if !opts.Ignore {
 
-		if _, err := os.Stat("config.json"); err == nil {
+		if opts.Config != "" {
+			if _, err := os.Stat(opts.Config); err != nil {
+				Colorize("\n[magenta][ ERROR ][white] Can't find specified config file!\n\n")
+				os.Exit(0)
+			}
+		}
+
+		if opts.Config != "" && strings.Contains(opts.Config, ".json") {
+			feed = feeder.Json{Path: opts.Config}
+		} else if opts.Config != "" && strings.Contains(opts.Config, ".yaml") {
+			feed = feeder.Yaml{Path: opts.Config}
+		} else if _, err := os.Stat("config.json"); err == nil {
 			feed = feeder.Json{Path: "config.json"}
 		} else if _, err := os.Stat("config.yaml"); err == nil {
 			feed = feeder.Yaml{Path: "config.yaml"}
 		}
 
-		if feed != nil {
-			err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
-			if err != nil {
-				Colorize("\n[magenta][ ERROR ][white] Can't parse config file! %s\n\n", err.Error())
-				os.Exit(0)
-			}
+		if feed == nil {
+			Colorize("\n[magenta][ ERROR ][white] Can't find default config file!\n\n")
+			os.Exit(0)
+		}
+
+		err := config.New().AddFeeder(feed).AddStruct(&conf).Feed()
+		if err != nil {
+			Colorize("\n[magenta][ ERROR ][white] Can't parse config file! %s\n\n", err.Error())
+			os.Exit(0)
 		}
 	}
 
@@ -222,7 +238,9 @@ func main() {
 			opts.PenaltyRepeat, opts.PenaltyLastN,
 			opts.Deadline,
 			opts.Seed,
-			opts.Sessions)
+			opts.Sessions,
+			"", // TODO: Debug Level
+		)
 	}
 
 	// --- Debug output of results and stop after 1 hour in case of running withous --server flag

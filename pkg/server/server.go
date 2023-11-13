@@ -7,7 +7,7 @@ package server
 /*
 #include <stdlib.h>
 #include <stdint.h>
-void * init(char * sessionPath);
+void * init(char * sessionPath, int32_t debug);
 void * initContext(
 	int idx,
 	char * modelName,
@@ -24,7 +24,8 @@ void * initContext(
 	float scale,
 	float hi,
 	float lo,
-	int32_t seed);
+	int32_t seed,
+	int32_t debug);
 int64_t doInference(
 	int idx,
 	void * ctx,
@@ -106,9 +107,10 @@ type HyperParams struct {
 }
 
 type Model struct {
-	ID   string // short internal name of the model
-	Name string // public name for humans
-	Path string // path to binary file
+	ID     string // short internal name of the model
+	Name   string // public name for humans
+	Path   string // path to binary file
+	Locale string
 
 	Context unsafe.Pointer // *llama.Context
 
@@ -145,7 +147,9 @@ type Model struct {
 
 // TODO: Logging setup
 type Config struct {
-	ID string // server key, should be unique within cluster
+	ID     string // server key, should be unique within cluster
+	Debug  string // cuda, full, janus, etc
+	Config string // exact path to config file if needed
 
 	//Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
 	Modes []Mode
@@ -161,8 +165,8 @@ type Config struct {
 	Sessions string // path to store session files
 
 	Pods    []Pod   // pods count
-	Threads []int64 // threads count for each pod
-	GPUs    [][]int // GPU split between pods
+	Threads []int64 // threads count for each pod // TODO: Obsolete
+	GPUs    [][]int // GPU split between pods // TODO: Obsolete
 	// GPULayers []int   // how many layers offload to Apple GPU?
 
 	Models []Model
@@ -223,6 +227,7 @@ const (
 
 var (
 	ServerMode int // LLAMA_CPP by default
+	Debug      string
 
 	Host string
 	Port string
@@ -291,7 +296,8 @@ func Init(
 	penaltyRepeat float32, penaltyLastN int,
 	deadlineIn int64,
 	seed uint32,
-	sessionPath string) {
+	sessionPath string,
+	debug string) {
 
 	ServerMode = LLAMA_CPP
 	Host = host
@@ -304,6 +310,12 @@ func Init(
 	Modes = map[string]string{"default": ""}
 	Models = make([]*Model, 1) // TODO: N models
 	SessionPath = sessionPath
+
+	Debug = debug
+	debugCUDA := 0
+	if Debug == "cuda" {
+		debugCUDA = 1
+	}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -330,7 +342,7 @@ func Init(
 			os.Exit(0)
 		}
 
-		C.init(C.CString(sessionPath))
+		C.init(C.CString(sessionPath), C.int32_t(debugCUDA))
 
 		// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -346,7 +358,9 @@ func Init(
 			C.float(typicalP),
 			C.float(penaltyRepeat), C.int(penaltyLastN),
 			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
-			C.int32_t(seed))
+			C.int32_t(seed),
+			C.int32_t(debugCUDA),
+		)
 
 		if ctx == nil {
 			Colorize("\n[magenta][ ERROR ][white] Failed to init pod #%d of total %d\n\n", pod, pods)
@@ -356,6 +370,7 @@ func Init(
 		Models /*[""]*/ [pod] = &Model{
 			Path:    model,
 			Context: ctx,
+			Locale:  "", // TODO: Set Locale
 
 			Preamble: preamble,
 			Prefix:   prefix,
@@ -419,6 +434,12 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	Models = make([]*Model, len(conf.Models))
 	SessionPath = conf.Sessions
 
+	Debug = conf.Debug
+	debugCUDA := 0
+	if Debug == "cuda" {
+		debugCUDA = 1
+	}
+
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
 	//for pod, threads := range conf.Threads {
@@ -466,7 +487,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			C.init(C.CString(SessionPath))
+			C.init(C.CString(SessionPath), C.int32_t(debugCUDA))
 
 			// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -502,7 +523,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.float(model.TypicalP),
 				C.float(model.PenaltyRepeat), C.int(model.PenaltyLastN),
 				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
-				C.int32_t(-1))
+				C.int32_t(-1),
+				C.int32_t(debugCUDA),
+			)
 
 			if ctx == nil {
 				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model [ %s ]\n\n", model.ID)
@@ -510,8 +533,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			}
 
 			Models[idx] = &Model{
-				ID:   model.ID,
-				Name: model.Name,
+				ID:     model.ID,
+				Name:   model.Name,
+				Locale: model.Locale,
 
 				Path:    model.Path,
 				Context: ctx,
@@ -713,13 +737,15 @@ func Do(jobID string, pod *Pod) {
 		}
 	}
 
-	// -- Inject context vars
-	// ${DATE} = понедельник 25 сентября 2023
-	// TODO: Support 20 other locales
-	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.LocaleRuRU)
+	// -- Inject context vars: ${DATE}, etc
+	locale := monday.LocaleEnUS
+	if pod.model.Locale != "" {
+		locale = pod.model.Locale
+	}
+	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
 	date = strings.ToLower(date)
 	preamble := strings.Replace(pod.model.Preamble, "${DATE}", date, 1)
-	//fmt.Printf("\nPREAMBLE: %s", preamble) // DEBUG
+	// fmt.Printf("\nPREAMBLE: %s", preamble) // DEBUG
 	// --
 
 	prompt := Jobs[jobID].Prompt
