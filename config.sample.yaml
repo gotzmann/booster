@@ -5,21 +5,21 @@ host: localhost
 port: 8080
 log: llamazoo.log
 deadline: 180
-sessions: "/home/sessions"
+swap: "/home/sessions"
 debug:
 
 # --- pods
 
   -
+    model: wizard
     threads: 6
     gpus: [ 0, 0 ]
-    model: wizard
     batchsize: 512
 
   -
+    model: airoboros
     threads: 1
     gpus: [ 50, 50 ]
-    model: airoboros
     batchsize: 512
 
 # --- models
@@ -45,12 +45,13 @@ models:
     hi: 0.99
     lo: 0.96
 
-    temp: 0.1
-    topk: 8
-    topp: 0.4
+    temperature: 0.1
+    top_k: 8
+    top_p: 0.4
     typicalp: 1.0
-    penaltyrepeat: 1.1
+    repetition_penalty: 1.1
     penaltylastn: -1
+
     mirostat: 2
     mirostatent: 0.1
     mirostatlr: 0.1     
@@ -74,12 +75,13 @@ models:
     hi: 0.99
     lo: 0.96
 
-    temp: 0.1
-    topk: 8
-    topp: 0.4
+    temperature: 0.1
+    top_k: 8
+    top_p: 0.4
     typicalp: 1.0
-    penaltyrepeat: 1.1
+    repetition_penalty: 1.1
     penaltylastn: -1
+
     mirostat: 0
     mirostatent: 0
     mirostatlr: 0

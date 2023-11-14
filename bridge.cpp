@@ -14,6 +14,8 @@
 #include "llama.h"
 #include "llama.cpp"
 
+char * debug; // debug level = "" | "full" | "cuda"
+
 // pos => index of current position within generation window [ 0 .. max )
 // max => how many tokens were generated via the last iteration?
 //        remember, that sessions might have one or multiple iterations
@@ -720,11 +722,13 @@ uint32_t getSeedCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void init(char * sessionPath, int32_t debug) {
-    ::path_session = sessionPath;
-    if (!debug) { hide(); }
+void init(char * swap, char * debug) {
+    ::debug = debug;
+    ::path_session = swap;
+    bool showFlag = false;
+    if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
     llama_backend_init(false); // NUMA = false
-    if (!debug) { show(); }
+    if (showFlag) { show(); }
 }
 
 // TODO: support n_threads_batch
@@ -736,12 +740,14 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    float temp, int top_k, float top_p,
+    float temperature, int top_k, float top_p,
     float typical_p, 
-    float penalty_repeat, int penalty_last_n,
+    float repetition_penalty, int penalty_last_n,
     int32_t janus, int32_t depth, float scale, float hi, float lo,
     uint32_t seed,
-    int32_t debug) {
+    char * debug) {
+
+    ::debug = debug;
     
     ::params[idx].model           = modelName;
     ::params[idx].n_threads       = threads;
@@ -770,20 +776,21 @@ void * initContext(
     ::sparams[idx].mirostat_tau   = mirostat_tau; 
     ::sparams[idx].mirostat_eta   = mirostat_eta;
 
-    ::sparams[idx].temp           = temp;
+    ::sparams[idx].temp           = temperature;
     ::sparams[idx].top_k          = top_k;
     ::sparams[idx].top_p          = top_p;
 
     ::sparams[idx].typical_p      = typical_p > 0 ? typical_p : 1.0f;
 
-    ::sparams[idx].penalty_repeat  = penalty_repeat;
+    ::sparams[idx].penalty_repeat  = repetition_penalty;
     ::sparams[idx].penalty_last_n  = penalty_last_n;
     
     ::params[idx].seed            = seed;
     
-    if (!debug) { hide(); }
+    bool showFlag = false;
+    if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
     auto res = init_context(idx);
-    if (!debug) { show(); }
+    if (showFlag) { show(); }
 
     return res;
 }

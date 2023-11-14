@@ -29,6 +29,7 @@ That's how LLaMAZoo was born.
 - [x] Dialog history with session ID parameter
 - [x] GGUF model format support
 - [x] Compatible with most popular LLM architectures
+- [ ] Perplexity computation [ useful for models benchmark ]
 - [ ] Support LLaVA multi-modal inference
 - [ ] Janus Sampling for better non-English text generation
 - [ ] OpenAI API specs compatibile
@@ -54,14 +55,13 @@ make clean && make
 wget https://huggingface.co/TheBloke/vicuna-13b-v1.3.0-GGML/resolve/main/vicuna-13b-v1.3.0.ggmlv3.q4_K_M.bin
 ```
 
-3) Set config file [ config.yaml as example ] 
+3) Create configuration file and place it to the same directory [ see config.sample.yaml ] 
 
 ```shell
 id: "LLaMAZoo"
 host: localhost
 port: 8080
 log: llamazoo.log
-debug:
 
 pods: 
 
@@ -82,7 +82,10 @@ models:
     suffix: "\nASSISTANT:"
     contextsize: 2048
     predict: 1024
-    temp: 0.1
+    temperature: 0.1
+    top_k: 8
+    top_p: 0.96
+    repetition_penalty: 1.1
 ```    
 
 4) When all is done, start the server with debug enabled to be sure it working

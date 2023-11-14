@@ -7,7 +7,7 @@ package server
 /*
 #include <stdlib.h>
 #include <stdint.h>
-void * init(char * sessionPath, int32_t debug);
+void * init(char * swap, char * debug);
 void * initContext(
 	int idx,
 	char * modelName,
@@ -16,16 +16,16 @@ void * initContext(
 	int gpu1, int gpu2,
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
-	float temp, int topK, float topP,
+	float temperature, int topK, float topP,
 	float typicalP,
-	float penalty_repeat, int penalty_last_n,
+	float repetition_penalty, int penalty_last_n,
 	int32_t janus,
 	int32_t depth,
 	float scale,
 	float hi,
 	float lo,
 	int32_t seed,
-	int32_t debug);
+	char * debug);
 int64_t doInference(
 	int idx,
 	void * ctx,
@@ -82,11 +82,6 @@ type Mode struct {
 }
 
 type HyperParams struct {
-	Mirostat    uint32
-	MirostatLR  float32 // aka eta, learning rate
-	MirostatENT float32 // aka tau, target entropy
-	MirostatTAU float32 // obsolete
-	MirostatETA float32 // obsolete
 
 	// -- Janus Sampling
 
@@ -96,14 +91,19 @@ type HyperParams struct {
 	Hi    float32
 	Lo    float32
 
-	Temp float32
-	TopK int
-	TopP float32
+	Mirostat    uint32
+	MirostatLR  float32 // aka eta, learning rate
+	MirostatENT float32 // aka tau, target entropy
+	MirostatTAU float32 // obsolete
+	MirostatETA float32 // obsolete
 
-	TypicalP float32
+	TopK        int
+	TopP        float32
+	TypicalP    float32
+	Temperature float32
 
-	PenaltyRepeat float32
-	PenaltyLastN  int
+	RepetitionPenalty float32
+	PenaltyLastN      int
 }
 
 type Model struct {
@@ -135,38 +135,41 @@ type Model struct {
 	MirostatTAU float32 // obsolete
 	MirostatETA float32 // obsolete
 
-	Temp float32
-	TopK int
-	TopP float32
+	Temperature float32
+	Temp        float32 // user-friendly naming within config
+	TopK        int
+	Top_K       int // user-friendly naming within config
+	TopP        float32
+	Top_P       float32 // user-friendly naming within config
 
 	TypicalP float32
 
-	PenaltyRepeat float32
-	PenaltyLastN  int
+	RepetitionPenalty  float32
+	Repetition_Penalty float32 // user-friendly naming within config
+	PenaltyLastN       int
 }
 
 // TODO: Logging setup
 type Config struct {
-	ID     string // server key, should be unique within cluster
-	Debug  string // cuda, full, janus, etc
-	Config string // exact path to config file if needed
+	ID    string // server key, should be unique within cluster
+	Debug string // cuda, full, janus, etc
 
-	//Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
+	//	Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
 	Modes []Mode
 
 	Host string
 	Port string
-	Log  string
+	Log  string // path and name of logging file
 
-	AVX  bool
-	NEON bool
-	CUDA bool
+	//	AVX  bool
+	//	NEON bool
+	//	CUDA bool
 
-	Sessions string // path to store session files
+	Swap string // path to store session files
 
-	Pods    []Pod   // pods count
-	Threads []int64 // threads count for each pod // TODO: Obsolete
-	GPUs    [][]int // GPU split between pods // TODO: Obsolete
+	Pods []Pod
+	//	Threads []int64 // threads count for each pod // TODO: Obsolete
+	//	GPUs    [][]int // GPU split between pods // TODO: Obsolete
 	// GPULayers []int   // how many layers offload to Apple GPU?
 
 	Models []Model
@@ -179,16 +182,16 @@ type Config struct {
 type Pod struct {
 	idx int // pod index
 
-	Threads   int64  // how many threads in use [ set with config ]
-	GPUs      []int  // GPU split [ set with config ]
-	Model     string // model name [ set with config ]
-	Mode      string // mode [ set with config ]
+	Threads int64  // how many threads to use
+	GPUs    []int  // GPU split in percents
+	Model   string // model ID within config
+	//	Mode      string // TODO
 	BatchSize int
 
-	isBusy bool // do pod instance doing some job?
-	isGPU  bool // pod doing some math with GPU
+	isBusy bool // do we doing some job righ not?
+	isGPU  bool // pod uses GPU resources
 
-	model *Model // model instance for real use
+	model *Model // real model instance
 }
 
 type Job struct {
@@ -248,7 +251,7 @@ var (
 	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
 
 	// FIXME TODO ASAP : Remove extra sessions from disk to prevent full disk DDoS
-	SessionPath string // path to store session files
+	Swap        string // path to store session files
 	MaxSessions int    // how many sessions allowed per server, remove extra session files
 
 	mu sync.Mutex // guards any Jobs change
@@ -291,15 +294,15 @@ func Init(
 	model, preamble, prefix, suffix string,
 	context, predict int,
 	mirostat uint32, mirostatTAU float32, mirostatETA float32,
-	temp float32, topK int, topP float32,
+	temperature float32, topK int, topP float32,
 	typicalP float32,
-	penaltyRepeat float32, penaltyLastN int,
+	repetitionPenalty float32, penaltyLastN int,
 	deadlineIn int64,
 	seed uint32,
-	sessionPath string,
+	swap string,
 	debug string) {
 
-	ServerMode = LLAMA_CPP
+	// ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
 	log = zapLog
@@ -309,13 +312,13 @@ func Init(
 	Pods = make([]*Pod, pods)
 	Modes = map[string]string{"default": ""}
 	Models = make([]*Model, 1) // TODO: N models
-	SessionPath = sessionPath
+	Swap = swap
 
 	Debug = debug
-	debugCUDA := 0
-	if Debug == "cuda" {
-		debugCUDA = 1
-	}
+	//debugCUDA := 0
+	//if Debug == "cuda" {
+	//	debugCUDA = 1
+	//}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -329,7 +332,7 @@ func Init(
 			isGPU:  gpu1+gpu2 > 0,
 
 			Model: model,
-			Mode:  "",
+			// Mode:  "",
 
 			Threads: threads,
 			GPUs:    []int{gpu1, gpu2},
@@ -342,7 +345,7 @@ func Init(
 			os.Exit(0)
 		}
 
-		C.init(C.CString(sessionPath), C.int32_t(debugCUDA))
+		C.init(C.CString(swap), C.CString(Debug))
 
 		// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -354,12 +357,12 @@ func Init(
 			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // TODO: Support more than 2 GPUs
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
-			C.float(temp), C.int(topK), C.float(topP),
+			C.float(temperature), C.int(topK), C.float(topP),
 			C.float(typicalP),
-			C.float(penaltyRepeat), C.int(penaltyLastN),
+			C.float(repetitionPenalty), C.int(penaltyLastN),
 			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
 			C.int32_t(seed),
-			C.int32_t(debugCUDA),
+			C.CString(Debug),
 		)
 
 		if ctx == nil {
@@ -383,12 +386,12 @@ func Init(
 			MirostatTAU: mirostatTAU,
 			MirostatETA: mirostatETA,
 
-			Temp: temp,
-			TopK: topK,
-			TopP: topP,
+			TopK:        topK,
+			TopP:        topP,
+			Temperature: temperature,
 
-			PenaltyRepeat: penaltyRepeat,
-			PenaltyLastN:  penaltyLastN,
+			RepetitionPenalty: repetitionPenalty,
+			PenaltyLastN:      penaltyLastN,
 		}
 	}
 }
@@ -432,13 +435,13 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	Port = conf.Port
 	Pods = make([]*Pod, len(conf.Pods))
 	Models = make([]*Model, len(conf.Models))
-	SessionPath = conf.Sessions
+	Swap = conf.Swap
 
 	Debug = conf.Debug
-	debugCUDA := 0
-	if Debug == "cuda" {
-		debugCUDA = 1
-	}
+	//debugCUDA := 0
+	//if Debug == "cuda" {
+	//	debugCUDA = 1
+	//}
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
@@ -465,7 +468,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			GPUs:      pod.GPUs,
 
 			Model: pod.Model,
-			Mode:  pod.Mode,
+			// Mode:  pod.Mode,
 		}
 
 		for _, model := range conf.Models {
@@ -487,7 +490,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			C.init(C.CString(SessionPath), C.int32_t(debugCUDA))
+			C.init(C.CString(Swap), C.CString(Debug))
 
 			// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -519,12 +522,12 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.int(gpu1), C.int(gpu2),
 				C.int(model.ContextSize), C.int(model.Predict),
 				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
-				C.float(model.Temp), C.int(model.TopK), C.float(model.TopP),
+				C.float(model.Temperature), C.int(model.TopK), C.float(model.TopP),
 				C.float(model.TypicalP),
-				C.float(model.PenaltyRepeat), C.int(model.PenaltyLastN),
+				C.float(model.RepetitionPenalty), C.int(model.PenaltyLastN),
 				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
 				C.int32_t(-1),
-				C.int32_t(debugCUDA),
+				C.CString(Debug),
 			)
 
 			if ctx == nil {
@@ -547,6 +550,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				ContextSize: model.ContextSize,
 				Predict:     model.Predict,
 
+				// FIXME
 				Mirostat:    model.Mirostat,
 				MirostatTAU: tau,
 				MirostatETA: eta,
@@ -557,12 +561,12 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				Hi:    model.Hi,
 				Lo:    model.Lo,
 
-				Temp: model.Temp,
-				TopK: model.TopK,
-				TopP: model.TopP,
+				TopK:        model.TopK,
+				TopP:        model.TopP,
+				Temperature: model.Temperature,
 
-				PenaltyRepeat: model.PenaltyRepeat,
-				PenaltyLastN:  model.PenaltyLastN,
+				RepetitionPenalty: model.RepetitionPenalty,
+				PenaltyLastN:      model.PenaltyLastN,
 			}
 		}
 	}
@@ -719,8 +723,8 @@ func Do(jobID string, pod *Pod) {
 
 		var SessionFile string
 
-		if !pod.isGPU && SessionPath != "" && sessionID != "" {
-			SessionFile = SessionPath + "/" + sessionID
+		if !pod.isGPU && Swap != "" && sessionID != "" {
+			SessionFile = Swap + "/" + sessionID
 		}
 
 		// -- null the session when near the context limit (allow up to 1/2 of max predict size)

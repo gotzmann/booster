@@ -223,7 +223,7 @@ uint32_t getSeedCPP(const std::string & jobID);
 
 extern "C" { // -----    
 
-void init(char * sessionPath, int32_t debug);
+void init(char * swap, char * debug);
 
 void * initContext(
     int idx, 
@@ -233,16 +233,16 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    float temp, int top_k, float top_p,
+    float temperature, int top_k, float top_p,
     float typical_p,
-    float penalty_repeat, int penalty_last_n,
+    float repetition_penalty, int penalty_last_n,
     int32_t janus,
 	int32_t depth,
 	float scale,
 	float hi,
 	float lo,
     uint32_t seed,
-    int32_t debug);
+    char * debug);
 
 int64_t doInference(
     int idx, 
