@@ -4,22 +4,22 @@
     "port": "8080",
     "log": "llamazoo.log",
     "deadline": 180,
-    "sessions": "/home/sessions",
+    "swap": "/home/sessions",
     "debug": "",
 
     "pods": [
 
         {
+            "model": "wizard",
             "threads": 6,
             "gpus": [ 0, 0],
-            "model": "wizard",
             "batchSize": 512
         },
 
         {
+            "model": "airoboros",
             "threads": 1,
             "gpus": [ 50, 50],
-            "model": "airoboros",
             "batchSize": 512
         }
 

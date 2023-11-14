@@ -736,9 +736,9 @@ void * initContext(
     int gpu1, int gpu2, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
-    float temp, int top_k, float top_p,
+    float temperature, int top_k, float top_p,
     float typical_p, 
-    float penalty_repeat, int penalty_last_n,
+    float repetition_penalty, int penalty_last_n,
     int32_t janus, int32_t depth, float scale, float hi, float lo,
     uint32_t seed,
     int32_t debug) {
@@ -770,13 +770,13 @@ void * initContext(
     ::sparams[idx].mirostat_tau   = mirostat_tau; 
     ::sparams[idx].mirostat_eta   = mirostat_eta;
 
-    ::sparams[idx].temp           = temp;
+    ::sparams[idx].temp           = temperature;
     ::sparams[idx].top_k          = top_k;
     ::sparams[idx].top_p          = top_p;
 
     ::sparams[idx].typical_p      = typical_p > 0 ? typical_p : 1.0f;
 
-    ::sparams[idx].penalty_repeat  = penalty_repeat;
+    ::sparams[idx].penalty_repeat  = repetition_penalty;
     ::sparams[idx].penalty_last_n  = penalty_last_n;
     
     ::params[idx].seed            = seed;

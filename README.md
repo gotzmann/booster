@@ -29,6 +29,7 @@ That's how LLaMAZoo was born.
 - [x] Dialog history with session ID parameter
 - [x] GGUF model format support
 - [x] Compatible with most popular LLM architectures
+- [ ] Perplexity computation [ useful for models benchmark ]
 - [ ] Support LLaVA multi-modal inference
 - [ ] Janus Sampling for better non-English text generation
 - [ ] OpenAI API specs compatibile

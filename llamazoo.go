@@ -19,7 +19,7 @@ uint32_t getSeed(char * jobID);
 int64_t getPromptTokenCount(char * jobID);
 #cgo linux CFLAGS:   -std=c17   -O3 -I.           -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
 #cgo linux CXXFLAGS: -std=c++17 -O3 -I. -Icommon  -fPIC -pthread -march=native -mtune=native -DNDEBUG -DGGML_USE_K_QUANTS -DGGML_USE_CUBLAS -D_XOPEN_SOURCE=600 -D_GNU_SOURCE -DLOG_DISABLE_LOGS -I/usr/local/cuda/include -I/opt/cuda/include -I/usr/local/cuda/targets/x86_64-linux/include
-#cgo linux LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o llama.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda/targets/x86_64-linux/lib
+#cgo linux LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o k_quants.o ggml-cuda.o -lstdc++ -lm -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L/usr/local/cuda/targets/x86_64-linux/lib
 #cgo darwin CFLAGS:   -I. -O3 -fPIC -pthread -std=c17 -DNDEBUG -DGGML_USE_METAL -DGGML_METAL_NDEBUG -mcpu=native
 #cgo darwin CXXFLAGS: -I. -Icommon -O3 -fPIC -pthread -std=c++17 -DNDEBUG -DGGML_USE_METAL -mcpu=native
 #cgo darwin LDFLAGS: bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o k_quants.o ggml-metal.o -lstdc++ -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
@@ -47,7 +47,7 @@ import (
 	"github.com/gotzmann/llamazoo/pkg/server"
 )
 
-const VERSION = "0.43.0"
+const VERSION = "0.44.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -85,7 +85,7 @@ type Options struct {
 	UseAVX        bool    `long:"avx" description:"Enable x64 AVX2 optimizations for Intel and AMD machines"`
 	UseNEON       bool    `long:"neon" description:"Enable ARM NEON optimizations for Apple and ARM machines"`
 	Ignore        bool    `long:"ignore" description:"Ignore server JSON and YAML configs, use only CLI params"`
-	Sessions      string  `long:"sessions" description:"Path to where sessions files will be held [ up to 1Gb per each ]"`
+	Swap          string  `long:"swap" description:"Path for user session swap files [ only for CPU inference, up to 1Gb per each ]"`
 	MaxSessions   int     `long:"max-sessions" description:"How many sessions allowed to be stored on disk [ unlimited by default ]"`
 }
 
@@ -238,7 +238,7 @@ func main() {
 			opts.PenaltyRepeat, opts.PenaltyLastN,
 			opts.Deadline,
 			opts.Seed,
-			opts.Sessions,
+			opts.Swap,
 			"", // TODO: Debug Level
 		)
 	}
