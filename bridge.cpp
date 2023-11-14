@@ -14,6 +14,8 @@
 #include "llama.h"
 #include "llama.cpp"
 
+char * debug; // debug level = "" | "full" | "cuda"
+
 // pos => index of current position within generation window [ 0 .. max )
 // max => how many tokens were generated via the last iteration?
 //        remember, that sessions might have one or multiple iterations
@@ -720,11 +722,13 @@ uint32_t getSeedCPP(const std::string & jobID) {
 
 extern "C" { // ------------------------------------------------------
 
-void init(char * sessionPath, int32_t debug) {
-    ::path_session = sessionPath;
-    if (!debug) { hide(); }
+void init(char * swap, char * debug) {
+    ::debug = debug;
+    ::path_session = swap;
+    bool showFlag = false;
+    if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
     llama_backend_init(false); // NUMA = false
-    if (!debug) { show(); }
+    if (showFlag) { show(); }
 }
 
 // TODO: support n_threads_batch
@@ -741,7 +745,9 @@ void * initContext(
     float repetition_penalty, int penalty_last_n,
     int32_t janus, int32_t depth, float scale, float hi, float lo,
     uint32_t seed,
-    int32_t debug) {
+    char * debug) {
+
+    ::debug = debug;
     
     ::params[idx].model           = modelName;
     ::params[idx].n_threads       = threads;
@@ -781,9 +787,10 @@ void * initContext(
     
     ::params[idx].seed            = seed;
     
-    if (!debug) { hide(); }
+    bool showFlag = false;
+    if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
     auto res = init_context(idx);
-    if (!debug) { show(); }
+    if (showFlag) { show(); }
 
     return res;
 }

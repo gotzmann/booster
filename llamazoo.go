@@ -1,5 +1,6 @@
 package main
 
+// TODO: Allow short locales: en -> en_US, ru -> ru_RU
 // TODO: Experiment with the batch size
 // TODO: If there no batch size in config - server do not work
 // TODO: Loading model... before REST API running
@@ -133,6 +134,31 @@ func main() {
 			Colorize("\n[magenta][ ERROR ][white] Can't parse config file! %s\n\n", err.Error())
 			os.Exit(0)
 		}
+
+		// -- user-friendly naming for some fields
+
+		for i := range conf.Models {
+
+			model := &conf.Models[i]
+
+			if model.Temperature == 0.0 && model.Temp != 0.0 {
+				model.Temperature = model.Temp
+			}
+
+			if model.TopK == 0 && model.Top_K != 0 {
+				model.TopK = model.Top_K
+			}
+
+			if model.TopP == 0.0 && model.Top_P != 0.0 {
+				model.TopP = model.Top_P
+			}
+
+			if model.RepetitionPenalty == 0.0 && model.Repetition_Penalty != 0.0 {
+				model.RepetitionPenalty = model.Repetition_Penalty
+			}
+		}
+
+		fmt.Printf("%+v", conf) // DEBUG
 	}
 
 	if opts.Profile {

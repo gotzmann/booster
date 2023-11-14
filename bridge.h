@@ -223,7 +223,7 @@ uint32_t getSeedCPP(const std::string & jobID);
 
 extern "C" { // -----    
 
-void init(char * sessionPath, int32_t debug);
+void init(char * swap, char * debug);
 
 void * initContext(
     int idx, 
@@ -242,7 +242,7 @@ void * initContext(
 	float hi,
 	float lo,
     uint32_t seed,
-    int32_t debug);
+    char * debug);
 
 int64_t doInference(
     int idx, 

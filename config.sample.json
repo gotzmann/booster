@@ -46,12 +46,13 @@
             "hi": 0.99,
             "lo": 0.96,
 
-            "temp": 0.1,
-            "topK": 8,
-            "topP": 0.4,
+            "temperature": 0.1,
+            "top_k": 8,
+            "top_p": 0.4,
             "typicalP": 1.0,
-            "penaltyRepeat": 1.1,
+            "repetition_penalty": 1.1,
             "penaltyLastN": -1,
+
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0
@@ -76,12 +77,13 @@
             "hi": 0.99,
             "lo": 0.96,
 
-            "temp": 0.1,
-            "topK": 8,
-            "topP": 0.4,
+            "temperature": 0.1,
+            "top_k": 8,
+            "top_p": 0.4,
             "typicalP": 1.0,
-            "penaltyRepeat": 1.1,
+            "repetition_penalty": 1.1,
             "penaltyLastN": -1,
+
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0

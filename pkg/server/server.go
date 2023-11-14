@@ -7,7 +7,7 @@ package server
 /*
 #include <stdlib.h>
 #include <stdint.h>
-void * init(char * sessionPath, int32_t debug);
+void * init(char * swap, char * debug);
 void * initContext(
 	int idx,
 	char * modelName,
@@ -25,7 +25,7 @@ void * initContext(
 	float hi,
 	float lo,
 	int32_t seed,
-	int32_t debug);
+	char * debug);
 int64_t doInference(
 	int idx,
 	void * ctx,
@@ -136,13 +136,17 @@ type Model struct {
 	MirostatETA float32 // obsolete
 
 	Temperature float32
+	Temp        float32 // user-friendly naming within config
 	TopK        int
+	Top_K       int // user-friendly naming within config
 	TopP        float32
+	Top_P       float32 // user-friendly naming within config
 
 	TypicalP float32
 
-	RepetitionPenalty float32
-	PenaltyLastN      int
+	RepetitionPenalty  float32
+	Repetition_Penalty float32 // user-friendly naming within config
+	PenaltyLastN       int
 }
 
 // TODO: Logging setup
@@ -311,10 +315,10 @@ func Init(
 	Swap = swap
 
 	Debug = debug
-	debugCUDA := 0
-	if Debug == "cuda" {
-		debugCUDA = 1
-	}
+	//debugCUDA := 0
+	//if Debug == "cuda" {
+	//	debugCUDA = 1
+	//}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
@@ -341,7 +345,7 @@ func Init(
 			os.Exit(0)
 		}
 
-		C.init(C.CString(swap), C.int32_t(debugCUDA))
+		C.init(C.CString(swap), C.CString(Debug))
 
 		// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -358,7 +362,7 @@ func Init(
 			C.float(repetitionPenalty), C.int(penaltyLastN),
 			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
 			C.int32_t(seed),
-			C.int32_t(debugCUDA),
+			C.CString(Debug),
 		)
 
 		if ctx == nil {
@@ -434,10 +438,10 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	Swap = conf.Swap
 
 	Debug = conf.Debug
-	debugCUDA := 0
-	if Debug == "cuda" {
-		debugCUDA = 1
-	}
+	//debugCUDA := 0
+	//if Debug == "cuda" {
+	//	debugCUDA = 1
+	//}
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
@@ -486,7 +490,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				os.Exit(0)
 			}
 
-			C.init(C.CString(Swap), C.int32_t(debugCUDA))
+			C.init(C.CString(Swap), C.CString(Debug))
 
 			// TODO: Refactore temp huck supporting only 2 GPUs split
 
@@ -523,7 +527,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 				C.float(model.RepetitionPenalty), C.int(model.PenaltyLastN),
 				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
 				C.int32_t(-1),
-				C.int32_t(debugCUDA),
+				C.CString(Debug),
 			)
 
 			if ctx == nil {
