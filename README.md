@@ -14,30 +14,30 @@ Since then I've decided to start a new project where the high performant C++ / C
 
 That's how LLaMAZoo was born.
 
-## V0 Roadmap
+## V0 Roadmap - Fall'23
 
-- [x] Draft implementation with llama.cpp emedded within Golang with CGO
-- [x] Simple REST API to core llama.cpp inference
-- [x] Inference by Apple Silicon GPU with Metal framework
+- [x] Draft implementation with CGO llama.cpp backend
+- [x] Simple REST API to allow text generation
+- [x] Inference with Apple Silicon GPU using Metal framework
 - [x] Parallel inference both with CPU and GPU
-- [x] Support of AMD and ARM platforms
+- [x] Support both AMD64  and ARM64 platforms
 - [x] CUDA support and fast inference with Nvidia cards
-- [x] Let Go shine! Enable multi-threading and messaging to boost performance
 
-## V1 Roadmap - Autumn'23
+## V1 Roadmap - Winter'23
 
-- [x] Dialog history with session ID parameter
-- [x] GGUF model format support
-- [x] Compatible with most popular LLM architectures
-- [ ] Perplexity computation [ useful for models benchmark ]
-- [ ] Support LLaVA multi-modal inference
-- [ ] Janus Sampling for better non-English text generation
-- [ ] OpenAI API specs compatibile
+- [x] Retain dialog history by Session ID parameter
+- [x] Support moderm GGUF V3 model format
+- [x] Inference for most popular LLM architectures
+- [x] Janus Sampling for better non-English text generation
+- [ ] Perplexity computation [ useful for benchmarking ]
+- [ ] Support LLaVA multi-modal models inference
+- [ ] OpenAI API endpoint specifications compatibile
 
-## V2 Roadmap - Winter'23
+## V2 Roadmap - Spring'24
 
 - [ ] Full Windows support
-- [ ] Prebuilt executable binaries for Linux / Windows / MacOS
+- [ ] Better test coverage
+- [ ] Prebuilt binaries for all platforms
 
 ## How to Run?
 
