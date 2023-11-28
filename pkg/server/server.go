@@ -598,7 +598,7 @@ func Run(showStatus bool) {
 	err := app.Listen(Host + ":" + Port)
 	if err != nil {
 		Colorize("\n[light_magenta][ERROR][light_blue] Can't start REST API on [light_magenta]%s:%s", Host, Port)
-		log.Infof("[ERROR] Can't start REST API on %s:%s", Host, Port)
+		log.Infof("[ ERROR ] Can't start REST API on %s:%s", Host, Port)
 	}
 }
 
@@ -780,12 +780,12 @@ func Do(jobID string, pod *Pod) {
 				_, err = os.Create(SessionFile)
 				if err != nil {
 					Colorize("\n[magenta][ ERROR ][white] Can't create session file: %s\n\n", SessionFile)
-					log.Infof("[ERROR] Can't create session file: %s", SessionFile)
+					log.Infof("[ ERROR ] Can't create session file: %s", SessionFile)
 					os.Exit(0)
 				}
 			} else {
 				Colorize("\n[magenta][ ERROR ][white] Some problems with session file: %s\n\n", SessionFile)
-				log.Infof("[ERROR] Some problems with session file: %s", SessionFile)
+				log.Infof("[ ERROR ] Some problems with session file: %s", SessionFile)
 				os.Exit(0)
 			}
 		}
