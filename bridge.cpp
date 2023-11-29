@@ -8,11 +8,12 @@
 #include <unordered_map>
 #include <tuple>
 
-#include "ggml.h"
+#include "llama.cpp/ggml.h"
+#include "llama.cpp/llama.h"
+#include "llama.cpp/llama.cpp"
+
 #include "bridge.h"
 #include "janus.h"
-#include "llama.h"
-#include "llama.cpp"
 
 char * debug; // debug level = "" | "full" | "cuda"
 

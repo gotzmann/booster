@@ -1,6 +1,5 @@
 #pragma once
 
-#include "llama.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -14,6 +13,8 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
+
+#include "llama.cpp/llama.h"
 
 #ifdef _WIN32
 #define NULL_DEVICE "NUL:"

@@ -1,8 +1,3 @@
-#include "bridge.h"
-#include "llama.h"
-#include "ggml.h"
-#include "janus.h"
-
 #include <array>
 #include <algorithm>
 #include <string>
@@ -12,6 +7,12 @@
 #include <shared_mutex>
 #include <unordered_map>
 #include <tuple>
+
+#include "llama.cpp/llama.h"
+#include "llama.cpp/ggml.h"
+
+#include "bridge.h"
+#include "janus.h"
 
 // The Guardian has always been a newspaper for writers, 
 // and so a newspaper for readers.

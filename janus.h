@@ -1,8 +1,9 @@
 #pragma once
 
-#include "llama.h"
 #include <string>
 #include <vector>
+
+#include "llama.cpp/llama.h"
 
 // -- Tokens
 
