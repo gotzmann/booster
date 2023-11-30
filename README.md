@@ -14,7 +14,7 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 - Expect good-enough performance on shy CPU machine, die for **fast as hell inference on monster with beefy GPU**
 - Both regular FP16/FP32 models and their quantised versions are supported - **4-bit really rocks!**
 - **Popular LLM architectures** already there: **LLaMA**, Starcoder, Baichuan, Mistral, etc...
-- Special bonus: **Janus Sampling** well suited for non English languages
+- **Special bonus: Janus Sampling** well suited for non English languages
 
 ## Motivation
 
