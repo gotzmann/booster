@@ -60,7 +60,7 @@ make mac
 
 ## How to compile for CUDA?
 
-Full instructions will be available soon (you need drivers and CUDA Toolkit with NVCC at least), but then it looks like:
+Full instructions will be available soon (you need all Nvidia drivers and CUDA Toolkit with NVCC installed at least), but then it looks like:
 
 ```shell
 LLAMA_CUBLAS=1 PATH=$PATH:/usr/local/go/bin CUDA_PATH=/usr/local/cuda CUDA_DOCKER_ARCH=sm_80 make -j cuda
