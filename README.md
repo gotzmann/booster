@@ -1,4 +1,4 @@
-![](./collider.jpg?raw=true)
+![](./logo.jpg?raw=true)
 
 Large Hadron Collider is the world's most powerful particle accelerator.
 
