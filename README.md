@@ -50,6 +50,22 @@ Since then I've decided to start a new project where high performant C++ / CUDA 
 - [ ] Prebuilt binaries for all platforms
 - [ ] Better test coverage
 
+## How to build on Mac?
+
+Collider was (and still) developed on Mac with Apple Silicon M1 processor, so it's really easy peasy:
+
+```shell
+make mac
+```
+
+## How to compile for CUDA?
+
+Full instructions will be available soon (you need drivers and CUDA Toolkit with NVCC at least), but then it looks like:
+
+```shell
+LLAMA_CUBLAS=1 PATH=$PATH:/usr/local/go/bin CUDA_PATH=/usr/local/cuda CUDA_DOCKER_ARCH=sm_80 make -j cuda
+```
+
 ## How to Run?
 
 You shold go through steps below:
@@ -57,7 +73,7 @@ You shold go through steps below:
 1) Build the server from sources [ pure CPU inference as example ]
 
 ```shell
-make clean && make
+make clean && make mac
 ```
 
 2) Download the model [ like Mistral 7B quantized to GGUF Q4KM format as an example ]
