@@ -8,27 +8,17 @@
     "debug": "",
 
     "pods": [
-
         {
-            "model": "wizard",
+            "model": "default",
             "threads": 6,
-            "gpus": [ 0, 0],
-            "batchSize": 512
-        },
-
-        {
-            "model": "airoboros",
-            "threads": 1,
-            "gpus": [ 50, 50],
+            "gpus": [ 0 ],
             "batchSize": 512
         }
-
     ],
 
     "models": [
-
         {
-            "id": "airoboros",
+            "id": "default",
             "name": "Airoboros 7B",
             "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
             "locale": "en_US",
@@ -36,37 +26,6 @@
             "preamble": "",
             "prefix": "USER:",
             "suffix": "ASSISTANT:",
-
-            "contextSize": 2048,
-            "predict": 1024,
-
-            "janus": 1,
-            "depth": 200,
-            "scale": 0.97,
-            "hi": 0.99,
-            "lo": 0.96,
-
-            "temperature": 0.1,
-            "top_k": 8,
-            "top_p": 0.4,
-            "typicalP": 1.0,
-            "repetition_penalty": 1.1,
-            "penaltyLastN": -1,
-
-            "mirostat": 0,
-            "mirostatENT": 0,
-            "mirostatLR": 0
-        },
-
-        {
-            "id": "wizard",
-            "name": "WizardLM 7B",
-            "path": "~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin",
-            "locale": "en_US",
-
-            "preamble": "",
-            "prefix": "### Instruction:",
-            "suffix": "### Response:",
 
             "contextSize": 2048,
             "predict": 1024,

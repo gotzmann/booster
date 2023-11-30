@@ -11,15 +11,9 @@ debug:
 # --- pods
 
   -
-    model: wizard
+    model: default
     threads: 6
-    gpus: [ 0, 0 ]
-    batchsize: 512
-
-  -
-    model: airoboros
-    threads: 1
-    gpus: [ 50, 50 ]
+    gpus: [ 0 ]
     batchsize: 512
 
 # --- models
@@ -27,7 +21,7 @@ debug:
 models:
 
   - 
-    id: airoboros
+    id: default
     name: Airoboros 7B
     path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
     locale: en_US
@@ -55,33 +49,3 @@ models:
     mirostat: 2
     mirostatent: 0.1
     mirostatlr: 0.1     
-
-  -
-    id: wizard
-    name: WizardLM 7B
-    path: ~/models/7B/wizardLM-7B.ggmlv3.q4_0.bin
-    locale: en_US
-
-    preamble:
-    prefix: "### Instruction:"
-    suffix: "### Response:"
-
-    contextsize: 2048
-    predict: 1024
-
-    janus: 1
-    depth: 200
-    scale: 0.97
-    hi: 0.99
-    lo: 0.96
-
-    temperature: 0.1
-    top_k: 8
-    top_p: 0.4
-    typicalp: 1.0
-    repetition_penalty: 1.1
-    penaltylastn: -1
-
-    mirostat: 0
-    mirostatent: 0
-    mirostatlr: 0

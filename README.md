@@ -10,8 +10,9 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 - **No more problems with Python** dependencies and broken compatibility
 - **Most of modern CPUs are supported**: any Intel/AMD x64 platofrms, server and Mac ARM64
 - GPUs supported as well: **Nvidia CUDA, Apple Metal, OpenCL** cards
-- Expect good performance on CPUs and **fast as hell inference on beefy GPUs**
-- Both regular FP16/FP32 models and quantised versions are supported - **4-bit really rocks!**
+- Split really big models between a number of GPU (**warp LLaMA 70B with 2x RTX 3090**)
+- Expect good-enough performance on shy CPU machine, die for **fast as hell inference on monster with beefy GPU**
+- Both regular FP16/FP32 models and their quantised versions are supported - **4-bit really rocks!**
 - **Popular LLM architectures** already there: **LLaMA**, Starcoder, Baichuan, Mistral, etc...
 - Special bonus: **Janus Sampling** well suited for non English languages
 
