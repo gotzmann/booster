@@ -20,7 +20,7 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 
 Within first month of **[llama.go](https://github.com/gotzmann/llama.go)** development I was literally shocked of how original **[ggml.cpp](https://github.com/ggerganov/llama.cpp)** project made it very clear - there are no limits for talented people on bringing mind-blowing features and moving to AI future.
 
-So I've decided to start a new project where best-in-class C++ / CUDA core will be embedded into mighty Golang networking API server ready for robust and performant inference at large scale within real production environments.
+So I've decided to start a new project where best-in-class C++ / CUDA core will be embedded into mighty Golang server ready for robust and performant inference at large scale within real production environments.
 
 ## V0 Roadmap - Fall'23
 
