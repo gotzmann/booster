@@ -1,4 +1,4 @@
-![](./collider.png?raw=true)
+![](./collider.jpg?raw=true)
 
 # llamazoo
 
