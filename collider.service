@@ -1,0 +1,31 @@
+# === [ Large Model Collider as Daemon ] ===
+
+# - 1. Copy [collider] executable and config.yaml to /home
+
+# - 2. Place this file to /etc/systemd/system, then execute commands
+
+# sudo systemctl daemon-reload && sudo systemctl enable collider
+
+# - 3. Check /var/log/syslog for errors
+
+# - 4. Use these commands for service control
+
+# sudo systemctl start collider
+# sudo systemctl stop collider
+
+[Unit]
+
+Description=Large Model Collider
+
+[Service]
+
+PIDFile=/var/run/collider.pid
+WorkingDirectory=/home
+ExecStart=/home/collider --server >/dev/null 2>&1 &
+# Send a termination signal to the service. SIGTERM (15) is the default:
+ExecStop=systemctl kill collider >/dev/null 2>&1 &
+
+[Install]
+
+WantedBy=multi-user.target
+Alias=collider
