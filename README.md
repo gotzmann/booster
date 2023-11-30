@@ -1,10 +1,8 @@
+![](./collider.png?raw=true)
+
 # llamazoo
 
 LLaMAZoo - platform for serving LLaMA (and other) GPT models at production scale with OpenAI API compatibility layer. Use any GPU with CUDA/OpenCL or x64/Apple/ARM CPU. Original LLM models and their quantised versions are supported.
-
-# LLaMAZoo
-
-![](./logo.png?raw=true)
 
 ## Motivation
 
