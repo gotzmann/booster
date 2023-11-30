@@ -37,8 +37,8 @@ Since then I've decided to start a new project where high performant C++ / CUDA 
 ## V1 Roadmap - Winter'23
 
 - [ ] Rebrand project: LLaMAZoo => Large Model Collider
-- [ ] Is it 30th of November, first birthday of ChatGPT? Celebrate ...
-- [ ] ... then release the very first Collider version after half a year of honing it
+- [ ] **Is it 2023, 30th of November? First birthday of ChatGPT!** Celebrate ...
+- [ ] ... then **release Collider V1 after half a year of honing it :)**
 - [ ] Freeze JSON / YAML config format for Native API
 - [ ] Release OpenAI API compatible endpoints
 - [ ] Perplexity computation [ useful for benchmarking ]
