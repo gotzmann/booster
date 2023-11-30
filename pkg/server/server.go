@@ -59,8 +59,8 @@ import (
 	"github.com/mitchellh/colorstring"
 	"go.uber.org/zap"
 
-	"github.com/gotzmann/llamazoo/pkg/llama"
-	"github.com/gotzmann/llamazoo/pkg/ml"
+	"github.com/gotzmann/collider/pkg/llama"
+	"github.com/gotzmann/collider/pkg/ml"
 )
 
 // TODO: Check the host:port is free before starting listening
