@@ -1,4 +1,4 @@
-module github.com/gotzmann/llamazoo
+module github.com/gotzmann/collider
 
 go 1.20
 

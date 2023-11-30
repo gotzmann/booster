@@ -644,7 +644,7 @@ int64_t do_inference(
             }
         }
 
-        // -- update LLaMAZoo job text buffer
+        // -- update job text buffer
         mutex.lock();
         for (auto id : embd) {
             //if (id == BOS || id == EOS) { fprintf(stderr, "\n\n... SKIPPING BOS or EOS ..."); continue; };

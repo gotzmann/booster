@@ -6,13 +6,14 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 
 ## Superpowers
 
-- Built with performance and scaling in mind thanks Golang and C++
-- No more problems installing myriads of Python dependencies
-- Most of modern CPUs are supported: Intel/AMD x64, server and Mac ARM64
-- GPUs supported as well: Nvidia CUDA, Apple Metal, OpenCL cards
-- Expect fast inference on CPUs and hell fast on beefy GPUs
-- Both regular FP16/FP32 models and quantised versions are supported (4-bit rocks!)
-- Popular LLM architectures already there: LLaMA, Starcoder, Baichuan, Mistral, etc...
+- Built with performance and scaling in mind **thanks Golang and C++**
+- **No more problems with Python** dependencies and broken compatibility
+- **Most of modern CPUs are supported**: any Intel/AMD x64 platofrms, server and Mac ARM64
+- GPUs supported as well: **Nvidia CUDA, Apple Metal, OpenCL** cards
+- Expect good performance on CPUs and **fast as hell inference on beefy GPUs**
+- Both regular FP16/FP32 models and quantised versions are supported - **4-bit really rocks!**
+- **Popular LLM architectures** already there: **LLaMA**, Starcoder, Baichuan, Mistral, etc...
+- Special bonus: **Janus Sampling** well suited for non English languages
 
 ## Motivation
 
@@ -35,9 +36,10 @@ Since then I've decided to start a new project where high performant C++ / CUDA 
 
 ## V1 Roadmap - Winter'23
 
-- [ ] Freeze JSON / YAML config format
 - [ ] Rebrand project: LLaMAZoo => Large Model Collider
-- [ ] Release V1 after half a year honing and testing
+- [ ] Is it 30th of November, first birthday of ChatGPT? Celebrate ...
+- [ ] ... then release the very first Collider version after half a year of honing it
+- [ ] Freeze JSON / YAML config format for Native API
 - [ ] Release OpenAI API compatible endpoints
 - [ ] Perplexity computation [ useful for benchmarking ]
 - [ ] Support LLaVA multi-modal models inference
@@ -58,35 +60,39 @@ You shold go through steps below:
 make clean && make
 ```
 
-2) Download the model [ Vicuna 13B v1.3 quantized for Q4KM format as example ]
+2) Download the model [ like Mistral 7B quantized to GGUF Q4KM format as an example ]
 
 ```shell
-wget https://huggingface.co/TheBloke/vicuna-13b-v1.3.0-GGML/resolve/main/vicuna-13b-v1.3.0.ggmlv3.q4_K_M.bin
+wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf
 ```
 
 3) Create configuration file and place it to the same directory [ see config.sample.yaml ] 
 
 ```shell
-id: "LLaMAZoo"
+id: "collider"
 host: localhost
 port: 8080
-log: llamazoo.log
+log: collider.log
+deadline: 180
+debug: full
+swap:
 
 pods: 
 
   -
+    model: default
     threads: 6
     gpus: [ 0 ]
-    model: default
+    batchsize: 512
 
 models:
 
   -
     id: default
     name: Mistral
-    path: Mistral-7B-Instruct-v0.1-GGUF
+    path: mistral-7b-instruct-v0.1.Q4_K_M.gguf
     locale: en_US
-    preamble: "You are a virtual assistant. Please help user."
+    preamble: "You are a virtual assistant. Please answer the question."
     prefix: "\nUSER: "
     suffix: "\nASSISTANT:"
     contextsize: 2048
@@ -100,7 +106,7 @@ models:
 4) When all is done, start the server with debug enabled to be sure it working
 
 ```shell
-./llama --server --debug
+./collider --server --debug
 ```
 
 5) Now POST JSON with unique ID and your question to `localhost:8080/jobs`
@@ -112,4 +118,4 @@ models:
 }
 ```
 
-6) See instructions within `llamazoo.service` file on how to create daemond service out of LLaMAZoo server.
+6) See instructions within `collider.service` file on how to create daemond service out of this API server.

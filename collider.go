@@ -45,10 +45,10 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/gotzmann/llamazoo/pkg/server"
+	"github.com/gotzmann/collider/pkg/server"
 )
 
-const VERSION = "0.44.0"
+const VERSION = "0.45.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -167,8 +167,8 @@ func main() {
 
 	var zapWriter zapcore.WriteSyncer
 	zapConfig := zap.NewProductionEncoderConfig()
-	zapConfig.NameKey = "llamazoo" // TODO: pod name from config?
-	//zapConfig.CallerKey = ""       // do not log caller like "llamazoo/llamazoo.go:156"
+	zapConfig.NameKey = "collider" // TODO: pod name from config?
+	//zapConfig.CallerKey = ""       // do not log caller like "collider/collider.go:156"
 	zapConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	fileEncoder := zapcore.NewJSONEncoder(zapConfig)
 	if opts.Log != "" {
@@ -193,7 +193,7 @@ func main() {
 	if !opts.Server || opts.Debug {
 		showLogo()
 	}
-	log.Infof("[START] LLaMAZoo v%s starting...", VERSION)
+	log.Infof("[START] Collider v%s starting...", VERSION)
 
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
@@ -239,8 +239,8 @@ func main() {
 			log.Error("%s", reason)
 			os.Exit(0)
 		}
-		Colorize("\n[light_magenta][ STOP ][light_blue] LLaMAZoo was stopped. Arrivederci!\n\n")
-		log.Info("[STOP] LLaMAZoo was stopped. Arrivederci!")
+		Colorize("\n[light_magenta][ STOP ][light_blue] Collider was stopped. Arrivederci!\n\n")
+		log.Info("[ STOP ] Collider was stopped. Arrivederci!")
 		logger.Sync()
 	}()
 
@@ -412,39 +412,40 @@ func showLogo() {
 	// Rozzo + 3-D + some free time
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
+	/*
+	   	logo := `
+	     /88       /88         /888/888   /88/8888/88   /888/888  /888/8888 /888/888   /888/888
+	     /888      /888      /888/ /888 /888/8888/888 /888/ /888  ///8888/ /8888//888 /8888//888
+	     /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888  /8888/   /888 /8888 /888 /8888
+	     /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /8888/888 //888/888  //888/888
+	     //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  //// ///   /// ///    /// ///`
 
-	logo := `                                                    
-  /88       /88         /888/888   /88/8888/88   /888/888  /888/8888 /888/888   /888/888    
-  /888      /888      /888/ /888 /888/8888/888 /888/ /888  ///8888/ /8888//888 /8888//888  
-  /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888  /8888/   /888 /8888 /888 /8888 
-  /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /8888/888 //888/888  //888/888
-  //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  //// ///   /// ///    /// ///`
+	   	logoColored := ""
+	   	prevColor := ""
+	   	color := ""
+	   	line := 0
+	   	colors := []string{"[black]", "[light_blue]", "[magenta]", "[light_magenta]", "[light_blue]"}
 
-	logoColored := ""
-	prevColor := ""
-	color := ""
-	line := 0
-	colors := []string{"[black]", "[light_blue]", "[magenta]", "[light_magenta]", "[light_blue]"}
+	   	for _, char := range logo {
+	   		if char == '\n' {
+	   			line++
+	   		} else if char == '/' {
+	   			color = "[blue]"
+	   		} else if char == '8' {
+	   			color = colors[line]
+	   			char = '▒'
+	   		}
+	   		if color == prevColor {
+	   			logoColored += string(char)
+	   		} else {
+	   			logoColored += color + string(char)
+	   		}
+	   	}
 
-	for _, char := range logo {
-		if char == '\n' {
-			line++
-		} else if char == '/' {
-			color = "[blue]"
-		} else if char == '8' {
-			color = colors[line]
-			char = '▒'
-		}
-		if color == prevColor {
-			logoColored += string(char)
-		} else {
-			logoColored += color + string(char)
-		}
-	}
-
-	Colorize(logoColored)
+	   	Colorize(logoColored)
+	*/
 	Colorize(
-		"\n\n   [magenta]▒▒▒▒▒[light_magenta] [ LLaMAZoo v" +
+		"\n\n   [magenta]▒▒▒▒▒[light_magenta] [ Collider v" +
 			VERSION +
-			" ] [light_blue][ Platform for serving any GPT model of LLaMA family ] [magenta]▒▒▒▒▒\n\n")
+			" ] [light_blue][ Great platform for serving Large Models ] [magenta]▒▒▒▒▒\n\n")
 }

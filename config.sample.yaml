@@ -3,7 +3,7 @@
 id: "mac-m1-pro"
 host: localhost
 port: 8080
-log: llamazoo.log
+log: collider.log
 deadline: 180
 swap: "/home/sessions"
 debug:
