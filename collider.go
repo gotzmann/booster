@@ -48,7 +48,7 @@ import (
 	"github.com/gotzmann/collider/pkg/server"
 )
 
-const VERSION = "0.45.0"
+const VERSION = "1.0.1"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -412,7 +412,7 @@ func showLogo() {
 	Colorize(
 		"\n[magenta]▒▒▒[light_magenta] [ Collider v" +
 			VERSION +
-			" ] [light_blue][ The Platform for serving Large Models and push things to limits ] [magenta]▒▒▒\n")
+			" ] [light_blue][ The Platform for serving LLM / GPT and push things to the limits ] [magenta]▒▒▒\n")
 
 	// Rozzo + 3-D + some free time
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go

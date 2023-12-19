@@ -580,10 +580,18 @@ func Run(showStatus bool) {
 		DisableStartupMessage: true,
 	})
 
+	// -- Collider API
+
 	app.Post("/jobs/", NewJob)
 	app.Delete("/jobs/:id", StopJob)
 	app.Get("/jobs/status/:id", GetJobStatus)
 	app.Get("/jobs/:id", GetJob)
+
+	// -- OpenAI compatible API
+
+	app.Post("v1/chat/completions", NewChatCompletions)
+
+	// -- Monitoring Endpoints
 
 	app.Get("/health", GetHealth)
 
@@ -767,8 +775,6 @@ func Do(jobID string, pod *Pod) {
 
 	mu.Unlock() // --
 
-	// if ServerMode == LLAMA_CPP { // --- use llama.cpp backend
-
 	// FIXME: Do not work as expected. Empty file rise CGO exception here
 	//        error loading session file: unexpectedly reached end of file
 	//        do_inference: error: failed to load session file './sessions/5fb8ebd0-e0c9-4759-8f7d-35590f6c9f01'
@@ -881,170 +887,6 @@ func Do(jobID string, pod *Pod) {
 		"output", result,
 		// "fullPrompt", fullPrompt,
 	)
-
-	/*
-	   } else { // --- use llama.go framework
-
-	   	// tokenize the prompt
-	   	embdPrompt := ml.Tokenize(vocab, fullPrompt, true)
-
-	   	// ring buffer for last N tokens
-	   	lastNTokens := ring.New(int(params.CtxSize))
-
-	   	// method to append a token to the ring buffer
-	   	appendToken := func(token uint32) {
-	   		lastNTokens.Value = token
-	   		lastNTokens = lastNTokens.Next()
-	   	}
-
-	   	// zeroing the ring buffer
-	   	for i := 0; i < int(params.CtxSize); i++ {
-	   		appendToken(0)
-	   	}
-
-	   	evalCounter := 0
-	   	tokenCounter := 0
-	   	pastCount := uint32(0)
-	   	consumedCount := uint32(0)           // number of tokens, already processed from the user prompt
-	   	remainedCount := params.PredictCount // how many tokens we still need to generate to achieve predictCount
-	   	embd := make([]uint32, 0, params.BatchSize)
-
-	   	evalPerformance := make([]int64, 0, params.PredictCount)
-	   	samplePerformance := make([]int64, 0, params.PredictCount)
-	   	fullPerformance := make([]int64, 0, params.PredictCount)
-
-	   	// new context opens sync channel and starts workers for tensor compute
-	   	ctx := llama.NewContext(model, params)
-
-	   	for remainedCount > 0 {
-
-	   		// TODO: Store total time of evaluation and average per token + token count
-	   		start := time.Now().UnixNano()
-
-	   		if len(embd) > 0 {
-
-	   			// infinite text generation via context swapping
-	   			// if we run out of context:
-	   			// - take the n_keep first tokens from the original prompt (via n_past)
-	   			// - take half of the last (n_ctx - n_keep) tokens and recompute the logits in a batch
-
-	   			if pastCount+uint32(len(embd)) > params.CtxSize {
-	   				leftCount := pastCount - params.KeepCount
-	   				pastCount = params.KeepCount
-
-	   				// insert n_left/2 tokens at the start of embd from last_tokens
-	   				// embd = append(lastNTokens[:leftCount/2], embd...)
-	   				embd = append(llama.ExtractTokens(lastNTokens.Move(-int(leftCount/2)), int(leftCount/2)), embd...)
-	   			}
-
-	   			evalStart := time.Now().UnixNano()
-	   			if err := llama.Eval(ctx, vocab, model, embd, pastCount, params); err != nil {
-	   				// TODO: Finish job properly with [failed] status
-	   			}
-	   			evalPerformance = append(evalPerformance, time.Now().UnixNano()-evalStart)
-	   			evalCounter++
-	   		}
-
-	   		pastCount += uint32(len(embd))
-	   		embd = embd[:0]
-
-	   		if int(consumedCount) < len(embdPrompt) {
-
-	   			for len(embdPrompt) > int(consumedCount) && len(embd) < int(params.BatchSize) {
-
-	   				embd = append(embd, embdPrompt[consumedCount])
-	   				appendToken(embdPrompt[consumedCount])
-	   				consumedCount++
-	   			}
-
-	   		} else {
-
-	   			//if params.IgnoreEOS {
-	   			//	Ctx.Logits[ml.TOKEN_EOS] = 0
-	   			//}
-
-	   			sampleStart := time.Now().UnixNano()
-	   			id := llama.SampleTopPTopK( / * ctx, * / ctx.Logits,
-	   				lastNTokens, params.PenaltyLastN,
-	   				params.TopK, params.TopP,
-	   				params.Temp, params.RepeatPenalty)
-	   			samplePerformance = append(samplePerformance, time.Now().UnixNano()-sampleStart)
-
-	   			appendToken(id)
-
-	   			// replace end of text token with newline token when in interactive mode
-	   			//if id == ml.TOKEN_EOS && params.Interactive && !params.Instruct {
-	   			//	id = ml.NewLineToken
-	   			//}
-
-	   			embd = append(embd, id) // add to the context
-
-	   			remainedCount-- // decrement remaining sampling budget
-	   		}
-
-	   		fullPerformance = append(fullPerformance, time.Now().UnixNano()-start)
-
-	   		// skip adding the whole prompt to the output if processed at once
-	   		if evalCounter == 0 && int(consumedCount) == len(embdPrompt) {
-	   			continue
-	   		}
-
-	   		// --- assemble the final ouptut, EXCLUDING the prompt
-
-	   		for _, id := range embd {
-
-	   			tokenCounter++
-	   			token := ml.Token2Str(vocab, id) // TODO: Simplify
-
-	   			mu.Lock()
-	   			Jobs[jobID].Output += token
-	   			mu.Unlock()
-	   		}
-	   	}
-
-	   	// close sync channel and stop compute workers
-	   	ctx.ReleaseContext()
-
-	   	mu.Lock()
-	   	Jobs[jobID].FinishedAt = time.Now().UnixMilli()
-	   	// FIXME: Clean output from prefix/suffix for instruct models!
-	   	Jobs[jobID].Output = strings.Trim(Jobs[jobID].Output, "\n ")
-	   	Jobs[jobID].Status = "finished"
-	   	mu.Unlock()
-
-	   	//if ml.DEBUG {
-	   	Colorize("\n\n=== EVAL TIME | ms ===\n\n")
-	   	for _, time := range evalPerformance {
-	   		Colorize("%d | ", time/1_000_000)
-	   	}
-
-	   	Colorize("\n\n=== SAMPLING TIME | ms ===\n\n")
-	   	for _, time := range samplePerformance {
-	   		Colorize("%d | ", time/1_000_000)
-	   	}
-
-	   	Colorize("\n\n=== FULL TIME | ms ===\n\n")
-	   	for _, time := range fullPerformance {
-	   		Colorize("%d | ", time/1_000_000)
-	   	}
-
-	   	avgEval := int64(0)
-	   	for _, time := range fullPerformance {
-	   		avgEval += time / 1_000_000
-	   	}
-	   	avgEval /= int64(len(fullPerformance))
-
-	   	Colorize(
-	   		"\n\n[light_magenta][ HALT ][white] Time per token: [light_cyan]%d[white] ms | Tokens per second: [light_cyan]%.2f\n\n",
-	   		avgEval,
-	   		float64(1000)/float64(avgEval))
-	   	//}
-
-	   	// TODO: Proper logging
-	   	// fmt.Printf("\n[ PROCESSING ] Finishing job # %s", jobID)
-
-	   }
-	*/
 }
 
 // --- Place new job into queue
@@ -1084,7 +926,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	if GoShutdown {
 		return ctx.
 			Status(fiber.StatusServiceUnavailable).
-			SendString("Service shutting down...")
+			SendString("{\n\"error\": \"service is shutting down\"\n}")
 	}
 
 	payload := struct {
@@ -1128,7 +970,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	if _, err := uuid.Parse(payload.ID); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Wrong requerst id, please use UUIDv4 format!")
+			SendString("{\n\"error\": \"wrong request ID, please use UUIDv4 format\n}")
 	}
 
 	mu.Lock()
@@ -1136,7 +978,7 @@ func NewJob(ctx *fiber.Ctx) error {
 		mu.Unlock()
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("Request with the same id is already processing!")
+			SendString("{\n\"error\": \"request with the same ID is already processing\n}")
 	}
 	mu.Unlock()
 
@@ -1164,7 +1006,7 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt, payload.Translate)
 
-	log.Infow("[JOB] New job just queued", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
+	log.Infow("[JOB] New job", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
 	// TODO: Guard with mutex Jobs[payload.ID] access
 	// TODO: Return [model] and [session] if not empty
@@ -1310,6 +1152,157 @@ func GetJob(ctx *fiber.Ctx) error {
 		//"started":  Jobs[jobID].StartedAt,
 		//"finished": finished,
 		//"model":    model,
+	})
+}
+
+// --- POST v1/chat/completions
+
+// {
+//		"model": "gpt-3.5-turbo",
+//		"messages": [
+//		  {
+//			"role": "system",
+//			"content": "You are a poetic assistant, skilled in explaining complex programming concepts with creative flair."
+//		  },
+//		  {
+//			"role": "user",
+//			"content": "Compose a poem that explains the concept of recursion in programming."
+//		  }
+//		]
+// }
+
+func NewChatCompletions(ctx *fiber.Ctx) error {
+
+	if GoShutdown {
+		return ctx.
+			Status(fiber.StatusServiceUnavailable).
+			SendString("{\n\"error\": \"service is shutting down\"\n}")
+	}
+
+	type Message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+
+	payload := struct {
+		Model    string    `json:"model,omitempty"`
+		Messages []Message `json:"messages"`
+	}{}
+
+	if err := ctx.BodyParser(&payload); err != nil {
+		fmt.Printf(err.Error())
+		// TODO: Proper error handling
+		return ctx.
+			Status(fiber.StatusBadRequest).
+			SendString("{\n\"error\": \"error parsing request body\n}")
+	}
+
+	// -- normalize prompt
+
+	//payload.Prompt = strings.Trim(payload.Prompt, "\n ")
+	//payload.Mode = strings.Trim(payload.Mode, "\n ")
+	//payload.Model = strings.Trim(payload.Model, "\n ")
+	//payload.Translate = strings.Trim(payload.Translate, "\n ")
+
+	// -- validate prompt
+
+	//if payload.Mode != "" {
+	//	if _, ok := Modes[payload.Mode]; !ok {
+	//		return ctx.
+	//			Status(fiber.StatusBadRequest).
+	//			SendString("Wrong mode!")
+	//	}
+	//}
+
+	jobID := uuid.New().String()
+
+	//if _, err := uuid.Parse(payload.ID); err != nil {
+	//	return ctx.
+	//		Status(fiber.StatusBadRequest).
+	//		SendString("Wrong requerst id, please use UUIDv4 format!")
+	//}
+
+	//mu.Lock()
+	//if _, ok := Jobs[id]; ok {
+	//	mu.Unlock()
+	//	return ctx.
+	//		Status(fiber.StatusBadRequest).
+	//		SendString("Request with the same id is already processing!")
+	//}
+	//mu.Unlock()
+
+	// FIXME: Return check!
+	// TODO: Tokenize and check for max tokens properly
+	//	if len(payload.Prompt) >= int(params.CtxSize)*3 {
+	//		return ctx.
+	//			Status(fiber.StatusBadRequest).
+	//			SendString(fmt.Sprintf("Prompt length is more than allowed %d tokens!", params.CtxSize))
+	//	}
+
+	//if payload.Model != "" {
+	// FIXME: Refactor ASAP
+	/////if _, ok := Pods[payload.Model]; !ok {
+	/////	return ctx.
+	/////		Status(fiber.StatusBadRequest).
+	/////		SendString(fmt.Sprintf("Model with name '%s' is not found!", payload.Model))
+	/////}
+	//} else {
+	//	payload.Model = DefaultModel
+	//}
+
+	// FIXME ASAP : Use payload Model and Mode selectors !!!
+	payload.Model = ""                                          // TODO: DefaultModel
+	prompt := payload.Messages[len(payload.Messages)-1].Content // TODO: Validate the last message role == "user"
+
+	PlaceJob(jobID /*payload.Mode*/, "", payload.Model, "", prompt, "")
+
+	log.Infow("[JOB] New job just queued", "id", jobID, "session", "", "model", payload.Model, "prompt", prompt)
+
+	now := time.Now()
+	finish := now.Add(time.Duration(deadline) * time.Second) // TODO: Change global type + naming?
+	output := ""
+	status := ""
+
+	for now.Before(finish) {
+		time.Sleep(1 * time.Second)
+
+		mu.Lock() // --
+		job, ok := Jobs[jobID]
+		if !ok {
+			// TODO: Error Handling
+			// TODO: Other places too
+		}
+		status = job.Status
+		//prompt := Jobs[jobID].Prompt
+		//fullPrompt := Jobs[jobID].FullPrompt // we need the full prompt with prefix and suffix here
+		output = job.Output
+		//created := Jobs[jobID].CreatedAt
+		//finished := Jobs[jobID].FinishedAt
+		//model := Jobs[jobID].Model
+		mu.Unlock() // --
+
+		if status == "finished" {
+			break
+		}
+
+		now = time.Now()
+	}
+
+	// TODO: Guard with mutex Jobs[payload.ID] access
+	// TODO: Return [model] and [session] if not empty
+	return ctx.JSON(fiber.Map{
+		"id": jobID,
+		//"session": payload.Session,
+		//"model":   payload.Model,
+		//"prompt": payload.Prompt,
+		//"created": Jobs[payload.ID].CreatedAt,
+		//"started":  Jobs[payload.ID].StartedAt,
+		//"finished": Jobs[payload.ID].FinishedAt,
+		//"model":    "model-xx", // TODO: Real model ID
+		//"source":   "api",      // TODO: Enum for sources
+		//"status": Jobs[payload.ID].Status,
+		"output": output,
+		"status": status,
 	})
 }
 
