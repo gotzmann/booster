@@ -32,7 +32,7 @@ cpu:
 # -- Nvidia GPUs with CUDA
 cuda:
 	cd cpp && \
-	make -j cudaobjs && \
+	LLAMA_CUBLAS=1 make -j cudaobjs && \
 	cd .. && \
 	CGO_ENABLED=1 go build collider.go
 
