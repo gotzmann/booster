@@ -14,7 +14,11 @@
 #include <sys/sysctl.h>
 #endif
 
+#include "ggml-backend.h"
+// #include "common.h"
 #include "llama.h"
+//#include "sampling.h"
+#include "grammar-parser.h"
 
 #ifdef _WIN32
 #define NULL_DEVICE "NUL:"
@@ -23,6 +27,44 @@
 #define NULL_DEVICE "/dev/null"
 #define TTY_DEVICE "/dev/tty"
 #endif
+
+// ------------------------------------------------------
+
+int32_t get_num_physical_cores(); 
+
+// this is a common sampling function used across the examples for convenience
+// it can serve as a starting point for implementing your own sampling function
+// Note: When using multiple sequences, it is the caller's responsibility to call
+//       llama_sampling_reset when a sequence ends
+//
+// required:
+//  - ctx_main:     context to use for sampling
+//  - ctx_sampling: sampling-specific context
+//
+// optional:
+//  - ctx_cfg:      context to use for classifier-free guidance
+//  - idx:          sample from llama_get_logits_ith(ctx, idx)
+//
+// returns:
+//  - token:      sampled token
+//  - candidates: vector of candidate tokens
+//
+llama_token llama_sampling_sample(
+        struct llama_sampling_context * ctx_sampling,
+        struct llama_context * ctx_main,
+        struct llama_context * ctx_cfg,
+        int idx = 0);
+
+void llama_sampling_accept(
+        struct llama_sampling_context * ctx_sampling,
+        struct llama_context * ctx_main,
+        llama_token id,
+        bool apply_grammar);
+
+// Get the last sampled token
+llama_token llama_sampling_last(llama_sampling_context * ctx);              
+
+// ------------------------------------------------------
 
 // --- Some (possibly be wrong) observations
 
@@ -43,6 +85,8 @@
 
 // --- sampling parameters
 
+// sampling parameters
+
 typedef struct llama_sampling_params {
 
     // -- Janus Sampling
@@ -52,24 +96,28 @@ typedef struct llama_sampling_params {
     float   scale = 0.96; // janus scale factor for penalty and other heuristics
     float   hi    = 0.99; // 1.0 = max pedantic [ 100% strict ]
     float   lo    = 0.96; // 0.0 = min pedantic [ 100% random ]
-    
+
     // -- mainstream samplings
 
-    int32_t n_prev            = 64;    // number of previous tokens to remember
-    int32_t n_probs           = 0;     // if greater than 0, output the probabilities of top n_probs tokens.
-    int32_t top_k             = 40;    // <= 0 to use vocab size
-    float   top_p             = 0.95f; // 1.0 = disabled
-    float   tfs_z             = 1.00f; // 1.0 = disabled
-    float   typical_p         = 1.00f; // 1.0 = disabled
-    float   temp              = 0.80f; // 1.0 = disabled
-    int32_t penalty_last_n    = 64;    // last n tokens to penalize (0 = disable penalty, -1 = context size)
-    float   penalty_repeat    = 1.10f; // 1.0 = disabled
-    float   penalty_freq      = 0.00f; // 0.0 = disabled
-    float   penalty_present   = 0.00f; // 0.0 = disabled
-    int32_t mirostat          = 0;     // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-    float   mirostat_tau      = 5.00f; // target entropy
-    float   mirostat_eta      = 0.10f; // learning rate
-    bool    penalize_nl       = true;  // consider newlines as a repeatable token
+    int32_t     n_prev                = 64;       // number of previous tokens to remember
+    int32_t     n_probs               = 0;        // if greater than 0, output the probabilities of top n_probs tokens.
+    int32_t     top_k                 = 40;       // <= 0 to use vocab size
+    float       top_p                 = 0.95f;    // 1.0 = disabled
+    float       min_p                 = 0.05f;    // 0.0 = disabled
+    float       tfs_z                 = 1.00f;    // 1.0 = disabled
+    float       typical_p             = 1.00f;    // 1.0 = disabled
+    float       temp                  = 0.80f;    // <= 0.0 to sample greedily, 0.0 to not output probabilities
+    float       dynatemp_range        = 0.00f;    // 0.0 = disabled
+    float       dynatemp_exponent     = 1.00f;    // controls how entropy maps to temperature in dynamic temperature sampler
+    int32_t     penalty_last_n        = 64;       // last n tokens to penalize (0 = disable penalty, -1 = context size)
+    float       penalty_repeat        = 1.10f;    // 1.0 = disabled
+    float       penalty_freq          = 0.00f;    // 0.0 = disabled
+    float       penalty_present       = 0.00f;    // 0.0 = disabled
+    int32_t     mirostat              = 0;        // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
+    float       mirostat_tau          = 5.00f;    // target entropy
+    float       mirostat_eta          = 0.10f;    // learning rate
+    bool        penalize_nl           = true;     // consider newlines as a repeatable token
+    std::string samplers_sequence     = "kfypmt"; // top_k, tail_free, typical_p, top_p, min_p, temp
 
     std::string grammar;  // optional BNF-like grammar to constrain sampling
 
@@ -80,34 +128,48 @@ typedef struct llama_sampling_params {
 
     std::unordered_map<llama_token, float> logit_bias; // logit bias for specific tokens
 
+    std::vector<llama_token> penalty_prompt_tokens;
+    bool                     use_penalty_prompt_tokens = false;
 } llama_sampling_params;
 
 // --- gpt params
 
 struct gpt_params {
+    uint32_t seed                 = -1;    // RNG seed
 
-    // -- main params
+    int32_t n_threads             = get_num_physical_cores();
+    int32_t n_threads_draft       = -1;
+    int32_t n_threads_batch       = -1;    // number of threads to use for batch processing (-1 = use n_threads)
+    int32_t n_threads_batch_draft = -1;
+    int32_t n_predict             = -1;    // new tokens to predict
+    int32_t n_ctx                 = 512;   // context size
+    int32_t n_batch               = 512;   // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_keep                = 0;     // number of tokens to keep from initial prompt
+    int32_t n_draft               = 8;     // number of tokens to draft during speculative decoding
+    int32_t n_chunks              = -1;    // max number of chunks to process (-1 = unlimited)
+    int32_t n_parallel            = 1;     // number of parallel sequences to decode
+    int32_t n_sequences           = 1;     // number of sequences to decode
+    float   p_accept              = 0.5f;  // speculative decoding accept probability
+    float   p_split               = 0.1f;  // speculative decoding split probability
+    int32_t n_gpu_layers          = -1;    // number of layers to store in VRAM (-1 - use default)
+    int32_t n_gpu_layers_draft    = -1;    // number of layers to store in VRAM for the draft model (-1 - use default)
+    llama_split_mode split_mode   = LLAMA_SPLIT_LAYER; // how to split the model across GPUs
+    int32_t main_gpu              = 0;     // the GPU that is used for scratch and small tensors
+    float   tensor_split[128]     = {0};   // how split tensors should be distributed across GPUs
+    int32_t n_beams               = 0;     // if non-zero then use beam search of given width.
+    int32_t grp_attn_n            = 1;     // group-attention factor
+    int32_t grp_attn_w            = 512;   // group-attention width
+    int32_t n_print               = -1;    // print token count every n tokens (-1 = disabled)
+    float   rope_freq_base        = 0.0f;  // RoPE base frequency
+    float   rope_freq_scale       = 0.0f;  // RoPE frequency scaling factor
+    float   yarn_ext_factor       = -1.0f; // YaRN extrapolation mix factor
+    float   yarn_attn_factor      = 1.0f;  // YaRN magnitude scaling factor
+    float   yarn_beta_fast        = 32.0f; // YaRN low correction dim
+    float   yarn_beta_slow        = 1.0f;  // YaRN high correction dim
+    int32_t yarn_orig_ctx         = 0;     // YaRN original context length
+    int32_t rope_scaling_type     = LLAMA_ROPE_SCALING_UNSPECIFIED;
 
-    uint32_t seed                           = -1;   // RNG seed
-    int32_t n_threads                       = 1;    // get_num_physical_cores();
-    int32_t n_threads_batch                 = -1;   // number of threads to use for batch processing (-1 = use n_threads)
-    int32_t n_predict                       = -1;   // new tokens to predict
-    int32_t n_ctx                           = 4096; // 512;  // context size
-    int32_t n_batch                         = 512;  // batch size for prompt processing (must be >=32 to use BLAS)
-    int32_t n_keep                          = 0;    // number of tokens to keep from initial prompt
-    int32_t n_draft                         = 16;   // number of tokens to draft during speculative decoding
-    int32_t n_chunks                        = -1;   // max number of chunks to process (-1 = unlimited)
-    int32_t n_parallel                      = 1;    // number of parallel sequences to decode
-    int32_t n_sequences                     = 1;    // number of sequences to decode
-    int32_t n_gpu_layers                    = -1;   // number of layers to store in VRAM (-1 - use default)
-    int32_t n_gpu_layers_draft              = -1;   // number of layers to store in VRAM for the draft model (-1 - use default)
-    int32_t main_gpu                        = 0;    // the GPU that is used for scratch and small tensors
-    float   tensor_split[ 4 /*LLAMA_MAX_DEVICES*/ ] = {0};  // how split tensors should be distributed across GPUs
-    int32_t n_beams                         = 0;    // if non-zero then use beam search of given width.
-    float   rope_freq_base                  = 0.0f; // RoPE base frequency
-    float   rope_freq_scale                 = 0.0f; // RoPE frequency scaling factor
-
-    // sampling parameters
+    // // sampling parameters
     struct llama_sampling_params sparams;
 
     std::string model             = "models/7B/ggml-model-f16.gguf"; // model path
@@ -120,23 +182,34 @@ struct gpt_params {
     std::string input_suffix      = "";  // string to suffix user inputs with
     std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
     std::string logdir            = "";  // directory in which to save YAML log files
+    std::string logits_file       = "";  // file for saving *all* logits
 
+    std::vector<llama_model_kv_override> kv_overrides;
+
+    // TODO: avoid tuple, use struct
     std::vector<std::tuple<std::string, float>> lora_adapter; // lora adapter path with user defined scale
-    std::string lora_base    = "";  // base model path for the lora adapter
+    std::string lora_base  = "";                              // base model path for the lora adapter
 
     int  ppl_stride        = 0;     // stride for perplexity calculations. If left at 0, the pre-existing approach will be used.
     int  ppl_output_type   = 0;     // = 0 -> ppl output is as usual, = 1 -> ppl output is num_tokens, ppl, one per line
                                     //                                       (which is more convenient to use for plotting)
                                     //
-    bool hellaswag         = false; // compute HellaSwag score over random tasks from datafile supplied in prompt
+    bool   hellaswag       = false; // compute HellaSwag score over random tasks from datafile supplied in prompt
     size_t hellaswag_tasks = 400;   // number of tasks to use when computing the HellaSwag score
 
-    bool low_vram          = false; // if true, reduce VRAM usage at the cost of performance
+    bool   winogrande      = false; // compute Winogrande score over random tasks from datafile supplied in prompt
+    size_t winogrande_tasks= 0;     // number of tasks to use when computing the Winogrande score. If 0, all tasks will be computed
+
+    bool   multiple_choice = false; // compute TruthfulQA score over random tasks from datafile supplied in prompt
+    size_t multiple_choice_tasks = 0;     // number of tasks to use when computing the TruthfulQA score. If 0, all tasks will be computed
+
+    bool   kl_divergence   = false; // compute KL-divergence
+
     bool mul_mat_q         = true;  // if true, use mul_mat_q kernels instead of cuBLAS
-    bool memory_f16        = true;  // use f16 instead of f32 for memory kv
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
     bool interactive       = false; // interactive mode
+    bool chatml            = false; // chatml mode (used for models trained on chatml syntax)
     bool prompt_cache_all  = false; // save user input and generations to prompt cache
     bool prompt_cache_ro   = false; // open the prompt cache read-only and do not update it
 
@@ -154,14 +227,42 @@ struct gpt_params {
     bool use_mmap          = true;  // use mmap for faster loads
     bool use_mlock         = false; // use mlock to keep model in memory
     bool numa              = false; // attempt optimizations that help on some NUMA systems
-    bool export_cgraph     = false; // export the computation graph
     bool verbose_prompt    = false; // print prompt tokens before generation
+    bool display_prompt    = true;  // print prompt before generation
     bool infill            = false; // use infill mode
+    bool dump_kv_cache     = false; // dump the KV cache contents for debugging purposes
+    bool no_kv_offload     = false; // disable KV offloading
+
+    std::string cache_type_k = "f16"; // KV cache data type for the K
+    std::string cache_type_v = "f16"; // KV cache data type for the V
 
     // multimodal models (see examples/llava)
     std::string mmproj = ""; // path to multimodal projector
-    std::string image = "";  // path to an image file
+    std::string image  = ""; // path to an image file
 };
+
+// Create a new sampling context instance.
+struct llama_sampling_context * llama_sampling_init(const struct llama_sampling_params & params);
+
+// general sampler context
+// TODO: move to llama.h
+struct llama_sampling_context {
+    // parameters that will be used for sampling
+    llama_sampling_params params;
+
+    // mirostat sampler state
+    float mirostat_mu;
+
+    llama_grammar * grammar;
+
+    // internal
+    grammar_parser::parse_state parsed_grammar;
+
+    // TODO: replace with ring-buffer
+    std::vector<llama_token>      prev;
+    std::vector<llama_token_data> cur;
+};
+
 
 //
 // Sampling utils
@@ -198,12 +299,32 @@ llama_token llama_sample_token(
                         const size_t   max);
 
 std::vector<llama_token> llama_tokenize(
+  const struct llama_context * ctx,
+           const std::string & text,
+                        bool   add_bos,
+                        bool   special);
+
+std::vector<llama_token> llama_tokenize(
+    const struct llama_model * model,
+           const std::string & text,
+                        bool   add_bos,
+                        bool   special);   
+
+std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token);  
+
+// Uses the value from the model metadata if possible, otherwise
+// defaults to true when model type is SPM, otherwise false.
+bool llama_should_add_bos_token(const llama_model * model); 
+
+/*
+std::vector<llama_token> llama_tokenize(
     const struct llama_model * model,
            const std::string & text,
                         bool   add_bos,
                         bool   special = false);
 
 std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
+*/
 
 void hide();
 void show();
@@ -280,4 +401,4 @@ void llama_batch_add(
     const std::vector<llama_seq_id> & seq_ids,
                                bool   logits);
 
-                              
+                             

@@ -8,8 +8,9 @@
 #include <unordered_map>
 #include <tuple>
 
-#include "llama.h"
 #include "ggml.h"
+#include "ggml-backend.h"
+#include "llama.h"
 
 #include "bridge.h"
 #include "janus.h"
@@ -369,7 +370,8 @@ int tokType(const llama_context *ctx, const llama_token token) {
     int other = 0;
     bool space = 0;
 
-    std::string in = llama_token_to_str(ctx, token); // vocab.id_to_token[token].text
+    // WAS std::string in = llama_token_to_str(ctx, token); // vocab.id_to_token[token].text
+    std::string in = llama_token_to_piece(ctx, token); // vocab.id_to_token[token].text
 
     // DEBUG
     //std::string in = "хід";
@@ -466,7 +468,8 @@ int tokType(const llama_context *ctx, const llama_token token) {
 // NB! isLower works only for RU and EN 
 bool isLower(const llama_context *ctx, const llama_token token) {
 
-    std::string in = llama_token_to_str(ctx, token);
+    // WAS: std::string in = llama_token_to_str(ctx, token);
+    std::string in = llama_token_to_piece(ctx, token);
     auto buf = getBytes(in);
 
     if (buf.size() <= 0) return false; 
@@ -496,7 +499,8 @@ bool isLower(const llama_context *ctx, const llama_token token) {
 }
 
 int tokSize(const llama_context *ctx, const llama_token token) {
-    return llama_token_to_str(ctx, token).size();
+    // WAS: return llama_token_to_str(ctx, token).size();
+    return llama_token_to_piece(ctx, token).size();
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
@@ -559,7 +563,8 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
                 zero.c_str(),
                 logit,
                 ::scales[id],
-                llama_token_to_str(ctx, id).c_str()
+                // WAS: llama_token_to_str(ctx, id).c_str()
+                llama_token_to_piece(ctx, id).c_str()
             );
         }
     }
