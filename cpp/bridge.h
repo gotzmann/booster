@@ -401,4 +401,9 @@ void llama_batch_add(
     const std::vector<llama_seq_id> & seq_ids,
                                bool   logits);
 
-                             
+// no reasons to expose this function in header
+static void sampler_queue(
+                   struct llama_context * ctx_main,
+            const llama_sampling_params & params,
+                 llama_token_data_array & cur_p,
+                                 size_t & min_keep);                             

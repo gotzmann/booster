@@ -30,6 +30,9 @@ static std::vector<llama_token> * g_input_tokens;
 static std::vector<llama_token> * g_output_tokens;
 static bool is_interacting = false;
 
+
+// -- NB! llama_sample_token() is an older implementation of newer janus.cpp::llama_sampling_sample()
+
 // pos => index of current position within generation window [ 0 .. max )
 // max => how many tokens were generated via the last iteration?
 //        remember, that sessions might have one or multiple iterations
@@ -54,7 +57,8 @@ llama_token llama_sample_token(
     const int32_t top_k          = params.top_k <= 0 ? n_vocab : params.top_k;
     const int32_t penalty_last_n = params.penalty_last_n < 0 ? n_ctx : params.penalty_last_n;
 
-    /* DEBUG GQA
+/* 
+    // DEBUG GQA
     auto hparams = model->hparams;
     fprintf(stderr, "\n\n === GQA HPARAMS ===");
     fprintf(stderr, "\n * n_embd = %d", hparams.n_embd);
@@ -62,9 +66,9 @@ llama_token llama_sample_token(
     fprintf(stderr, "\n * n_head_kv = %d", hparams.n_head_kv);
     fprintf(stderr, "\n * n_gqa() = n_head/n_head_kv = %d", hparams.n_gqa());
     fprintf(stderr, "\n * n_embd_head() = n_embd/n_head = %d", hparams.n_embd_head());
-    fprintf(stderr, "\n * n_embd_gqa() = n_embd/n_gqa() = %d", hparams.n_embd_gqa()); */
+    fprintf(stderr, "\n * n_embd_gqa() = n_embd/n_gqa() = %d", hparams.n_embd_gqa());
 
-    /* DEBUG HPARAMS
+    // DEBUG HPARAMS
     fprintf(stderr, "\n\n === HPARAMS ===");
     fprintf(stderr, "\n * n_ctx = %d", n_ctx);
     fprintf(stderr, "\n * n_vocab = %d", n_vocab);
@@ -75,7 +79,8 @@ llama_token llama_sample_token(
     fprintf(stderr, "\n * penalty_repeat = %f", params.penalty_repeat);
     fprintf(stderr, "\n * mirostat = %d", params.mirostat);
     fprintf(stderr, "\n * mirostat_eta = %f", params.mirostat_eta);
-    fprintf(stderr, "\n * mirostat_tau = %f", params.mirostat_tau); */
+    fprintf(stderr, "\n * mirostat_tau = %f", params.mirostat_tau); 
+*/
 
     llama_token id = 0;
     float * logits = llama_get_logits(ctx);
@@ -175,6 +180,7 @@ llama_token llama_sample_token(
 
     return id;
 }
+
 
 // FIXME ASAP - do not allow longer context when reading session file
 
@@ -320,13 +326,7 @@ int64_t do_inference(
     ///// auto vocabSize = llama_n_vocab(model);
 
     gpt_params & params = ::params[idx];
-    llama_sampling_params & sparams = ::sparams[idx]; // params.sparams;
-
-    //gpt_params params;
-    g_params = &params; // NEW
-    //if (!gpt_params_parse(argc, argv, params)) {
-    //    return 1;
-    //}
+    llama_sampling_params & sparams = ::sparams[idx];
 
     // NEW
     ///// llama_model * model;
@@ -334,6 +334,7 @@ int64_t do_inference(
     llama_context * ctx_guidance = NULL;
     g_model = &model;
     g_ctx = &ctx;
+    g_params = &params;
     ///// const int n_ctx_train = llama_n_ctx_train(model);
     const int n_ctx = llama_n_ctx(ctx);
     std::string path_session = ::params[idx].path_prompt_cache;
@@ -359,12 +360,6 @@ int64_t do_inference(
     ::params[idx].seed = seed;
     ::seeds[jobID] = seed;
     mutex.unlock();
-    //}
-    // params.seed = time(NULL);
-    //std::mt19937 rng(params.seed);
-    //if (params.random_prompt) {
-    //    params.prompt = gpt_random_prompt(rng);
-    //}
     
     // --- SESSIONS ---
 /*
@@ -421,7 +416,6 @@ int64_t do_inference(
     // Should not run without any tokens
     if (embd_inp.empty()) {
         embd_inp.push_back(llama_token_bos(model)); // FIXME
-        // LOG("embd_inp was considered empty and bos was added: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
     }
 
     // number of tokens to keep when resetting context
@@ -497,7 +491,6 @@ int64_t do_inference(
     if ((int) embd_inp.size() > (n_ctx - 4)) {
     //if (sessionFile.empty() && ((int) embd_inp.size() > n_ctx - 4)) {  
         fprintf(stderr, "%s: error: prompt is too long (%d tokens, max %d)\n", __func__, (int) embd_inp.size(), n_ctx - 4);
-        //return 1;
         return 0;
     }
 /*
@@ -573,10 +566,6 @@ int64_t do_inference(
 
     // -- fix hallucinations from previously polluted cache 
     llama_kv_cache_clear(ctx);
-    ///// llama_kv_cache_tokens_rm(ctx, -1, -1); // FIXME
-    //fprintf(stderr, "\nllama_kv_cache_tokens_rm(ctx, -1, -1)");
-    // llama_kv_cache_tokens_rm(ctx, n_past, -1);
-    //fprintf(stderr, "\nllama_kv_cache_tokens_rm(ctx, %d, -1)", n_past);
 
     // -- MAIN LOOP --
 
@@ -585,7 +574,6 @@ int64_t do_inference(
         !stopInferenceFlags[idx]) { 
 
         // predict
-        // WAS if (embd.size() > 0) {  
         if (!embd.empty()) {
 
             // Note: (n_ctx - 4) here is to match the logic for commandline prompt handling via
@@ -613,15 +601,11 @@ int64_t do_inference(
                 if (n_past + (int) embd.size() + std::max<int>(0, guidance_offset) > n_ctx) {
 
                     if (params.n_predict == -2) {
-                        // LOG_TEE("\n\n%s: context full and n_predict == -%d => stopping\n", __func__, params.n_predict);
                         break;
                     }
 
                     const int n_left    = n_past - params.n_keep - 1;
                     const int n_discard = n_left/2;
-
-                    // LOG("context full, swapping: n_past = %d, n_left = %d, n_ctx = %d, n_keep = %d, n_discard = %d\n",
-                    //        n_past, n_left, n_ctx, params.n_keep, n_discard);
 
                     llama_kv_cache_seq_rm   (ctx, 0, params.n_keep + 1            , params.n_keep + n_discard + 1);
                     llama_kv_cache_seq_shift(ctx, 0, params.n_keep + 1 + n_discard, n_past, -n_discard);
@@ -632,11 +616,6 @@ int64_t do_inference(
                     /////    n_past_guidance -= n_discard;
                     ///// }
 
-                    //LOG("after swap: n_past = %d, n_past_guidance = %d\n", n_past, n_past_guidance);
-
-                    //LOG("embd: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
-
-                    //LOG("clear session path\n");
                     path_session.clear();
                 }
 
@@ -648,11 +627,6 @@ int64_t do_inference(
                     const int bd = (ga_w/ga_n)*(ga_n - 1);
                     const int dd = (ga_w/ga_n) - ib*bd - ga_w;
 
-                    //LOG("\n");
-                    //LOG("shift: [%6d, %6d] + %6d -> [%6d, %6d]\n", ga_i, n_past, ib*bd, ga_i + ib*bd, n_past + ib*bd);
-                    //LOG("div:   [%6d, %6d] / %6d -> [%6d, %6d]\n", ga_i + ib*bd, ga_i + ib*bd + ga_w, ga_n, (ga_i + ib*bd)/ga_n, (ga_i + ib*bd + ga_w)/ga_n);
-                    //LOG("shift: [%6d, %6d] + %6d -> [%6d, %6d]\n", ga_i + ib*bd + ga_w, n_past + ib*bd, dd, ga_i + ib*bd + ga_w + dd, n_past + ib*bd + dd);
-
                     llama_kv_cache_seq_shift(ctx, 0, ga_i,                n_past,              ib*bd);
                     llama_kv_cache_seq_div  (ctx, 0, ga_i + ib*bd,        ga_i + ib*bd + ga_w, ga_n);
                     llama_kv_cache_seq_shift(ctx, 0, ga_i + ib*bd + ga_w, n_past + ib*bd,      dd);
@@ -660,8 +634,6 @@ int64_t do_inference(
                     n_past -= bd;
 
                     ga_i += ga_w/ga_n;
-
-                    //LOG("\nn_past_old = %d, n_past = %d, ga_i = %d\n\n", n_past + bd, n_past, ga_i);
                 }
             }
 /*
@@ -734,19 +706,14 @@ int64_t do_inference(
                     n_eval = params.n_batch;
                 }
 
-                //LOG("eval: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
-
                 if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
-                    //LOG_TEE("%s : failed to eval\n", __func__);
                     return 1;
                 }
 
                 n_past += n_eval;
 
-                //LOG("n_past = %d\n", n_past);
                 // Display total tokens alongside total time
                 if (params.n_print > 0 && n_past % params.n_print == 0) {
-                    //LOG_TEE("\n\033[31mTokens consumed so far = %d / %d \033[0m\n", n_past, n_ctx);
                 }
             }
 /*
@@ -769,40 +736,48 @@ int64_t do_inference(
                 LOG("saved session to %s\n", path_session.c_str());
             }
 */
-            const llama_token id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
+            llama_token id;
+            if (!sparams.janus) {
+                id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
+            } else {
+                /* Collider
+                struct llama_context * guidance = NULL;
+                struct llama_grammar * grammar = NULL;
+                llama_token id = llama_sample_token(
+                    ctx,
+                    guidance,
+                    grammar,
+                    ::sparams[idx],
+                    last_tokens,
+                    candidates,
+                    embd_inp.size(),
+                    n_past / * - n_consumed * /,
+                    ::params[idx].n_predict); */
 
-            /* Collider
-            struct llama_context * guidance = NULL;
-            struct llama_grammar * grammar = NULL;
-            llama_token id = llama_sample_token(
-                ctx,
-                guidance,
-                grammar,
-                ::sparams[idx],
-                last_tokens,
-                candidates,
-                embd_inp.size(),
-                n_past / * - n_consumed * /,
-                ::params[idx].n_predict); */
+                struct llama_context * guidance = NULL;
+                struct llama_grammar * grammar = NULL;
+                id = llama_sample_token(
+                    ctx,
+                    guidance,
+                    grammar,
+                    ::sparams[idx],
+                    last_tokens,
+                    ctx_sampling->cur,
+                    embd_inp.size(),
+                    n_past,
+                    ::params[idx].n_predict);    
+            }
 
             llama_sampling_accept(ctx_sampling, ctx, id, true);
 
-            //LOG("last: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, ctx_sampling->prev).c_str());
-
             embd.push_back(id);
-
-            // echo this to console
-            // input_echo = true;
 
             // decrement remaining sampling budget
             --n_remain;
 
-            //LOG("n_remain: %d\n", n_remain);
-
         } else {
 
             // some user input remains from prompt or interaction, forward it to processing
-            //LOG("embd_inp.size(): %d, n_consumed: %d\n", (int) embd_inp.size(), n_consumed);
             while ((int) embd_inp.size() > n_consumed) {
                 embd.push_back(embd_inp[n_consumed]);
 
@@ -998,7 +973,6 @@ int64_t do_inference(
         mutex.lock();
         for (auto id : embd) {
             //if (id == BOS || id == EOS) { fprintf(stderr, "\n\n... SKIPPING BOS or EOS ..."); continue; };
-            // WAS: jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
             jobs[jobID] = jobs[jobID] + llama_token_to_piece(ctx, id);
             //fprintf(stderr, "\n\n... ADDING [[[%s]]] ...", llama_token_to_str(ctx, id).c_str());
         }
@@ -1007,7 +981,6 @@ int64_t do_inference(
         // end of text token
         // if (!embd.empty() && embd.back() == llama_token_eos(model) && !(params.instruct || params.interactive || params.chatml)) {
         if (!embd.empty() && embd.back() == llama_token_eos(model)) {    
-            // LOG_TEE(" [end of text]\n");
             break;
         }
 /*
@@ -1041,135 +1014,6 @@ int64_t do_inference(
     return 0;
 } */
 
-
-/* Collider WAS
-
-            // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
-            if (!isGPU && n_session_consumed < (int) session_tokens.size()) {
-
-                size_t i = 0;
-                for ( ; i < embd.size(); i++) {
-                    if (embd[i] != session_tokens[n_session_consumed]) {
-                        session_tokens.resize(n_session_consumed);
-                        break;
-                    }
-
-                    n_past++;
-                    n_session_consumed++;
-
-                    if (n_session_consumed >= (int) session_tokens.size()) {
-                        ++i;
-                        break;
-                    }
-                }
-
-                if (i > 0) {
-                    embd.erase(embd.begin(), embd.begin() + i);
-                }
-
-                // remove any "future" tokens that we might have inherited from the session from the KV cache
-                llama_kv_cache_tokens_rm(ctx, n_past, -1); // FIXME: Not needed?
-            }
-
-            // evaluate tokens in batches
-            // embd is typically prepared beforehand to fit within a batch, but not always
-
-            // if (ctx_guidance) { ... } // TODO: Investigate
-
-            for (int i = 0; i < (int) embd.size(); i += n_batch) {
-
-                int n_eval = (int) embd.size() - i;
-                if (n_eval > n_batch) {
-                    n_eval = n_batch;
-                }
-
-                // WAS: if (llama_eval(ctx, &embd[i], n_eval, n_past, ::params[idx].n_threads)) {
-                if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
-                    fprintf(stderr, "%s : failed to eval\n", __func__);
-                    return 0;
-                }
-
-                n_past += n_eval;
-            }
-
-            if (!isGPU && embd.size() > 0 && !path_session.empty()) {
-                session_tokens.insert(session_tokens.end(), embd.begin(), embd.end());
-                n_session_consumed = session_tokens.size();
-            }
-        }
-
-        embd.clear();
-        //embd_guidance.clear();
-
-        //fprintf(stderr, "%s === embd_inp.size() = %d | n_consumed = %d | n_remain = %d \n", __func__, (int) embd_inp.size(), (int) n_consumed, (int) n_remain); // DEBUG
-
-        if ((int) embd_inp.size() <= n_consumed) {
-
-            // --- out of user input, sample next token
-
-            std::vector<llama_token_data> candidates;
-            candidates.reserve(vocabSize);
-
-            struct llama_context * guidance = NULL;
-            struct llama_grammar * grammar = NULL;
-            llama_token id = llama_sample_token(
-                ctx,
-                guidance,
-                grammar,
-                ::sparams[idx],
-                last_tokens,
-                candidates,
-                embd_inp.size(),
-                n_past, // - n_consumed,
-                ::params[idx].n_predict);
-
-            // FIXME: New format
-            // TODO: Learn sampling.h / sampling.cpp
-            // const llama_token id = llama_sampling_sample(ctx, ctx_guidance, ctx_sampling, last_tokens, candidates);
-
-            last_tokens.erase(last_tokens.begin());
-            last_tokens.push_back(id);
-
-            // add it to the context
-            embd.push_back(id);
-
-            // decrement remaining sampling budget
-            --n_remain;
-
-        } else { 
-
-            // some user input remains from prompt or interaction, forward it to processing
-            while ((int) embd_inp.size() > n_consumed) {
-                embd.push_back(embd_inp[n_consumed]);
-                last_tokens.erase(last_tokens.begin());
-                last_tokens.push_back(embd_inp[n_consumed]);
-                ++n_consumed;
-                if ((int) embd.size() >= n_batch) {
-                    break;
-                }
-            }
-        }
-
-        // -- update job text buffer
-        mutex.lock();
-        for (auto id : embd) {
-            //if (id == BOS || id == EOS) { fprintf(stderr, "\n\n... SKIPPING BOS or EOS ..."); continue; };
-            jobs[jobID] = jobs[jobID] + llama_token_to_str(ctx, id);
-            //fprintf(stderr, "\n\n... ADDING [[[%s]]] ...", llama_token_to_str(ctx, id).c_str());
-        }
-        mutex.unlock();
-
-        // end of text token
-        if (!embd.empty() && embd.back() == llama_token_eos(model)) {
-                break;
-        }
-    }
-
-    if (!isGPU && !sessionFile.empty()) {
-        fprintf(stderr, "\n%s: saving final output [ %d tokens ] to session file '%s'\n", __func__, (int) session_tokens.size(), sessionFile.c_str());
-        llama_save_session_file(ctx, sessionFile.c_str(), session_tokens.data(), session_tokens.size());
-    }
-*/
     const llama_timings timings = llama_get_timings(ctx);
 
     mutex.lock();
@@ -1345,10 +1189,6 @@ uint32_t getSeed(char * jobID) {
 // Vocab utils
 //
 
-//
-// Vocab utils
-//
-
 std::vector<llama_token> llama_tokenize(
   const struct llama_context * ctx,
            const std::string & text,
@@ -1395,40 +1235,6 @@ bool llama_should_add_bos_token(const llama_model * model) {
 
     return add_bos != -1 ? bool(add_bos) : (llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM);
 }
-
-/*
-std::vector<llama_token> llama_tokenize(
-    const struct llama_model * model,
-           const std::string & text,
-                        bool   add_bos,
-                        bool   special) {
-    // upper limit for the number of tokens
-    int n_tokens = text.length() + add_bos;
-    std::vector<llama_token> result(n_tokens);
-    n_tokens = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos, special);
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos, special);
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
-    }
-    return result;
-}
-
-std::string llama_token_to_str(const struct llama_context * ctx, llama_token token) {
-    std::vector<char> result(8, 0);
-    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size());
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
-    }
-
-    return std::string(result.data(), result.size());
-} */
 
 // This works fast and allows for 100% deterministic sampling
 llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logits, const int size) {
@@ -1503,6 +1309,8 @@ struct llama_sampling_context * llama_sampling_init(const struct llama_sampling_
 
     return result;
 }
+
+// -- FIXME: DUP
 
 // no reasons to expose this function in header
 static void sampler_queue(
