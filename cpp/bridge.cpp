@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
+#include <fstream>
 #include <vector>
 #include <random>
 #include <thread>
@@ -216,13 +217,13 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
 void hide() {
-    (void) freopen(NULL_DEVICE, "w", stdout);
-    (void) freopen(NULL_DEVICE, "w", stderr);
+    (void) !freopen(NULL_DEVICE, "w", stdout);
+    (void) !freopen(NULL_DEVICE, "w", stderr);
 }    
 
 void show() {
-    (void) freopen(TTY_DEVICE, "w", stdout);
-    (void) freopen(TTY_DEVICE, "w", stderr);
+    (void) !freopen(TTY_DEVICE, "w", stdout);
+    (void) !freopen(TTY_DEVICE, "w", stderr);
 }
 
 // --- Globals for all pods. Do anyone needs more than 8 pods per machine?
