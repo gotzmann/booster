@@ -59,12 +59,36 @@ Collider was (and still) developed on Mac with Apple Silicon M1 processor, so it
 make mac
 ```
 
-## How to compile for CUDA?
+## How to compile for CUDA on Ubuntu?
 
-Full instructions will be available soon (you need all Nvidia drivers and CUDA Toolkit with NVCC installed at least), but then it looks like:
+Follow step 1 and step 2, then just make!
+
+Ubuntu Step 1: Install C++ and Golang compilers, as well some developer libraries
+
+```
+sudo apt update -y && sudo apt upgrade -y && \
+apt install -y git git-lfs make build-essential && \
+wget https://golang.org/dl/go1.21.5.linux-amd64.tar.gz && \
+tar -xf go1.21.5.linux-amd64.tar.gz -C /usr/local && \
+rm go1.21.5.linux-amd64.tar.gz && \
+echo 'export PATH="${PATH}:/usr/local/go/bin"' >> ~/.bashrc && source ~/.bashrc
+```
+
+Ubuntu Step 2: Install Nvidia drivers and CUDA Toolkit 12.2 with NVCC
+
+```
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin && \
+sudo mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600 && \
+sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub && \
+sudo add-apt-repository "deb http://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/ /" && \
+sudo apt update -y && \
+sudo apt install -y cuda-toolkit-12-2
+```
+
+Now you are ready to rock
 
 ```shell
-LLAMA_CUBLAS=1 PATH=$PATH:/usr/local/go/bin CUDA_PATH=/usr/local/cuda CUDA_DOCKER_ARCH=sm_80 make -j cuda
+make cuda
 ```
 
 ## How to Run?
