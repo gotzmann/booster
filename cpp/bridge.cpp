@@ -572,6 +572,7 @@ int64_t do_inference(
     struct llama_sampling_context * ctx_sampling = llama_sampling_init((const struct llama_sampling_params) sparams);
 
     // -- fix hallucinations from previously polluted cache 
+    llama_kv_cache_clear(ctx);
     ///// llama_kv_cache_tokens_rm(ctx, -1, -1); // FIXME
     //fprintf(stderr, "\nllama_kv_cache_tokens_rm(ctx, -1, -1)");
     // llama_kv_cache_tokens_rm(ctx, n_past, -1);
@@ -1009,13 +1010,13 @@ int64_t do_inference(
             // LOG_TEE(" [end of text]\n");
             break;
         }
-
+/*
         // In interactive mode, respect the maximum number of tokens and drop back to user input when reached.
         // We skip this logic when n_predict == -1 (infinite) or -2 (stop at context size).
         if (params.interactive && n_remain <= 0 && params.n_predict >= 0) {
             n_remain = params.n_predict;
             is_interacting = true;
-        }
+        } */
     }
 /*
     if (!path_session.empty() && params.prompt_cache_all && !params.prompt_cache_ro) {
