@@ -1,5 +1,5 @@
-cpuobjs:  llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml_quants.o
-cudaobjs: llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml_quants.o ggml-cuda.o
+cpuobjs:  llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o
+cudaobjs: llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o ggml-cuda.o
 macobjs:  llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o ggml-metal.o
 
 bridge.o: bridge.cpp
