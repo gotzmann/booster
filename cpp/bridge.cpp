@@ -1,6 +1,7 @@
 #include <array>
 #include <algorithm>
 #include <string>
+#include <cstring>
 #include <vector>
 #include <random>
 #include <thread>

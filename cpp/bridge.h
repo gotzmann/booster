@@ -18,7 +18,7 @@
 // #include "common.h"
 #include "llama.h"
 //#include "sampling.h"
-#include "grammar-parser.h"
+#include "common/grammar-parser.h"
 
 #ifdef _WIN32
 #define NULL_DEVICE "NUL:"
