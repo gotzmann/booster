@@ -5,9 +5,10 @@
 #include <vector>
 #include <random>
 #include <thread>
-#include <shared_mutex>
-#include <unordered_map>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <shared_mutex>
 
 #include "ggml.h"
 #include "ggml-backend.h"
@@ -215,13 +216,13 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
 void hide() {
-    freopen(NULL_DEVICE, "w", stdout);
-    freopen(NULL_DEVICE, "w", stderr);
+    (void) freopen(NULL_DEVICE, "w", stdout);
+    (void) freopen(NULL_DEVICE, "w", stderr);
 }    
 
 void show() {
-    freopen(TTY_DEVICE, "w", stdout);
-    freopen(TTY_DEVICE, "w", stderr);
+    (void) freopen(TTY_DEVICE, "w", stdout);
+    (void) freopen(TTY_DEVICE, "w", stderr);
 }
 
 // --- Globals for all pods. Do anyone needs more than 8 pods per machine?
