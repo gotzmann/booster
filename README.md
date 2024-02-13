@@ -10,8 +10,8 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 
 M1/M2/M3 CPUs and integrated GPUs supported, just place **ggml-metal.metal** into the same folder:
 
-[collider-v1.1.1-mac](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.1.1-mac)
-[ggml-metal.metal](https://huggingface.co/datasets/gotzmann/collider/resolve/main/ggml-metal.metal)
+**[collider-v1.1.1-mac](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.1.1-mac)** + 
+**[ggml-metal.metal](https://huggingface.co/datasets/gotzmann/collider/resolve/main/ggml-metal.metal)**
 
 ## Superpowers
 
