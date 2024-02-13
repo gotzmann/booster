@@ -4,6 +4,15 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 
 **Large Model Collider aims to be an simple and mighty LLM inference accelerator both for those who needs to scale GPTs within production environment or just experiment with models on its own.**
 
+## TLDR
+
+**Latest build v1.1.1 for Mac Apple Silicon**
+
+M1/M2/M3 CPUs and integrated GPUs supported, just place **ggml-metal.metal** into the same folder:
+
+[collider-v1.1.1-mac](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.1.1-mac)
+[ggml-metal.metal](https://huggingface.co/datasets/gotzmann/collider/resolve/main/ggml-metal.metal)
+
 ## Superpowers
 
 - Built with performance and scaling in mind **thanks Golang and C++**
