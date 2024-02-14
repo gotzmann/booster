@@ -10,7 +10,7 @@ config.yaml
 !config.sample.json
 !config.sample.yaml
 __debug_bin*
-collider
+/collider
 llamazoo
 vendor/
 tmp/

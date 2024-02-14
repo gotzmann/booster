@@ -9,10 +9,15 @@
 # NVCCFLAGS += -arch=sm_80 -std=c++11
 
 # -- TODO: Detect platform features and choose right default target automatically
-# default: llamazoo
 
-clean:
-	rm -vrf *.o cpp/*.o *.so *.dll
+default: cuda clean
+
+# -- Nvidia GPUs with CUDA
+cuda:
+	cd cpp && \
+	LLAMA_CUBLAS=1 make -j cudaobjs && \
+	cd .. && \
+	CGO_ENABLED=1 go build collider.go
 
 # -- Apple Silicon with both ARM CPU with Neon and GPU Metal support
 mac:
@@ -21,13 +26,13 @@ mac:
 	cd .. && \
 	CGO_ENABLED=1 go build collider.go
 
-# -- Regular Intel / AMD / ARM platforms with only CPU support
+# -- Server platforms and Macs with only CPU support
 #    TODO: Exclude CUDA drivers as linker requirements
 cpu:
 	cd cpp && \
-	make -j cpuobjs && \
+	LLAMA_NO_METAL=1 make -j cpuobjs && \
 	cd .. && \
-	CGO_ENABLED=1 go build collider.go
+	CGO_ENABLED=1 go build -o collider collider_cpu.go
 
 # -- Nvidia GPUs with CUDA
 cuda:
@@ -37,3 +42,7 @@ cuda:
 	CGO_ENABLED=1 go build collider.go
 
 # -- TODO: OpenCL cards
+#    ...
+
+clean:
+	rm -vrf *.o cpp/*.o *.so *.dll

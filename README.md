@@ -6,7 +6,7 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 
 ## TLDR
 
-**Latest build v1.1.1 for Mac Apple Silicon**
+**- Latest build v1.1.1 for Mac Apple Silicon**
 
 M1/M2/M3 CPUs and integrated GPUs supported, just place **ggml-metal.metal** into the same folder:
 
