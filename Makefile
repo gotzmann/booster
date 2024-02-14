@@ -34,13 +34,6 @@ cpu:
 	cd .. && \
 	CGO_ENABLED=1 go build -o collider collider_cpu.go
 
-# -- Nvidia GPUs with CUDA
-cuda:
-	cd cpp && \
-	LLAMA_CUBLAS=1 make -j cudaobjs && \
-	cd .. && \
-	CGO_ENABLED=1 go build collider.go
-
 # -- TODO: OpenCL cards
 #    ...
 
