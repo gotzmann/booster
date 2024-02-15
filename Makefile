@@ -10,7 +10,7 @@
 
 # -- TODO: Detect platform features and choose right default target automatically
 
-default: cuda clean
+default: cuda
 
 # -- Nvidia GPUs with CUDA
 cuda:

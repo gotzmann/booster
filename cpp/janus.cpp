@@ -202,13 +202,17 @@ llama_token sample_janus_token(
     fprintf(stderr, "\n * depth = %d", params.depth);
     fprintf(stderr, "\n * scale = %f", params.scale);
     fprintf(stderr, "\n * hi = %f", params.hi);
-    fprintf(stderr, "\n * lo = %f", params.lo); */
+    fprintf(stderr, "\n * lo = %f", params.lo);
+    fprintf(stderr, "\n * pos = %d", pos);
+    fprintf(stderr, "\n * promptLen = %d", promptLen);
+    //exit(1); */
 
     printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG
 
     auto model       = llama_get_model(ctx);
     float * logits   = llama_get_logits(ctx);
     size_t vocabSize = llama_n_vocab(model);
+    size_t ctxSize   = last_tokens.size();
     // auto scale       = params.scale;
 
     auto lastToken = last_tokens.data()[ last_tokens.size() - 1 ];
@@ -224,26 +228,36 @@ llama_token sample_janus_token(
 
     // TODO: This should work right for the first system prompt, but what's about the next ones [ second, third, etc ] ?!
     size_t depth = std::min((size_t) params.depth, pos - promptLen);
+    // fprintf(stderr, "\n * depth = %d", depth); // DEBUG
+    // fprintf(stderr, "\n * ctxSize = %d", ctxSize); // DEBUG
     for (size_t i = 0; i < depth; i++) {
         //fprintf(stderr, " [ i=%d | pos=%d | depth=%d | len=%d ] ", i, pos, depth, promptLen); // DEBUG
-        auto id = last_tokens.data()[ last_tokens.size() - 1 - i ];
+        // WAS auto id = last_tokens.data()[ ctxSize - 1 - i ];
+        auto id = last_tokens[ ctxSize - 1 - i ];
         auto curType = ::types[id];
+        // fprintf(stderr, "\n [ ID == %d ] ", id); // DEBUG
 
         // Decrease reperition penalty for word continuation tokens to help prevent wrong wordings in complex languages
         // TODO: Maybe we need to skip the last token itself [ with check of i > 0 ] ?! 
         if ((lastType == SPACE_RU || lastType == LANG_RU) && curType == LANG_RU) {
+            // fprintf(stderr, "\n WAS 01 = %f", logits[id]); // DEBUG
             logits[id] *= 1.0 - (1.0 - ::scales[id]) * 0.20;
+            // fprintf(stderr, "\n NOW 01 = %f", logits[id]); // DEBUG
             continue;
         }
 
         // TODO: Should we process negative probabilities by scale division?
         // how it was before: logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
-        logits[id] *= ::scales[id];       
+        // fprintf(stderr, "\n SCALE 02 %d = %f", id, ::scales[id]); // DEBUG
+        // fprintf(stderr, "\n WAS 02 = %f", logits[id]); // DEBUG
+        logits[id] *= ::scales[id];
+        // fprintf(stderr, "\n NOW 02 = %f", logits[id]); // DEBUG
     }
    
     // -- Double down incompatible tokens (like word endings in some other language)
 
     for (size_t id = 0; id < vocabSize; id++) {
+
         auto curType = ::types[id];
 
         if (
@@ -251,7 +265,9 @@ llama_token sample_janus_token(
             // ||
             // ((lastType == LANG_EN || lastType == SPACE_EN) && curType == LANG_RU) // Europeans mix ASCII and UTF-8
         ) {
-            logits[id] *= 0.5; // scale * scale * scale; 
+            // fprintf(stderr, "\n WAS 03 = %f", logits[id]); // DEBUG
+            logits[id] *= 0.5; // scale * scale * scale;
+            // fprintf(stderr, "\n NOW 03 = %f", logits[id]); // DEBUG
         }
     }        
    
@@ -312,23 +328,23 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     ::scales = new float[vocabSize] {};
     ::types = new float[vocabSize] {};
 
+    /* DEBUG
+    fprintf(stderr, "\n * janus = %d", params.janus);
+    fprintf(stderr, "\n * depth = %d", params.depth);
+    fprintf(stderr, "\n * scale = %f", params.scale);
+    fprintf(stderr, "\n * hi = %f", params.hi);
+    fprintf(stderr, "\n * lo = %f", params.lo);
+    exit(1); */
+
     // -- safe defaults
 
     //if (params.depth <= 0 || params.depth > params.n_predict) {
     //    params.depth = 200;
     //}
 
-    if (params.scale <= 0.0 || params.scale > 1.0) {
-        params.scale = 0.97;
-    }
-
-    if (params.hi <= 0.0 || params.hi > 1.0) {
-        params.hi = 0.99;
-    }
-
-    if (params.lo <= 0.0 || params.lo > 1.0) {
-        params.lo = 0.96;
-    }
+    if (params.scale <= 0.0 || params.scale > 1.0) params.scale = 0.97;
+    if (params.hi <= 0.0    || params.hi > 1.0)    params.hi = 0.99;
+    if (params.lo <= 0.0    || params.lo > 1.0)    params.lo = 0.96;
 
     // -- init tokens with some heuristics
     //    how it was before [ with penalty = 1.06 ] : logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
@@ -347,17 +363,27 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
 
         if (isPedantic(id)) {
             ::scales[id] = 1.0 - (1.0 - scale) * 0.20;
+            //fprintf(stderr, "\n SCALE1 %d = %f", id, ::scales[id]);
+            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
             continue;
         }   
 
-        // -- special case for complex languages like Russian. Do not penalise
-        //    much tokens that might work as other word parts!
+        // -- special case for complex languages like Russian.
+        //    penalise the tokens that might be a parts of other words with less scale
+        //    NB! Fix the case of tooooo long tokens => SCALE 23831 = 5115.378906 | "printStackTrace"
 
-        float probes[] = { 0.20, 0.22, 0.25, 0.28, 0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.44, 0.48, 0.50 };
+        float probes[] = {
+            0.20, 0.22, 0.25, 0.28, 0.30,
+            0.32, 0.33, 0.35, 0.36, 0.38,
+            0.40, 0.42, 0.44, 0.45, 0.46,
+            0.48, 0.50, 0.52, 0.53, 0.55,
+        };
 
         if (type == LANG_RU && lower) {
             // NB! Size in bytes is 2x of UTF-8 chars for RU
             ::scales[id] = 1.0 - (1.0 - scale) * probes[len/2];
+            //fprintf(stderr, "\n SCALE2 %d = %f", id, ::scales[id]);
+            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
             continue;
         }
 
@@ -365,12 +391,16 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
 
         if (type == LANG_EN && lower) {
             ::scales[id] = 1.0 - (1.0 - scale) * probes[len];
+            //fprintf(stderr, "\n SCALE3 %d = %f", id, ::scales[id]);
+            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
             continue;
         }
 
         // -- full penalization for other tokens
 
         ::scales[id] = scale;
+        //fprintf(stderr, "\n SCALE4 %d = %f", id, ::scales[id]);
+        //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
     }
 
     // -- Assign manually specific penalties for high-frequency tokens
@@ -443,6 +473,8 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     ::scales[526]   = 1.0 - (1.0 - scale) * 0.40; // 526 => " are"
 
     ::scales[319]   = 1.0 - (1.0 - scale) * 0.50; // 319 => " A"
+
+    //exit(1); // DEBUG
 }
 
 // Tokens very often used for math, coding and JSON (aka repetitive),

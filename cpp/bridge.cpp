@@ -82,14 +82,18 @@ llama_token llama_sample_token(
     fprintf(stderr, "\n * mirostat_tau = %f", params.mirostat_tau); 
 */
 
-    llama_token id = 0;
-    float * logits = llama_get_logits(ctx);
-    candidates.clear();
+    //llama_token id = 0;
+    //float * logits = llama_get_logits(ctx);
+    //candidates.clear();
 
     // Experimental sampling both creative for text and pedantic for math / coding
     if (params.janus > 0) {
         return sample_janus_token(ctx, params, last_tokens, promptLen, pos, max);
     }
+
+    llama_token id = 0;
+    float * logits = llama_get_logits(ctx);
+    ///// candidates.clear();
 
     // Deterministic sampling with great performance
     if (top_k == 1) {
@@ -99,7 +103,7 @@ llama_token llama_sample_token(
     // Apply params.logit_bias map
     //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
     //    logits[it->first] += it->second;
-    //}   
+    //}
 
     candidates.clear();
     for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
@@ -762,18 +766,20 @@ int64_t do_inference(
                     grammar,
                     ::sparams[idx],
                     last_tokens,
-                    ctx_sampling->cur,
+                    ctx_sampling->cur, // candidates
                     embd_inp.size(),
                     n_past,
                     ::params[idx].n_predict);    
             }
 
+            // we still need to maintain this for Janus Sampling
+            last_tokens.erase(last_tokens.begin());
+            last_tokens.push_back(id);
+
             llama_sampling_accept(ctx_sampling, ctx, id, true);
 
-            embd.push_back(id);
-
-            // decrement remaining sampling budget
-            --n_remain;
+            embd.push_back(id); // add it to the context
+            --n_remain; // decrement remaining sampling budget
 
         } else {
 
