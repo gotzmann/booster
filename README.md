@@ -6,12 +6,18 @@ Large Hadron Collider is the world's most powerful particle accelerator.
 
 ## TLDR
 
-**- Latest build v1.2 for Mac Apple Silicon**
+**☝ Latest build v1.2 for Mac Apple Silicon**
 
 M1/M2/M3 CPUs and integrated GPUs supported, just place **ggml-metal.metal** into the same folder:
 
 **[collider-v1.2.0-mac](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.2.0-mac)** + 
 **[ggml-metal.metal](https://huggingface.co/datasets/gotzmann/collider/resolve/main/ggml-metal.metal)**
+
+**☝ Latest build v1.2 for Linux / CUDA**
+
+It was buit on Ubuntu 22.02 with CUDA 12.1 drivers. Should work on Intel / AMD Linux platforms:
+
+**[collider-v1.2.0-cuda-linux](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.2.0-cuda-linux)**
 
 ## Superpowers
 
