@@ -42,7 +42,7 @@ import (
 	"github.com/gotzmann/collider/pkg/server"
 )
 
-const VERSION = "1.2.0"
+const VERSION = "1.2.1"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -403,51 +403,58 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 
 func showLogo() {
 
-	Colorize(
-		"\n[magenta]▒▒▒[light_magenta] [ Collider v" +
-			VERSION +
-			" ] [light_blue][ The Platform for serving LLM / GPT and push things to the limits ] [magenta]▒▒▒\n")
+	// Colorize(
+	// 	"\n[magenta]▒▒▒[light_magenta] [ Collider v" +
+	//		VERSION +
+	//		" ] [light_blue][ The Platform for serving LLM / GPT and push things to the limits ] [magenta]▒▒▒\n")
 
 	// Rozzo + 3-D + some free time
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
 	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
 
+	logo := `
+  /8888/888   /8888/888  /88       /88       /8888 /8888/888   /8888/888  /8888/888  
+ /8888 ///88 /8888 //888 /888      /888      /8888 /8888//8888 /8888///   /8888///888 
+ /888    //  /888  /8888 /8888/88  /8888/88  /8888 /8888 /8888 /8888/888  /8888/8888 
+ //8888/888  //888/8888  /8888/888 /8888/888 /8888 /8888/8888  /8888/8888 /8888//8888 
+  /// ////    /// ////   //// ///  //// ///  ////  //// ////   //// ////  ////  ////`
+
 	/*
-		   	logo := `
-		     /88       /88         /888/888   /88/8888/88   /888/888  /888/8888 /888/888   /888/888
-		     /888      /888      /888/ /888 /888/8888/888 /888/ /888  ///8888/ /8888//888 /8888//888
-		     /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888  /8888/   /888 /8888 /888 /8888
-		     /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /8888/888 //888/888  //888/888
-		     //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  //// ///   /// ///    /// ///`
-
-		   	logoColored := ""
-		   	prevColor := ""
-		   	color := ""
-		   	line := 0
-		   	colors := []string{"[black]", "[light_blue]", "[magenta]", "[light_magenta]", "[light_blue]"}
-
-		   	for _, char := range logo {
-		   		if char == '\n' {
-		   			line++
-		   		} else if char == '/' {
-		   			color = "[blue]"
-		   		} else if char == '8' {
-		   			color = colors[line]
-		   			char = '▒'
-		   		}
-		   		if color == prevColor {
-		   			logoColored += string(char)
-		   		} else {
-		   			logoColored += color + string(char)
-		   		}
-		   	}
-
-		   	Colorize(logoColored)
-
-		Colorize(
-			"\n\n   [magenta]▒▒▒▒▒[light_magenta] [ Collider v" +
-				VERSION +
-				" ] [light_blue][ Great platform for serving Large Models ] [magenta]▒▒▒▒▒\n\n")
-
+	   	logo := `
+	     /88       /88         /888/888   /88/8888/88   /888/888  /888/8888 /888/888   /888/888
+	     /888      /888      /888/ /888 /888/8888/888 /888/ /888  ///8888/ /8888//888 /8888//888
+	     /8888/88  /8888/88  /8888/8888 /888/8888/888 /8888/8888  /8888/   /888 /8888 /888 /8888
+	     /8888/888 /8888/888 /888 /8888 /888//88 /888 /888 /8888 /8888/888 //888/888  //888/888
+	     //// ///  //// ///  ///  ////  ///  //  ///  ///  ////  //// ///   /// ///    /// ///`
 	*/
+
+	logoColored := ""
+	prevColor := ""
+	color := ""
+	line := 0
+	colors := []string{"[black]", "[light_blue]", "[magenta]", "[light_magenta]", "[light_blue]"}
+
+	for _, char := range logo {
+		if char == '\n' {
+			line++
+		} else if char == '/' {
+			color = "[blue]"
+		} else if char == '8' {
+			color = colors[line]
+			char = '▒'
+		}
+		if color == prevColor {
+			logoColored += string(char)
+		} else {
+			logoColored += color + string(char)
+		}
+	}
+
+	Colorize(logoColored)
+
+	Colorize(
+		"\n\n  [magenta]▒▒▒[light_magenta] [ Collider v" +
+			VERSION +
+			" ] [light_blue][ The Open Platform for local Large Language Models ] [magenta]▒▒▒\n\n")
+
 }
