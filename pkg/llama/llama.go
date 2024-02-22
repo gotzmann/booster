@@ -726,19 +726,19 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 	magic := readInt(file)
 
 	if magic == LLAMA_FILE_MAGIC_UNVERSIONED || magic == LLAMA_FILE_MAGIC_OLD {
-		fmt.Printf("\n[ERROR] Invalid model file '%s'! Too old, regenerate!", fileName)
+		fmt.Printf("\n[ ERR ] Invalid model file '%s'! Too old, regenerate!", fileName)
 		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
 	if magic != LLAMA_FILE_MAGIC {
-		fmt.Printf("\n[ERROR] Invalid model file '%s'! Wrong MAGIC in header", fileName)
+		fmt.Printf("\n[ ERR ] Invalid model file '%s'! Wrong MAGIC in header", fileName)
 		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
 	version := readInt(file)
 
 	if version != LLAMA_FILE_VERSION {
-		fmt.Printf("\n[ERROR] Invalid model file '%s'! Unsupported version", fileName)
+		fmt.Printf("\n[ ERR ] Invalid model file '%s'! Unsupported version", fileName)
 		return nil, nil, fmt.Errorf("invalid model file")
 	}
 
@@ -909,7 +909,7 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 		name := readString(file, nameLength)
 		tensor, ok := model.tensors[name]
 		if !ok {
-			fmt.Printf("\n[ERROR] Unknown tensor '%s' in model file", name)
+			fmt.Printf("\n[ ERR ] Unknown tensor '%s' in model file", name)
 			os.Exit(1)
 		}
 
@@ -953,12 +953,12 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 			fakeHeader.Cap = int(tensorSize * 4)
 
 			if count, err := io.ReadFull(file, fake); err != nil || count != int(tensorSize*4) {
-				fmt.Printf("\n[ERROR] Failed to read BIG FP32 chunk from model!")
-				fmt.Printf("\n[ERROR] COUNT = %d | ERR = %s", count, err.Error())
+				fmt.Printf("\n[ ERR ] Failed to read BIG FP32 chunk from model!")
+				fmt.Printf("\n[ ERR ] COUNT = %d | ERR = %s", count, err.Error())
 				os.Exit(1)
 			}
 		default:
-			fmt.Printf("\n[ERROR] Tensor data type is not supported yet!")
+			fmt.Printf("\n[ ERR ] Tensor data type is not supported yet!")
 			os.Exit(0)
 		}
 

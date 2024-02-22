@@ -184,10 +184,25 @@ func Run() {
 	logger := zap.New(core)
 	log := logger.Sugar()
 
-	if !opts.Server || opts.Debug {
-		showLogo()
+	// -- Show logo and some useful info
+	//    TODO: More grained info [ GPU, RAM, etc ]
+
+	model := "undefined"
+	sampling := "default"
+	if conf.ID != "" {
+		model = conf.Models[0].Path
+		if conf.Models[0].Janus > 0 {
+			sampling = "Janus v1"
+		}
+	} else {
+		model = opts.Model
+		sampling = "default"
 	}
-	log.Infof("[START] Collider v%s starting...", VERSION)
+	if !opts.Server || opts.Debug {
+		showLogo(model, sampling)
+	}
+
+	log.Infof("[START] Collider v%s is starting...", VERSION)
 
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
@@ -401,7 +416,7 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 	return fmt.Fprintf(DefaultOutput, colorstring.Color(format), opts...)
 }
 
-func showLogo() {
+func showLogo(model, sampling string) {
 
 	// Colorize(
 	// 	"\n[magenta]▒▒▒[light_magenta] [ Collider v" +
@@ -452,9 +467,10 @@ func showLogo() {
 
 	Colorize(logoColored)
 
-	Colorize(
-		"\n\n  [magenta]▒▒▒[light_magenta] [ Collider v" +
-			VERSION +
-			" ] [light_blue][ The Open Platform for local Large Language Models ] [magenta]▒▒▒\n\n")
+	Colorize("\n\n  [magenta]▒▒▒[light_magenta] [ Collider v" + VERSION +
+		" ] [light_blue][ The Open Platform for local Large Language Models ] [magenta]▒▒▒\n")
+
+	Colorize("\n  [magenta][    model ][light_magenta] [ " + model)
+	Colorize("\n  [blue][ sampling ][light_blue] [ " + sampling + "\n\n")
 
 }

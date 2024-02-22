@@ -528,7 +528,7 @@ func IsMatrix(tensor *Tensor) bool {
 func GetRows(ctx *Context, a, b *Tensor) *Tensor {
 	////ASSERT(ggml_is_matrix(a) && ggml_is_vector(b) && b.type == TYPE_I32);
 	//if !IsMatrix(a) || !IsVector(b) /* || b.Type != TYPE_I32 */ {
-	//	fmt.Printf("\n[ERROR] GetRows fail basic assertions")
+	//	fmt.Printf("\n[ ERROR ] GetRows fail basic assertions")
 	//	os.Exit(1)
 	//}
 
@@ -761,7 +761,7 @@ func NewTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint32, d
 
 	// TODO: Check allowed data types on graph creation
 	//if dt != TYPE_F32 && dt != TYPE_I32 {
-	//	fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
+	//	fmt.Printf("\n[ ERROR ] NewTensorImpl got not supported type : %d", dt)
 	//	os.Exit(1)
 	//}
 
@@ -3100,7 +3100,7 @@ func NewFixedTensor(ctx *Context, dt DType, dims uint32, ne0, ne1, ne2, ne3 uint
 
 	// TODO: Check allowed data types on graph creation
 	//if dt != TYPE_F32 && dt != TYPE_I32 {
-	//	fmt.Printf("\n[ERROR] NewTensorImpl got not supported type : %d", dt)
+	//	fmt.Printf("\n[ ERROR ] NewTensorImpl got not supported type : %d", dt)
 	//	os.Exit(1)
 	//}
 

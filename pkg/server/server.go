@@ -340,8 +340,8 @@ func Init(
 
 		// Check if file exists to prevent CGO panic
 		if _, err := os.Stat(model); err != nil {
-			Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", model)
-			log.Infof("[ERROR] Model not found: %s", model)
+			Colorize("\n[magenta][ ERR ][white] Model not found: %s\n\n", model)
+			log.Infof("[ ERR ] Model not found: %s", model)
 			os.Exit(0)
 		}
 
@@ -424,7 +424,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 
 	//if !defaultModelSet {
 	//	Colorize("\n[magenta][ ERROR ][white] Default model is not set with config [ modes ] section!\n\n")
-	//	log.Infof("[ERROR] Default model is not set with config [ modes ] section!")
+	//	log.Infof("[ ERROR ] Default model is not set with config [ modes ] section!")
 	//	os.Exit(0)
 	//}
 
@@ -486,7 +486,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			// Check if file exists to prevent CGO panic
 			if _, err := os.Stat(path); err != nil {
 				Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", path)
-				log.Infof("[ERROR] Model not found: %s", path)
+				log.Infof("[ ERR ] Model not found: %s", path)
 				os.Exit(0)
 			}
 
@@ -605,8 +605,8 @@ func Run(showStatus bool) {
 
 	err := app.Listen(Host + ":" + Port)
 	if err != nil {
-		Colorize("\n[light_magenta][ERROR][light_blue] Can't start REST API on [light_magenta]%s:%s", Host, Port)
-		log.Infof("[ ERROR ] Can't start REST API on %s:%s", Host, Port)
+		Colorize("\n[light_magenta][ ERR ][light_blue] Can't start REST API on [light_magenta]%s:%s", Host, Port)
+		log.Infof("[ ERR ] Can't start REST API on %s:%s", Host, Port)
 	}
 }
 
