@@ -354,7 +354,7 @@ func Init(
 			C.CString(model),
 			C.int(threads),
 			C.int(0),                 // TODO: BatchSize
-			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // TODO: Support more than 2 GPUs
+			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // FIXME ASAP: TODO: Support more than 2 GPUs
 			C.int(context), C.int(predict),
 			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
 			C.float(temperature), C.int(topK), C.float(topP),
