@@ -24,7 +24,12 @@ models:
     id: default
     name: Airoboros 7B
     path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
+
+    prompt: custom
     locale: en_US
+    system: "### System:\n\nToday is {DATE}. {SYSTEM}"
+    user: "\n\n### User:\n\n{USER}"
+    assistant: "\n\n### Assistant:\n\n{ASSISTANT}"    
 
     preamble:
     prefix: "USER:"

@@ -46,10 +46,3 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
 
 // Get a string representation of the last sampled tokens
 //std::string llama_sampling_prev_str(llama_sampling_context * ctx_sampling, llama_context * ctx_main, int n); 
-
-// no reasons to expose this function in header
-static void sampler_queue(
-                   struct llama_context * ctx_main,
-            const llama_sampling_params & params,
-                 llama_token_data_array & cur_p,
-                                 size_t & min_keep); 

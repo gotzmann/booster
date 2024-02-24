@@ -945,7 +945,7 @@ func LoadModel(fileName string, params *ModelParams, silent bool) (*ml.Vocab, *M
 			}
 		case ml.TYPE_F32:
 			var fake []byte
-			fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake))
+			fakeHeader := (*reflect.SliceHeader)(unsafe.Pointer(&fake)) // FIXME: deprecated
 			dataHeader := (*reflect.SliceHeader)(unsafe.Pointer(&tensor.Data))
 
 			fakeHeader.Data = dataHeader.Data

@@ -22,7 +22,7 @@ cuda:
 # -- Apple Silicon with both ARM CPU with Neon and GPU Metal support
 mac:
 	cd cpp && \
-	make -j macobjs && \
+	LLAMA_METAL_EMBED_LIBRARY=1 make -j macobjs && \
 	cd .. && \
 	CGO_ENABLED=1 go build collider.go
 

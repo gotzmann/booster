@@ -85,8 +85,17 @@ llama_token llama_sampling_last(llama_sampling_context * ctx);
 
 // --- sampling parameters
 
-// sampling parameters
+// sampler types
+enum class llama_sampler_type : char {
+    TOP_K       = 'k',
+    TOP_P       = 'p',
+    MIN_P       = 'm',
+    TFS_Z       = 'f',
+    TYPICAL_P   = 'y',
+    TEMPERATURE = 't'
+};
 
+// sampling parameters
 typedef struct llama_sampling_params {
 
     // -- Janus Sampling
@@ -101,6 +110,7 @@ typedef struct llama_sampling_params {
 
     int32_t     n_prev                = 64;       // number of previous tokens to remember
     int32_t     n_probs               = 0;        // if greater than 0, output the probabilities of top n_probs tokens.
+    int32_t     min_keep              = 0;        // 0 = disabled, otherwise samplers should return at least min_keep tokens
     int32_t     top_k                 = 40;       // <= 0 to use vocab size
     float       top_p                 = 0.95f;    // 1.0 = disabled
     float       min_p                 = 0.05f;    // 0.0 = disabled
@@ -117,7 +127,15 @@ typedef struct llama_sampling_params {
     float       mirostat_tau          = 5.00f;    // target entropy
     float       mirostat_eta          = 0.10f;    // learning rate
     bool        penalize_nl           = true;     // consider newlines as a repeatable token
-    std::string samplers_sequence     = "kfypmt"; // top_k, tail_free, typical_p, top_p, min_p, temp
+
+    std::vector<llama_sampler_type> samplers_sequence = {
+        llama_sampler_type::TOP_K,
+        llama_sampler_type::TFS_Z,
+        llama_sampler_type::TYPICAL_P,
+        llama_sampler_type::TOP_P,
+        llama_sampler_type::MIN_P,
+        llama_sampler_type::TEMPERATURE
+    };
 
     std::string grammar;  // optional BNF-like grammar to constrain sampling
 
@@ -168,6 +186,7 @@ struct gpt_params {
     float   yarn_beta_slow        = 1.0f;  // YaRN high correction dim
     int32_t yarn_orig_ctx         = 0;     // YaRN original context length
     int32_t rope_scaling_type     = LLAMA_ROPE_SCALING_UNSPECIFIED;
+    ggml_numa_strategy numa       = GGML_NUMA_STRATEGY_DISABLED;
 
     // // sampling parameters
     struct llama_sampling_params sparams;
@@ -226,7 +245,6 @@ struct gpt_params {
     bool logits_all        = false; // return logits for all tokens in the batch
     bool use_mmap          = true;  // use mmap for faster loads
     bool use_mlock         = false; // use mlock to keep model in memory
-    bool numa              = false; // attempt optimizations that help on some NUMA systems
     bool verbose_prompt    = false; // print prompt tokens before generation
     bool display_prompt    = true;  // print prompt before generation
     bool infill            = false; // use infill mode
@@ -400,10 +418,3 @@ void llama_batch_add(
                           llama_pos   pos,
     const std::vector<llama_seq_id> & seq_ids,
                                bool   logits);
-
-// no reasons to expose this function in header
-static void sampler_queue(
-                   struct llama_context * ctx_main,
-            const llama_sampling_params & params,
-                 llama_token_data_array & cur_p,
-                                 size_t & min_keep);                             
