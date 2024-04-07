@@ -577,6 +577,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 func Run(showStatus bool) {
 
 	app := fiber.New(fiber.Config{
+		Prefork:   true,
+		Immutable: true,
+
 		DisableStartupMessage: true,
 	})
 
