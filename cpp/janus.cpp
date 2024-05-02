@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "ggml.h"
+#include "ggml-common.h"
 #include "ggml-backend.h"
 #include "llama.h"
 

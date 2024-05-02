@@ -15,7 +15,7 @@ default: cuda
 # -- Nvidia GPUs with CUDA
 cuda:
 	cd cpp && \
-	LLAMA_CUBLAS=1 make -j cudaobjs && \
+	LLAMA_CUDA=1 make -j cudaobjs && \
 	cd .. && \
 	CGO_ENABLED=1 go build collider.go
 

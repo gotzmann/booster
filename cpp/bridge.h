@@ -14,10 +14,11 @@
 #include <sys/sysctl.h>
 #endif
 
+#include "ggml.h"
+#include "ggml-common.h"
 #include "ggml-backend.h"
-// #include "common.h"
 #include "llama.h"
-//#include "sampling.h"
+// #include "common/common.h"
 #include "common/grammar-parser.h"
 
 #ifdef _WIN32
@@ -53,16 +54,13 @@ llama_token llama_sampling_sample(
         struct llama_sampling_context * ctx_sampling,
         struct llama_context * ctx_main,
         struct llama_context * ctx_cfg,
-        int idx = 0);
+        int idx = /* 0 */ -1); // FIXME: WTF ?! LLAMA v3 [ 0 => -1 ]
 
 void llama_sampling_accept(
         struct llama_sampling_context * ctx_sampling,
         struct llama_context * ctx_main,
         llama_token id,
-        bool apply_grammar);
-
-// Get the last sampled token
-llama_token llama_sampling_last(llama_sampling_context * ctx);              
+        bool apply_grammar);             
 
 // ------------------------------------------------------
 
@@ -120,13 +118,14 @@ typedef struct llama_sampling_params {
     float       dynatemp_range        = 0.00f;    // 0.0 = disabled
     float       dynatemp_exponent     = 1.00f;    // controls how entropy maps to temperature in dynamic temperature sampler
     int32_t     penalty_last_n        = 64;       // last n tokens to penalize (0 = disable penalty, -1 = context size)
-    float       penalty_repeat        = 1.10f;    // 1.0 = disabled
+    float       penalty_repeat        = 1.00f;    // 1.0 = disabled
     float       penalty_freq          = 0.00f;    // 0.0 = disabled
     float       penalty_present       = 0.00f;    // 0.0 = disabled
     int32_t     mirostat              = 0;        // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
     float       mirostat_tau          = 5.00f;    // target entropy
     float       mirostat_eta          = 0.10f;    // learning rate
-    bool        penalize_nl           = true;     // consider newlines as a repeatable token
+    bool        penalize_nl           = false;    // consider newlines as a repeatable token
+    uint32_t    seed                  = LLAMA_DEFAULT_SEED; // the seed used to initialize llama_sampling_context
 
     std::vector<llama_sampler_type> samplers_sequence = {
         llama_sampler_type::TOP_K,
@@ -153,7 +152,7 @@ typedef struct llama_sampling_params {
 // --- gpt params
 
 struct gpt_params {
-    uint32_t seed                 = -1;    // RNG seed
+    uint32_t seed                 = LLAMA_DEFAULT_SEED; // RNG seed
 
     int32_t n_threads             = get_num_physical_cores();
     int32_t n_threads_draft       = -1;
@@ -161,17 +160,17 @@ struct gpt_params {
     int32_t n_threads_batch_draft = -1;
     int32_t n_predict             = -1;    // new tokens to predict
     int32_t n_ctx                 = 512;   // context size
-    int32_t n_batch               = 512;   // batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_batch               = 2048;  // logical batch size for prompt processing (must be >=32 to use BLAS)
+    int32_t n_ubatch              = 512;   // physical batch size for prompt processing (must be >=32 to use BLAS)
     int32_t n_keep                = 0;     // number of tokens to keep from initial prompt
-    int32_t n_draft               = 8;     // number of tokens to draft during speculative decoding
+    int32_t n_draft               = 5;     // number of tokens to draft during speculative decoding
     int32_t n_chunks              = -1;    // max number of chunks to process (-1 = unlimited)
     int32_t n_parallel            = 1;     // number of parallel sequences to decode
     int32_t n_sequences           = 1;     // number of sequences to decode
-    float   p_accept              = 0.5f;  // speculative decoding accept probability
     float   p_split               = 0.1f;  // speculative decoding split probability
     int32_t n_gpu_layers          = -1;    // number of layers to store in VRAM (-1 - use default)
     int32_t n_gpu_layers_draft    = -1;    // number of layers to store in VRAM for the draft model (-1 - use default)
-    llama_split_mode split_mode   = LLAMA_SPLIT_LAYER; // how to split the model across GPUs
+    llama_split_mode split_mode   = LLAMA_SPLIT_MODE_LAYER; // how to split the model across GPUs
     int32_t main_gpu              = 0;     // the GPU that is used for scratch and small tensors
     float   tensor_split[128]     = {0};   // how split tensors should be distributed across GPUs
     int32_t n_beams               = 0;     // if non-zero then use beam search of given width.
@@ -185,29 +184,48 @@ struct gpt_params {
     float   yarn_beta_fast        = 32.0f; // YaRN low correction dim
     float   yarn_beta_slow        = 1.0f;  // YaRN high correction dim
     int32_t yarn_orig_ctx         = 0;     // YaRN original context length
-    int32_t rope_scaling_type     = LLAMA_ROPE_SCALING_UNSPECIFIED;
+    float   defrag_thold          = -1.0f; // KV cache defragmentation threshold
+
+    ggml_backend_sched_eval_callback cb_eval = nullptr;
+    void * cb_eval_user_data                 = nullptr;
+
     ggml_numa_strategy numa       = GGML_NUMA_STRATEGY_DISABLED;
 
     // // sampling parameters
     struct llama_sampling_params sparams;
 
-    std::string model             = "models/7B/ggml-model-f16.gguf"; // model path
-    std::string model_draft       = "";                              // draft model for speculative decoding
-    std::string model_alias       = "unknown"; // model alias
-    std::string prompt            = "";
-    std::string prompt_file       = "";  // store the external prompt file name
-    std::string path_prompt_cache = "";  // path to file for saving/loading prompt eval state
-    std::string input_prefix      = "";  // string to prefix user inputs with
-    std::string input_suffix      = "";  // string to suffix user inputs with
+    std::string model                = "";  // model path
+    std::string model_draft          = "";  // draft model for speculative decoding
+    std::string model_alias          = "unknown"; // model alias
+    std::string model_url            = "";  // model url to download
+    std::string hf_repo              = "";  // HF repo
+    std::string hf_file              = "";  // HF file
+    std::string prompt               = "";
+    std::string prompt_file          = "";  // store the external prompt file name
+    std::string path_prompt_cache    = "";  // path to file for saving/loading prompt eval state
+    std::string input_prefix         = "";  // string to prefix user inputs with
+    std::string input_suffix         = "";  // string to suffix user inputs with
     std::vector<std::string> antiprompt; // string upon seeing which more user input is prompted
-    std::string logdir            = "";  // directory in which to save YAML log files
-    std::string logits_file       = "";  // file for saving *all* logits
+    std::string logdir               = "";  // directory in which to save YAML log files
+    std::string lookup_cache_static  = ""; // path of static ngram cache file for lookup decoding
+    std::string lookup_cache_dynamic = ""; // path of dynamic ngram cache file for lookup decoding
+    std::string logits_file          = "";  // file for saving *all* logits
 
     std::vector<llama_model_kv_override> kv_overrides;
 
     // TODO: avoid tuple, use struct
     std::vector<std::tuple<std::string, float>> lora_adapter; // lora adapter path with user defined scale
     std::string lora_base  = "";                              // base model path for the lora adapter
+
+    struct llama_control_vector_load_info {
+        float strength;
+        std::string fname;
+    }; 
+
+    std::vector<llama_control_vector_load_info> control_vectors; // control vector with user defined scale
+
+    int32_t control_vector_layer_start = -1; // layer range for control vector
+    int32_t control_vector_layer_end   = -1; // layer range for control vector
 
     int  ppl_stride        = 0;     // stride for perplexity calculations. If left at 0, the pre-existing approach will be used.
     int  ppl_output_type   = 0;     // = 0 -> ppl output is as usual, = 1 -> ppl output is num_tokens, ppl, one per line
@@ -224,7 +242,6 @@ struct gpt_params {
 
     bool   kl_divergence   = false; // compute KL-divergence
 
-    bool mul_mat_q         = true;  // if true, use mul_mat_q kernels instead of cuBLAS
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
     bool interactive       = false; // interactive mode
@@ -237,7 +254,8 @@ struct gpt_params {
     bool interactive_first = false; // wait for user input immediately
     bool multiline_input   = false; // reverse the usage of `\`
     bool simple_io         = false; // improves compatibility with subprocesses and limited consoles
-    bool cont_batching     = false; // insert new sequences for decoding on-the-fly
+    bool cont_batching     = true;  // insert new sequences for decoding on-the-fly
+    bool flash_attn        = false; // flash attention
 
     bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
     bool ignore_eos        = false; // ignore generated EOS tokens
@@ -250,13 +268,15 @@ struct gpt_params {
     bool infill            = false; // use infill mode
     bool dump_kv_cache     = false; // dump the KV cache contents for debugging purposes
     bool no_kv_offload     = false; // disable KV offloading
+    bool warmup            = true;  // warmup run
+    bool check_tensors     = false; // validate tensor data
 
     std::string cache_type_k = "f16"; // KV cache data type for the K
     std::string cache_type_v = "f16"; // KV cache data type for the V
 
     // multimodal models (see examples/llava)
-    std::string mmproj = ""; // path to multimodal projector
-    std::string image  = ""; // path to an image file
+    std::string mmproj = "";        // path to multimodal projector
+    std::vector<std::string> image; // path to image file(s)
 };
 
 // Create a new sampling context instance.
@@ -328,7 +348,15 @@ std::vector<llama_token> llama_tokenize(
                         bool   add_bos,
                         bool   special);   
 
-std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token);  
+///// std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token);
+///// std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token, bool special);
+
+// tokenizes a token into a piece, optionally renders special/control tokens
+// should work similar to Python's `tokenizer.id_to_piece`
+std::string llama_token_to_piece(
+        const struct llama_context * ctx,
+                       llama_token   token,
+                       bool          special = true);
 
 // Uses the value from the model metadata if possible, otherwise
 // defaults to true when model type is SPM, otherwise false.
@@ -417,4 +445,4 @@ void llama_batch_add(
                         llama_token   id,
                           llama_pos   pos,
     const std::vector<llama_seq_id> & seq_ids,
-                               bool   logits);
+                               bool   logits);                              

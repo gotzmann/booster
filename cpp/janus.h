@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "ggml-common.h"
 #include "ggml-backend.h"
 #include "llama.h"
 
@@ -41,8 +42,6 @@ int tokSize(const llama_context *ctx, const llama_token token);
 void initJanus(struct llama_context * ctx, struct llama_sampling_params & params);
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text);
 
-// Get the last sampled token
-//llama_token llama_sampling_last(llama_sampling_context * ctx);
 
 // Get a string representation of the last sampled tokens
 //std::string llama_sampling_prev_str(llama_sampling_context * ctx_sampling, llama_context * ctx_main, int n); 

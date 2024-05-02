@@ -42,7 +42,7 @@ import (
 	"github.com/gotzmann/collider/pkg/server"
 )
 
-const VERSION = "1.3.3"
+const VERSION = "2.0.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
