@@ -1,4 +1,4 @@
-package collider
+package booster
 
 // TODO: Allow short locales: en -> en_US, ru -> ru_RU
 // TODO: Experiment with the batch size
@@ -161,8 +161,8 @@ func Run() {
 
 	var zapWriter zapcore.WriteSyncer
 	zapConfig := zap.NewProductionEncoderConfig()
-	zapConfig.NameKey = "collider" // TODO: pod name from config?
-	//zapConfig.CallerKey = ""       // do not log caller like "collider/collider.go:156"
+	zapConfig.NameKey = "booster" // TODO: pod name from config?
+	//zapConfig.CallerKey = ""       // do not log caller like "booster/booster.go:156"
 	zapConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	fileEncoder := zapcore.NewJSONEncoder(zapConfig)
 	if opts.Log != "" {
@@ -207,7 +207,7 @@ func Run() {
 		showLogo(conf.Models[model].Path, sampling)
 	}
 
-	log.Infof("[ START ] Collider v%s is starting...", VERSION)
+	log.Infof("[ START ] Booster v%s is starting...", VERSION)
 
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
@@ -253,8 +253,8 @@ func Run() {
 			log.Error("%s", reason)
 			os.Exit(0)
 		}
-		Colorize("\n[light_magenta][ STOP ][light_blue] Collider was stopped. Arrivederci!\n\n")
-		log.Info("[ STOP ] Collider was stopped. Arrivederci!")
+		Colorize("\n[light_magenta][ STOP ][light_blue] Booster was stopped. Arrivederci!\n\n")
+		log.Info("[ STOP ] Booster was stopped. Arrivederci!")
 		logger.Sync()
 	}()
 
@@ -453,11 +453,6 @@ func showLogo(model, sampling string) {
 
 	model = filepath.Base(model)
 	model = strings.TrimSuffix(model, filepath.Ext(model))
-
-	// Colorize(
-	// 	"\n[magenta]▒▒▒[light_magenta] [ Collider v" +
-	//		VERSION +
-	//		" ] [light_blue][ The Platform for serving LLM / GPT and push things to the limits ] [magenta]▒▒▒\n")
 
 	// Rozzo + 3-D + some free time
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
