@@ -1,26 +1,11 @@
 ![](./logo.jpg?raw=true)
 
-Booster, according Merriam-Webster dictionary:
+**Booster**, according to Merriam-Webster dictionary:
 
 - an auxiliary device for increasing force, power, pressure, or effectiveness
 - the first stage of a multistage rocket providing thrust for the launching and the initial part of the flight
 
 **Large Model Booster aims to be an simple and mighty LLM inference accelerator both for those who needs to scale GPTs within production environment or just experiment with models on its own.**
-
-## TLDR
-
-**☝ Latest build v1.2 for Mac Apple Silicon**
-
-M1/M2/M3 CPUs and integrated GPUs supported, just place **ggml-metal.metal** into the same folder:
-
-**[collider-v1.2.0-mac](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.2.0-mac)** + 
-**[ggml-metal.metal](https://huggingface.co/datasets/gotzmann/collider/resolve/main/ggml-metal.metal)**
-
-**☝ Latest build v1.2 for Linux / CUDA**
-
-It was buit on Ubuntu 22.02 with CUDA 12.1 drivers. Should work on Intel / AMD Linux platforms:
-
-**[collider-v1.2.0-cuda-linux](https://huggingface.co/datasets/gotzmann/collider/resolve/main/collider-v1.2.0-cuda-linux)**
 
 ## Superpowers
 
@@ -66,7 +51,7 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 
 ## V3 Roadmap - Summer'24
 
-- [x] Rebrand project again :) Collider => Booster
+- [x] Rebrand project again :) **Collider => Booster**
 - [x] Complete LLaMA v3 support
 - [ ] Release OpenAI API compatible endpoints
 - [ ] Allow native Windows support
@@ -77,7 +62,7 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 
 ## How to build on Mac?
 
-Collider was (and still) developed on Mac with Apple Silicon M1 processor, so it's really easy peasy:
+Booster was (and still) developed on Mac with Apple Silicon M1 processor, so it's really easy peasy:
 
 ```shell
 make mac
@@ -109,7 +94,7 @@ sudo apt update -y && \
 sudo apt install -y cuda-toolkit-12-2
 ```
 
-Now you are ready to rock
+Now you are ready to rock!
 
 ```shell
 make cuda
@@ -119,22 +104,22 @@ make cuda
 
 You shold go through steps below:
 
-1) Build the server from sources [ pure CPU inference as example ]
+1) Build the server from sources [ Mac inference as example ]
 
 ```shell
 make clean && make mac
 ```
 
-2) Download the model [ like Mistral 7B quantized to GGUF Q4KM format as an example ]
+2) Download the model, like [ Hermes 2 Pro ] based on [ LLaMA-v3-8B ] quantized to GGUF Q4KM format:
 
 ```shell
-wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_K_M.gguf
+wget https://huggingface.co/NousResearch/Hermes-2-Pro-Llama-3-8B-GGUF/resolve/main/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
 ```
 
 3) Create configuration file and place it to the same directory [ see config.sample.yaml ] 
 
 ```shell
-id: my-pod
+id: mac
 host: localhost
 port: 8080
 log: booster.log
@@ -143,35 +128,56 @@ debug:
 swap:
 
 pods: 
-
-  -
-    model: default
-    threads: 6
-    gpus: [ 0 ]
+  gpu:
+    model: hermes
+    prompt: chat
+    sampling: janus
+    threads: 1
+    gpus: [ 100 ]
     batchsize: 512
 
 models:
-
-  -
-    id: default
-    name: Mistral
-    path: mistral-7b-instruct-v0.1.Q4_K_M.gguf
-    locale: en_US
-    preamble: "You are a virtual assistant. Please answer the question."
-    prefix: "\nUSER: "
-    suffix: "\nASSISTANT:"
-    contextsize: 2048
+  hermes:
+    name: Hermes2 Pro 8B
+    path: ~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
+    contextsize: 8192
     predict: 1024
-    temperature: 0.1
+
+prompts:
+
+  chat:
+    locale: ru_RU
+    system: "<|im_start|>system\nToday is {DATE}. You are virtual assistant. Please answer the question.<|im_end|>"
+    user: "\n<|im_start|>user\n{USER}<|im_end|>"
+    assistant: "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>"
+
+samplings:
+
+  janus:
+    janus: 1
+    depth: 200
+    scale: 0.97
+    hi: 0.99
+    lo: 0.96
+
+  mirostat:
+    mirostat: 0
+    mirostatent: 3.0
+    mirostatlr: 0.1
+
+  basic:
+    temperature: 0.8
     top_k: 8
-    top_p: 0.96
+    topp: 0.9
+    typicalp: 1.0
     repetition_penalty: 1.1
+    penaltylastn: 200
 ```    
 
 4) When all is done, start the server with debug enabled to be sure it working
 
 ```shell
-./collider --server --debug
+./booster --server --debug
 ```
 
 5) Now POST JSON with unique ID and your question to `localhost:8080/jobs`

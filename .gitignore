@@ -11,6 +11,7 @@ config.yaml
 !config.sample.yaml
 __debug_bin*
 /collider
+/booster
 llamazoo
 vendor/
 tmp/
