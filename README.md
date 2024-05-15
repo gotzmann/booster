@@ -1,8 +1,11 @@
 ![](./logo.jpg?raw=true)
 
-Large Hadron Collider is the world's most powerful particle accelerator.
+Booster, according Merriam-Webster dictionary:
 
-**Large Model Collider aims to be an simple and mighty LLM inference accelerator both for those who needs to scale GPTs within production environment or just experiment with models on its own.**
+- an auxiliary device for increasing force, power, pressure, or effectiveness
+- the first stage of a multistage rocket providing thrust for the launching and the initial part of the flight
+
+**Large Model Booster aims to be an simple and mighty LLM inference accelerator both for those who needs to scale GPTs within production environment or just experiment with models on its own.**
 
 ## TLDR
 
@@ -55,16 +58,22 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 - [x] Rebrand project: LLaMAZoo => Large Model Collider
 - [x] Is it 2023, 30th of November? First birthday of ChatGPT! **Celebrate ...**
 - [x] **... then release Collider V1** after half a year of honing it :)
-- [ ] Freeze JSON / YAML config format for Native API
-- [ ] Release OpenAI API compatible endpoints
-- [ ] Perplexity computation [ useful for benchmarking ]
-- [ ] Support LLaVA multi-modal models inference
 
 ## V2 Roadmap - Spring'24
 
-- [ ] Full Windows support
+- [x] Full LLaMA v2 support
+- [x] Freeze JSON / YAML config format for Native API
+
+## V3 Roadmap - Summer'24
+
+- [x] Rebrand project again :) Collider => Booster
+- [x] Complete LLaMA v3 support
+- [ ] Release OpenAI API compatible endpoints
+- [ ] Allow native Windows support
 - [ ] Prebuilt binaries for all platforms
+- [ ] Support LLaVA multi-modal models inference
 - [ ] Better test coverage
+- [ ] Perplexity computation [ useful for benchmarking ]
 
 ## How to build on Mac?
 
@@ -125,12 +134,12 @@ wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/
 3) Create configuration file and place it to the same directory [ see config.sample.yaml ] 
 
 ```shell
-id: "collider"
+id: my-pod
 host: localhost
 port: 8080
-log: collider.log
+log: booster.log
 deadline: 180
-debug: full
+debug:
 swap:
 
 pods: 
@@ -174,4 +183,4 @@ models:
 }
 ```
 
-6) See instructions within `collider.service` file on how to create daemond service out of this API server.
+6) See instructions within `booster.service` file on how to create daemond service out of this API server.

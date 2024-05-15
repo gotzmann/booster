@@ -2,7 +2,7 @@
 # make clean && LLAMA_CUBLAS=1 PATH=$PATH:/usr/local/go/bin CUDA_PATH=/usr/local/cuda CUDA_DOCKER_ARCH=sm_80 make -j <platform>
 
 # How to run server with debug output?
-# ./collider --server --debug
+# ./booster --server --debug
 
 # nvcc --list-gpu-arch
 # https://developer.nvidia.com/cuda-gpus
@@ -15,16 +15,16 @@ default: cuda
 # -- Nvidia GPUs with CUDA
 cuda:
 	cd cpp && \
-	LLAMA_CUDA=1 make -j cudaobjs && \
+	LLAMA_CUDA=1 CUDA_USE_GRAPHS=1 make -j cudaobjs && \
 	cd .. && \
-	CGO_ENABLED=1 go build collider.go
+	CGO_ENABLED=1 go build booster.go
 
 # -- Apple Silicon with both ARM CPU with Neon and GPU Metal support
 mac:
 	cd cpp && \
 	LLAMA_METAL_EMBED_LIBRARY=1 make -j macobjs && \
 	cd .. && \
-	CGO_ENABLED=1 go build collider.go
+	CGO_ENABLED=1 go build booster.go
 
 # -- Server platforms and Macs with only CPU support
 #    TODO: Exclude CUDA drivers as linker requirements
@@ -32,7 +32,7 @@ cpu:
 	cd cpp && \
 	LLAMA_NO_METAL=1 make -j cpuobjs && \
 	cd .. && \
-	CGO_ENABLED=1 go build -o collider collider_cpu.go
+	CGO_ENABLED=1 go build -o booster booster_cpu.go
 
 # -- TODO: OpenCL cards
 #    ...

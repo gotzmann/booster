@@ -56,8 +56,8 @@ import (
 	"github.com/mitchellh/colorstring"
 	"go.uber.org/zap"
 
-	"github.com/gotzmann/collider/pkg/llama"
-	"github.com/gotzmann/collider/pkg/ml"
+	"github.com/gotzmann/booster/pkg/llama"
+	"github.com/gotzmann/booster/pkg/ml"
 )
 
 const LLAMA_DEFAULT_SEED = uint32(0xFFFFFFFF)

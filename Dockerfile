@@ -6,4 +6,4 @@ FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 COPY collider collider
 COPY config.yaml config.yaml
 
-ENTRYPOINT ["./collider", "--debug", "--server"]
+ENTRYPOINT ["./booster", "--debug", "--server"]

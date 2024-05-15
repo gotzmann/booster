@@ -19,7 +19,7 @@ import (
 	"github.com/x448/float16"
 	"golang.org/x/exp/slices"
 
-	"github.com/gotzmann/collider/pkg/ml"
+	"github.com/gotzmann/booster/pkg/ml"
 )
 
 const (

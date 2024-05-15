@@ -1,0 +1,31 @@
+# === [ Large Model Booster as Daemon ] ===
+
+# - 1. Copy [ booster ] executable and config.yaml to /home
+
+# - 2. Place this file to /etc/systemd/system, then execute commands
+
+# sudo systemctl daemon-reload && sudo systemctl enable booster
+
+# - 3. Check /var/log/syslog for errors
+
+# - 4. Use these commands for service control
+
+# sudo systemctl start booster
+# sudo systemctl stop booster
+
+[Unit]
+
+Description=Large Model Booster
+
+[Service]
+
+PIDFile=/var/run/booster.pid
+WorkingDirectory=/home
+ExecStart=/home/booster --server >/dev/null 2>&1 &
+# Send a termination signal to the service. SIGTERM (15) is the default:
+ExecStop=systemctl kill booster >/dev/null 2>&1 &
+
+[Install]
+
+WantedBy=multi-user.target
+Alias=booster
