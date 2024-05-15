@@ -185,6 +185,7 @@ struct gpt_params {
     float   yarn_beta_slow        = 1.0f;  // YaRN high correction dim
     int32_t yarn_orig_ctx         = 0;     // YaRN original context length
     float   defrag_thold          = -1.0f; // KV cache defragmentation threshold
+    std::string rpc_servers       = "";    // comma separated list of RPC servers
 
     ggml_backend_sched_eval_callback cb_eval = nullptr;
     void * cb_eval_user_data                 = nullptr;
@@ -245,6 +246,8 @@ struct gpt_params {
     bool random_prompt     = false; // do not randomize prompt if none provided
     bool use_color         = false; // use color to distinguish generations and inputs
     bool interactive       = false; // interactive mode
+    bool interactive_specials = false; // whether to allow special tokens from user, during interactive mode
+    bool conversation      = false; // conversation mode (does not print special tokens and suffix/prefix)
     bool chatml            = false; // chatml mode (used for models trained on chatml syntax)
     bool prompt_cache_all  = false; // save user input and generations to prompt cache
     bool prompt_cache_ro   = false; // open the prompt cache read-only and do not update it
@@ -299,8 +302,10 @@ struct llama_sampling_context {
     // TODO: replace with ring-buffer
     std::vector<llama_token>      prev;
     std::vector<llama_token_data> cur;
-};
+    size_t n_valid; // Number of correct top tokens with correct probabilities.
 
+    std::mt19937 rng;
+};
 
 //
 // Sampling utils
@@ -398,17 +403,13 @@ void * initContext(
     char * modelName, 
     int threads,
     int batch_size,
-    int gpu1, int gpu2, 
+    int gpu1, int gpu2, int gpu3, int gpu4,
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temperature, int top_k, float top_p,
     float typical_p,
     float repetition_penalty, int penalty_last_n,
-    int32_t janus,
-	int32_t depth,
-	float scale,
-	float hi,
-	float lo,
+    int32_t janus, int32_t depth, float scale, float hi, float lo,
     uint32_t seed,
     char * debug);
 

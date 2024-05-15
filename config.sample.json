@@ -7,45 +7,72 @@
     "swap": "/home/sessions",
     "debug": "",
 
-    "pods": [
-        {
+    "pods": {
+
+        "cpu": {
+
             "model": "default",
-            "threads": 6,
+            "prompt": "default",
+            "sampling": "janus",
+            "threads": 8,
             "gpus": [ 0 ],
             "batchSize": 512
         }
-    ],
+    },
 
-    "models": [
-        {
-            "id": "default",
+    "models": {
+
+        "default": {
+
             "name": "Airoboros 7B",
             "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
             "locale": "en_US",
 
-            "preamble": "",
-            "prefix": "USER:",
-            "suffix": "ASSISTANT:",
-
             "contextSize": 2048,
-            "predict": 1024,
+            "predict": 1024
+        }
+    },
+
+    "prompts": {
+
+        "default": {
+
+            "system": "<|im_start|>system\nToday is {DATE}. You are virtual assistant.<|im_end|>",
+            "user": "\n<|im_start|>user\n{USER}<|im_end|>",
+            "assistant": "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>",
+
+            "preamble": "Today is {DATE}. You are virtual assistant.",
+            "prefix": "\nUSER: ",
+            "suffix": "\nASSISTANT:"
+        }
+    },
+
+    "samplings": {
+
+        "janus": {
 
             "janus": 1,
             "depth": 200,
             "scale": 0.97,
             "hi": 0.99,
-            "lo": 0.96,
+            "lo": 0.96
+        },
+
+        "mirostat": {
+
+            "mirostat": 0,
+            "mirostatENT": 0,
+            "mirostatLR": 0
+        },
+
+        "basic": {
 
             "temperature": 0.1,
             "top_k": 8,
             "top_p": 0.4,
             "typicalP": 1.0,
             "repetition_penalty": 1.1,
-            "penaltyLastN": -1,
-
-            "mirostat": 0,
-            "mirostatENT": 0,
-            "mirostatLR": 0
+            "penaltyLastN": -1
         }
-    ]
+    }
 }

@@ -1,56 +1,72 @@
-# --- settings
+# -- settings
 
-id: "mac-m1-pro"
+id: mac-m1-pro
 host: localhost
 port: 8080
 log: collider.log
 deadline: 180
-swap: "/home/sessions"
+swap: /home/sessions
 debug:
 
-# --- pods
+# -- pods
 
-  -
+pods:
+  
+  cpu:
     model: default
-    threads: 6
+    prompt: default
+    sampling: janus
+    threads: 8
     gpus: [ 0 ]
     batchsize: 512
 
-# --- models
+# -- models
 
 models:
 
-  - 
-    id: default
+  default:
     name: Airoboros 7B
     path: ~/models/7B/airoboros-7b-ggml-q4_0.bin
+    contextsize: 4096
+    predict: 1024
 
-    prompt: custom
+# -- prompts
+
+prompts:
+
+  default:
     locale: en_US
+
+    # -- new format
     system: "### System:\n\nToday is {DATE}. {SYSTEM}"
     user: "\n\n### User:\n\n{USER}"
     assistant: "\n\n### Assistant:\n\n{ASSISTANT}"    
 
+    # -- older format
     preamble:
     prefix: "USER:"
     suffix: "ASSISTANT:"
 
-    contextsize: 2048
-    predict: 1024
+# -- samplings
 
+samplings:    
+
+  janus:
     janus: 1
     depth: 200
     scale: 0.97
     hi: 0.99
     lo: 0.96
 
+  mirostat:
+    mirostat: 2
+    mirostatent: 0.1
+    mirostatlr: 0.1 
+
+  basic:
     temperature: 0.1
     top_k: 8
     top_p: 0.4
     typicalp: 1.0
     repetition_penalty: 1.1
-    penaltylastn: -1
-
-    mirostat: 2
-    mirostatent: 0.1
-    mirostatlr: 0.1     
+    penaltylastn: -1    

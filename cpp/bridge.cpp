@@ -227,14 +227,24 @@ std::unordered_map<std::string, int64_t> outputTokenCount;
 // Suspend stdout / stderr messaging
 // https://stackoverflow.com/questions/70371091/silencing-stdout-stderr
 
+static void log_nothing(ggml_log_level level, const char * text, void * user_data) {
+    (void) level;
+    (void) text;
+    (void) user_data;
+    ///// fputs(text, stderr);
+    ///// fflush(stderr);
+}
+
 void hide() {
-    (void) !freopen(NULL_DEVICE, "w", stdout);
-    (void) !freopen(NULL_DEVICE, "w", stderr);
+    llama_log_set(log_nothing, NULL); // disable logging
+    ///// (void) !freopen(NULL_DEVICE, "w", stdout);
+    ///// (void) !freopen(NULL_DEVICE, "w", stderr);
 }    
 
 void show() {
-    (void) !freopen(TTY_DEVICE, "w", stdout);
-    (void) !freopen(TTY_DEVICE, "w", stderr);
+    llama_log_set(NULL, NULL); // enable default logger
+    ///// (void) !freopen(TTY_DEVICE, "w", stdout);
+    ///// (void) !freopen(TTY_DEVICE, "w", stderr);
 }
 
 // --- Globals for all pods. Do anyone needs more than 8 pods per machine?
@@ -402,8 +412,8 @@ int64_t do_inference(
     // tokenize the prompt
     //std::vector<llama_token> embd_inp;
     // WAS: const bool add_bos = llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM;
-    //const bool add_bos = llama_should_add_bos_token(model);
     const bool add_bos = llama_should_add_bos_token(model);
+    // GGML_ASSERT(llama_add_eos_token(model) != 1);
     std::vector<llama_token> embd_inp;
     //embd_inp = llama_tokenize(model, text, add_bos, true);
     embd_inp = ::llama_tokenize(ctx, /*params.prompt*/ text, add_bos, true);
@@ -605,11 +615,7 @@ int64_t do_inference(
                     const int n_left    = n_past - params.n_keep;
                     const int n_discard = n_left/2;
 
-                    // WAS: llama_kv_cache_seq_rm   (ctx, 0, params.n_keep + 1            , params.n_keep + n_discard + 1);
-                    // WAS: llama_kv_cache_seq_shift(ctx, 0, params.n_keep + 1 + n_discard, n_past, -n_discard);
-
-                    llama_kv_cache_seq_rm   (ctx, 0, params.n_keep            , params.n_keep + n_discard);
-                    // WAS llama_kv_cache_seq_shift(ctx, 0, params.n_keep + n_discard, n_past, -n_discard);
+                    llama_kv_cache_seq_rm (ctx, 0, params.n_keep            , params.n_keep + n_discard);
                     llama_kv_cache_seq_add(ctx, 0, params.n_keep + n_discard, n_past, -n_discard);
 
                     n_past -= n_discard;
@@ -629,10 +635,8 @@ int64_t do_inference(
                     const int bd = (ga_w/ga_n)*(ga_n - 1);
                     const int dd = (ga_w/ga_n) - ib*bd - ga_w;
 
-                    // WAS llama_kv_cache_seq_shift(ctx, 0, ga_i,                n_past,              ib*bd);
                     llama_kv_cache_seq_add(ctx, 0, ga_i,                n_past,              ib*bd);
-                    llama_kv_cache_seq_div  (ctx, 0, ga_i + ib*bd,        ga_i + ib*bd + ga_w, ga_n);
-                    // WAS llama_kv_cache_seq_shift(ctx, 0, ga_i + ib*bd + ga_w, n_past + ib*bd,      dd);
+                    llama_kv_cache_seq_div(ctx, 0, ga_i + ib*bd,        ga_i + ib*bd + ga_w, ga_n);
                     llama_kv_cache_seq_add(ctx, 0, ga_i + ib*bd + ga_w, n_past + ib*bd,      dd);
 
                     n_past -= bd;
@@ -848,11 +852,15 @@ enum ggml_numa_strategy {
 void init(char * swap, char * debug) {
     ::debug = debug;
     ::path_session = swap;
-    bool showFlag = false;
-    if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
+    // fprintf(stderr, "\n\nDEBUG: %s\n\n", debug);
+    // fprintf(stderr, "\n\nLEN: %d\n\n", strlen(debug));
+    ///// bool showFlag = false;
+    ///// if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
+    ///// if (!debug && strcmp(debug, "")) { hide(); showFlag = true; }
+    //if (strlen(debug) == 0) { hide(); fprintf(stderr, "\n\nINSIDE: %d\n\n", strlen(debug)); }
     llama_backend_init();
     llama_numa_init(GGML_NUMA_STRATEGY_DISABLED); // TODO: NUMA = params.numa
-    if (showFlag) { show(); }
+    ///// if (showFlag) { show(); }
 }
 
 // TODO: support n_threads_batch
@@ -861,7 +869,7 @@ void * initContext(
     char * modelName, 
     int threads, 
     int batch_size, 
-    int gpu1, int gpu2, 
+    int gpu1, int gpu2, int gpu3, int gpu4, 
     int context, int predict,
     int32_t mirostat, float mirostat_tau, float mirostat_eta,
     float temperature, int top_k, float top_p,
@@ -879,9 +887,11 @@ void * initContext(
     ::params[idx].n_threads_batch = ::params[idx].n_threads_batch == -1 ? threads : ::params[idx].n_threads_batch;
 
     ::params[idx].main_gpu        = 0; // TODO: Main GPU depending on tensor split
-    ::params[idx].n_gpu_layers    = gpu1 + gpu2;
+    ::params[idx].n_gpu_layers    = gpu1 + gpu2 + gpu3 + gpu4; // TODO: variable number of GPUs
     ::params[idx].tensor_split[0] = gpu1;
     ::params[idx].tensor_split[1] = gpu2;
+    ::params[idx].tensor_split[2] = gpu3;
+    ::params[idx].tensor_split[3] = gpu4;
 
     ::params[idx].n_ctx           = context;
     ::params[idx].n_predict       = predict;

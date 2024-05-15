@@ -13,18 +13,14 @@ void * initContext(
 	char * modelName,
 	int threads,
 	int batch_size,
-	int gpu1, int gpu2,
+	int gpu1, int gpu2, int gpu3, int gpu4,
 	int context, int predict,
 	int32_t mirostat, float mirostat_tau, float mirostat_eta,
 	float temperature, int topK, float topP,
 	float typicalP,
 	float repetition_penalty, int penalty_last_n,
-	int32_t janus,
-	int32_t depth,
-	float scale,
-	float hi,
-	float lo,
-	int32_t seed,
+	int32_t janus, int32_t depth, float scale, float hi, float lo,
+	uint32_t seed,
 	char * debug);
 int64_t doInference(
 	int idx,
@@ -46,6 +42,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,6 +60,8 @@ import (
 	"github.com/gotzmann/collider/pkg/ml"
 )
 
+const LLAMA_DEFAULT_SEED = uint32(0xFFFFFFFF)
+
 // TODO: Check the host:port is free before starting listening
 
 // TODO: Helicopter View - how to work with balancers and multi-pod architectures?
@@ -78,50 +77,43 @@ import (
 
 type Mode struct {
 	id string
-	HyperParams
-}
-
-type HyperParams struct {
-
-	// -- Janus Sampling
-
-	Janus uint32
-	Depth uint32
-	Scale float32
-	Hi    float32
-	Lo    float32
-
-	Mirostat    uint32
-	MirostatLR  float32 // aka eta, learning rate
-	MirostatENT float32 // aka tau, target entropy
-	MirostatTAU float32 // obsolete
-	MirostatETA float32 // obsolete
-
-	TopK        int
-	TopP        float32
-	TypicalP    float32
-	Temperature float32
-
-	RepetitionPenalty float32
-	PenaltyLastN      int
+	//HyperParams
 }
 
 type Model struct {
-	ID     string // short internal name of the model
-	Name   string // public name for humans
-	Path   string // path to binary file
-	Locale string
+	ID string // short internal name of the model
+
+	Name string // public name for humans
+	Path string // path to binary file
+	// Locale string
 
 	Context unsafe.Pointer // *llama.Context
+
+	ContextSize int
+	Predict     int
+}
+
+type Prompt struct {
+	ID string
+
+	// -- older format
 
 	Preamble string
 	Prefix   string // prompt prefix for instruct-type models
 	Suffix   string // prompt suffix
 
-	ContextSize int
-	Predict     int
+	// -- new format
 
-	// -- Janus Sampling
+	Locale    string
+	System    string
+	User      string
+	Assistant string
+}
+
+type Sampling struct {
+	ID string
+
+	// -- Janus
 
 	Janus uint32
 	Depth uint32
@@ -129,11 +121,15 @@ type Model struct {
 	Hi    float32
 	Lo    float32
 
+	// -- Mirostat
+
 	Mirostat    uint32
 	MirostatLR  float32 // aka eta, learning rate
 	MirostatENT float32 // aka tau, target entropy
-	MirostatTAU float32 // obsolete
-	MirostatETA float32 // obsolete
+	///// MirostatTAU float32 // obsolete
+	///// MirostatETA float32 // obsolete
+
+	// -- Basic
 
 	Temperature float32
 	Temp        float32 // user-friendly naming within config
@@ -167,12 +163,10 @@ type Config struct {
 
 	Swap string // path to store session files
 
-	Pods []Pod
-	//	Threads []int64 // threads count for each pod // TODO: Obsolete
-	//	GPUs    [][]int // GPU split between pods // TODO: Obsolete
-	// GPULayers []int   // how many layers offload to Apple GPU?
-
-	Models []Model
+	Pods      map[string]*Pod
+	Models    map[string]*Model
+	Prompts   map[string]*Prompt
+	Samplings map[string]*Sampling
 
 	//DefaultModel string // default model ID
 
@@ -180,11 +174,14 @@ type Config struct {
 }
 
 type Pod struct {
-	idx int // pod index
+	ID  string // pod name
+	idx int    // pod index
 
-	Threads int64  // how many threads to use
-	GPUs    []int  // GPU split in percents
-	Model   string // model ID within config
+	Threads  int64  // how many threads to use
+	GPUs     []int  // GPU split in percents
+	Model    string // model ID within config
+	Prompt   string // TODO: Allow any prompt on request
+	Sampling string // sampling ID within config (TODO: Allow any sampling method on request)
 	//	Mode      string // TODO
 	BatchSize int
 
@@ -219,7 +216,7 @@ type Job struct {
 	PromptEval int64 // timing per token (prompt + output), ms
 	TokenEval  int64 // timing per token (prompt + output), ms
 
-	pod *Pod // we need pod.idx when stopping jobs
+	Pod *Pod // we need pod.idx when stopping jobs
 }
 
 const (
@@ -259,10 +256,11 @@ var (
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
 
-	Pods  []*Pod            // There N pods with some threads within as described in config
-	Modes map[string]string // Each unique model might have some special [ mode ] assigned to it
-	//Models      map[string][]*Model // Each unique model identified by key has N instances ready to run in pods
-	Models      []*Model          // Each unique model identified by key has N instances ready to run in pods
+	Pods      map[string]*Pod   // There N pods with some threads within as described in config
+	Models    map[string]*Model // Each unique model identified by key has N instances ready to run in pods
+	Prompts   map[string]*Prompt
+	Samplings map[string]*Sampling
+
 	Sessions    map[string]string // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
 	TokensCount map[string]int    // Store tokens within each session ID => COUNT to prevent growth over context limit
 
@@ -289,11 +287,10 @@ func Init(
 	host, port string,
 	zapLog *zap.SugaredLogger,
 	pods int, threads int64,
-	//gpus []int, // gpuLayers int64, // TODO: Use GPU split from config
-	gpu1, gpu2 int,
+	gpu1, gpu2, gpu3, gpu4 int, //gpus []int, // gpuLayers int64, // TODO: Use GPU split from config
 	model, preamble, prefix, suffix string,
 	context, predict int,
-	mirostat uint32, mirostatTAU float32, mirostatETA float32,
+	mirostat uint32, mirostatENT float32, mirostatLR float32,
 	temperature float32, topK int, topP float32,
 	typicalP float32,
 	repetitionPenalty float32, penaltyLastN int,
@@ -302,66 +299,66 @@ func Init(
 	swap string,
 	debug string) {
 
-	// ServerMode = LLAMA_CPP
 	Host = host
 	Port = port
 	log = zapLog
 	deadline = deadlineIn
 	RunningPods = 0
 	params.CtxSize = uint32(context)
-	Pods = make([]*Pod, pods)
-	Modes = map[string]string{"default": ""}
-	Models = make([]*Model, 1) // TODO: N models
-	Swap = swap
 
+	Pods = make(map[string]*Pod, pods)
+	Models = make(map[string]*Model, 1)       // TODO: N
+	Prompts = make(map[string]*Prompt, 1)     // TODO: N
+	Samplings = make(map[string]*Sampling, 1) // TODO: N
+
+	Prompts[""] = &Prompt{} // FIXME
+
+	Swap = swap
 	Debug = debug
-	//debugCUDA := 0
-	//if Debug == "cuda" {
-	//	debugCUDA = 1
-	//}
 
 	// --- Starting pods incorporating isolated C++ context and runtime
 
-	for pod := 0; pod < pods; pod++ {
+	for podNum := 0; podNum < pods; podNum++ {
 
+		pod := strconv.Itoa(podNum)
 		MaxThreads += threads
+
 		Pods[pod] = &Pod{
-			idx: pod,
+			idx: podNum,
 
 			isBusy: false,
-			isGPU:  gpu1+gpu2 > 0,
+			isGPU:  gpu1+gpu2+gpu3+gpu4 > 0,
 
-			Model: model,
-			// Mode:  "",
+			Model:    model,
+			Prompt:   "", // TODO FIXME
+			Sampling: "", // TODO FIXME
 
 			Threads: threads,
-			GPUs:    []int{gpu1, gpu2},
+			GPUs:    []int{gpu1, gpu2, gpu3, gpu4},
 		}
 
 		// Check if file exists to prevent CGO panic
 		if _, err := os.Stat(model); err != nil {
-			Colorize("\n[magenta][ ERR ][white] Model not found: %s\n\n", model)
-			log.Infof("[ ERR ] Model not found: %s", model)
+			Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", model)
+			log.Infof("[ ERROR ] Model not found: %s", model)
 			os.Exit(0)
 		}
 
 		C.init(C.CString(swap), C.CString(Debug))
 
-		// TODO: Refactore temp huck supporting only 2 GPUs split
-
 		ctx := C.initContext(
-			C.int(pod),
+			C.int(podNum),
 			C.CString(model),
 			C.int(threads),
-			C.int(0),                 // TODO: BatchSize
-			C.int(gpu1), C.int(gpu2), // C.int(gpuLayers), // FIXME ASAP: TODO: Support more than 2 GPUs
+			C.int(0),                                           // TODO: BatchSize
+			C.int(gpu1), C.int(gpu2), C.int(gpu3), C.int(gpu4), // C.int(gpuLayers), // FIXME ASAP: TODO: Support more than 4 GPUs
 			C.int(context), C.int(predict),
-			C.int32_t(mirostat), C.float(mirostatTAU), C.float(mirostatETA),
+			C.int32_t(mirostat), C.float(mirostatENT), C.float(mirostatLR),
 			C.float(temperature), C.int(topK), C.float(topP),
 			C.float(typicalP),
 			C.float(repetitionPenalty), C.int(penaltyLastN),
-			C.int(1), C.int(200), C.float(0.936), C.float(0.982), C.float(0.948),
-			C.int32_t(seed),
+			C.int(1) /* Janus Version */, C.int(200) /* depth */, C.float(0.936) /* scale */, C.float(0.982) /* hi */, C.float(0.948), /* lo */
+			C.uint32_t(seed),
 			C.CString(Debug),
 		)
 
@@ -370,21 +367,30 @@ func Init(
 			os.Exit(0)
 		}
 
-		Models /*[""]*/ [pod] = &Model{
-			Path:    model,
-			Context: ctx,
-			Locale:  "", // TODO: Set Locale
+		Models[pod] = &Model{
+			Path:        model,
+			Context:     ctx,
+			ContextSize: context,
+			Predict:     predict,
+		}
+
+		Prompts[pod] = &Prompt{
+			Locale: "", // TODO: Set Locale
 
 			Preamble: preamble,
 			Prefix:   prefix,
 			Suffix:   suffix,
 
-			ContextSize: context,
-			Predict:     predict,
+			System:    "", // TODO: prompt.System,
+			User:      "", // TODO: prompt.User,
+			Assistant: "", // TODO: prompt.Assistant,
+		}
+
+		Samplings[pod] = &Sampling{
 
 			Mirostat:    mirostat,
-			MirostatTAU: mirostatTAU,
-			MirostatETA: mirostatETA,
+			MirostatENT: mirostatENT,
+			MirostatLR:  mirostatLR,
 
 			TopK:        topK,
 			TopP:        topP,
@@ -433,142 +439,122 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 	ServerMode = LLAMA_CPP
 	Host = conf.Host
 	Port = conf.Port
-	Pods = make([]*Pod, len(conf.Pods))
-	Models = make([]*Model, len(conf.Models))
-	Swap = conf.Swap
 
+	Pods = make(map[string]*Pod, len(conf.Pods))
+	Models = make(map[string]*Model, len(conf.Models))
+	Prompts = make(map[string]*Prompt, len(conf.Prompts))
+	Samplings = make(map[string]*Sampling, len(conf.Samplings))
+
+	Swap = conf.Swap
 	Debug = conf.Debug
-	//debugCUDA := 0
-	//if Debug == "cuda" {
-	//	debugCUDA = 1
-	//}
+
+	// FIXME TODO: Allow only ONE MODEL instance per ONE POD
+	for id, model := range conf.Models {
+
+		// Allow user home dir resolve with tilde ~
+		path := model.Path
+		if strings.HasPrefix(path, "~/") {
+			usr, _ := user.Current()
+			dir := usr.HomeDir
+			path = filepath.Join(dir, path[2:])
+		}
+
+		// Check if the file really exists to prevent CGO panic
+		if _, err := os.Stat(path); err != nil {
+			Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", path)
+			log.Infof("[ ERR ] Model not found: %s", path)
+			os.Exit(0)
+		}
+
+		model.ID = id
+		model.Path = path
+		Models[id] = model
+	}
+
+	for id, prompt := range conf.Prompts {
+		prompt.ID = id
+		Prompts[id] = prompt
+	}
+
+	for id, sampling := range conf.Samplings {
+		sampling.ID = id
+		Samplings[id] = sampling
+	}
 
 	// -- Init all pods and models to run inside each pod - so having N * M total models ready to work
 
-	//for pod, threads := range conf.Threads {
-	for idx, pod := range conf.Pods {
+	podNum := 0
+	for id, pod := range conf.Pods {
 
 		MaxThreads += pod.Threads
 
-		isGPU := false
+		pod.ID = id
+		pod.idx = podNum
+
 		for _, layers := range pod.GPUs {
 			if layers > 0 {
-				isGPU = true
+				pod.isGPU = true
 			}
 		}
 
-		Pods[idx] = &Pod{
-			idx: idx,
-
-			isBusy: false,
-			isGPU:  isGPU,
-
-			Threads:   pod.Threads,
-			BatchSize: pod.BatchSize,
-			GPUs:      pod.GPUs,
-
-			Model: pod.Model,
-			// Mode:  pod.Mode,
+		model, ok := Models[pod.Model]
+		if !ok {
+			Colorize("\n[magenta][ ERROR ][white] Wrong model ID in config [magenta][ %s ]\n\n", pod.Model)
+			os.Exit(0)
 		}
 
-		for _, model := range conf.Models {
+		sampling, ok := Samplings[pod.Sampling]
+		if !ok {
+			Colorize("\n[magenta][ ERROR ][white] Wrong sampling ID in config [magenta][ %s ]\n\n", sampling.ID)
+			os.Exit(0)
+		}
 
-			// --- Allow user home dir resolve with tilde ~
-			// TODO: // Use strings.HasPrefix so we don't match paths like "/something/~/something/"
+		gpu1 := 0
+		gpu2 := 0
+		gpu3 := 0
+		gpu4 := 0
 
-			path := model.Path
-			if strings.HasPrefix(path, "~/") {
-				usr, _ := user.Current()
-				dir := usr.HomeDir
-				path = filepath.Join(dir, path[2:])
+		if len(pod.GPUs) > 0 {
+			gpu1 = pod.GPUs[0]
+			if len(pod.GPUs) > 1 {
+				gpu2 = pod.GPUs[1]
 			}
-
-			// Check if file exists to prevent CGO panic
-			if _, err := os.Stat(path); err != nil {
-				Colorize("\n[magenta][ ERROR ][white] Model not found: %s\n\n", path)
-				log.Infof("[ ERR ] Model not found: %s", path)
-				os.Exit(0)
+			if len(pod.GPUs) > 2 {
+				gpu3 = pod.GPUs[2]
 			}
-
-			C.init(C.CString(Swap), C.CString(Debug))
-
-			// TODO: Refactore temp huck supporting only 2 GPUs split
-
-			gpu1 := 0
-			gpu2 := 0
-
-			tau := model.MirostatTAU
-			if model.MirostatENT != 0 {
-				tau = model.MirostatENT
-			}
-			eta := model.MirostatETA
-			if model.MirostatLR != 0 {
-				eta = model.MirostatLR
-			}
-
-			if len(pod.GPUs) > 0 {
-				gpu1 = pod.GPUs[0]
-				if len(pod.GPUs) > 1 {
-					gpu2 = pod.GPUs[1]
-				}
-			}
-
-			ctx := C.initContext(
-				C.int(idx),
-				C.CString(path),
-				C.int(pod.Threads),
-				C.int(pod.BatchSize),
-				// C.int(conf.GPUs[pod]), C.int(conf.GPULayers[pod]),
-				C.int(gpu1), C.int(gpu2),
-				C.int(model.ContextSize), C.int(model.Predict),
-				C.int32_t(model.Mirostat), C.float(tau), C.float(eta),
-				C.float(model.Temperature), C.int(model.TopK), C.float(model.TopP),
-				C.float(model.TypicalP),
-				C.float(model.RepetitionPenalty), C.int(model.PenaltyLastN),
-				C.int(model.Janus), C.int(model.Depth), C.float(model.Scale), C.float(model.Hi), C.float(model.Lo),
-				C.int32_t(-1),
-				C.CString(Debug),
-			)
-
-			if ctx == nil {
-				Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model [ %s ]\n\n", model.ID)
-				os.Exit(0)
-			}
-
-			Models[idx] = &Model{
-				ID:     model.ID,
-				Name:   model.Name,
-				Locale: model.Locale,
-
-				Path:    model.Path,
-				Context: ctx,
-
-				Preamble: model.Preamble,
-				Prefix:   model.Prefix,
-				Suffix:   model.Suffix,
-
-				ContextSize: model.ContextSize,
-				Predict:     model.Predict,
-
-				// FIXME
-				Mirostat:    model.Mirostat,
-				MirostatTAU: tau,
-				MirostatETA: eta,
-
-				Janus: model.Janus,
-				Depth: model.Depth,
-				Scale: model.Scale,
-				Hi:    model.Hi,
-				Lo:    model.Lo,
-
-				TopK:        model.TopK,
-				TopP:        model.TopP,
-				Temperature: model.Temperature,
-
-				RepetitionPenalty: model.RepetitionPenalty,
-				PenaltyLastN:      model.PenaltyLastN,
+			if len(pod.GPUs) > 3 {
+				gpu4 = pod.GPUs[3]
 			}
 		}
+
+		ctx := C.initContext(
+			C.int(podNum),
+			C.CString(model.Path),
+			C.int(pod.Threads),
+			C.int(pod.BatchSize),
+			C.int(gpu1), C.int(gpu2), C.int(gpu3), C.int(gpu4), // FIXME: Slice of GPUs
+			C.int(model.ContextSize), C.int(model.Predict),
+			C.int32_t(sampling.Mirostat), C.float(sampling.MirostatENT), C.float(sampling.MirostatLR),
+			C.float(sampling.Temperature), C.int(sampling.TopK), C.float(sampling.TopP),
+			C.float(sampling.TypicalP),
+			C.float(sampling.RepetitionPenalty), C.int(sampling.PenaltyLastN),
+			C.int(sampling.Janus), C.int(sampling.Depth), C.float(sampling.Scale), C.float(sampling.Hi), C.float(sampling.Lo),
+			C.uint32_t(LLAMA_DEFAULT_SEED),
+			C.CString(Debug),
+		)
+
+		if ctx == nil {
+			Colorize("\n[magenta][ ERROR ][white] Failed to init pod for model [ %s ]\n\n", model.ID)
+			os.Exit(0)
+		}
+
+		C.init(C.CString(Swap), C.CString(Debug))
+
+		// FIXME TODO: Allow only ONE MODEL instance per ONE POD
+		model.Context = ctx
+		pod.model = model
+		Pods[id] = pod
+		podNum++
 	}
 }
 
@@ -601,15 +587,15 @@ func Run(showStatus bool) {
 	go Engine(app)
 
 	if showStatus {
-		Colorize("\n[light_magenta][ INIT ][light_blue] REST API running on [light_magenta]%s:%s", Host, Port)
+		Colorize("\n[magenta][ INIT ][light_blue] REST API running on [magenta]%s:%s", Host, Port)
 	}
 
 	log.Infof("[START] REST API running on %s:%s", Host, Port)
 
 	err := app.Listen(Host + ":" + Port)
 	if err != nil {
-		Colorize("\n[light_magenta][ ERR ][light_blue] Can't start REST API on [light_magenta]%s:%s", Host, Port)
-		log.Infof("[ ERR ] Can't start REST API on %s:%s", Host, Port)
+		Colorize("\n[magenta][ ERROR ][white] Can't start REST API on [magenta]%s:%s", Host, Port)
+		log.Infof("[ ERROR ] Can't start REST API on %s:%s", Host, Port)
 	}
 }
 
@@ -618,6 +604,15 @@ func Run(showStatus bool) {
 func Engine(app *fiber.App) {
 
 	for {
+
+		if GoShutdown && len(Queue) == 0 && RunningThreads == 0 {
+			app.Shutdown()
+			break
+		}
+
+		// TODO: Sync over channels
+		// TODO: Some better timing + use config?
+		time.Sleep(20 * time.Millisecond)
 
 		for jobID := range Queue {
 
@@ -631,8 +626,10 @@ func Engine(app *fiber.App) {
 
 			// production mode with settings from config file
 			// TODO: >= MaxThreads + pod.Model.Threads
+			// TODO: Think of parallel GPU and CPU execution
 			if RunningThreads >= MaxThreads {
-				continue
+				// continue
+				break
 			}
 
 			// TODO: Better to store model name right there with JobID to avoid locking
@@ -648,57 +645,54 @@ func Engine(app *fiber.App) {
 			// TODO: Use different mutexes for Jobs map, Pods map and maybe for atomic counters
 
 			now := time.Now().UnixMilli()
-
 			mu.Lock() // -- locked
 
-			delete(Queue, jobID)
-
-			// ignore jobs placed more than 3 minutes ago
+			// ignore jobs placed more than [ deadline ] seconds ago
 			if deadline > 0 && (now-Jobs[jobID].CreatedAt) > deadline*1000 {
 				delete(Jobs, jobID)
 				mu.Unlock()
-				log.Infow("[JOB] Job was deleted after deadline", zap.String("jobID", jobID))
+				log.Infow("[ JOB ] Job was removed from queue after deadline", zap.String("jobID", jobID), zap.Int64("deadline", deadline))
 				continue
 			}
 
-			Jobs[jobID].Status = "processing"
-
-			var pod *Pod
-			for idx := range Pods {
-				pod = Pods[idx]
-				if pod.isBusy {
-					continue
+			var usePod *Pod
+			// TODO: Implement pod priority for better serving clients
+			for _, pod := range Pods {
+				if !pod.isBusy {
+					usePod = pod // Pods[id]
+					usePod.isBusy = true
+					break
 				}
-				pod.isBusy = true
+
 				// "load" the model into pod
-				pod.model = Models[idx]
+				// WAS pod.model = Models[idx]
+
+				// FIXME ASAP: Do we need this ?
+				///// pod.model = Models[pod.Model] // TODO: more checks ( if !ok )
+
+				//break
+			}
+
+			if usePod == nil {
+				// FIXME: Something really wrong going here! We need to fix this ASAP
+				// TODO: Log this case!
+				mu.Unlock()
+				// Colorize("\n[magenta][ INFO ][white] There no idle pods to do the job!")
 				break
 			}
 
-			mu.Unlock() // -- unlocked
-
-			if pod == nil {
-				// FIXME: Something really wrong going here! We need to fix this ASAP
-				// TODO: Log this case!
-				Colorize("\n[magenta][ ERROR ][white] Failed to get idle pod!\n\n")
-				continue
-			}
+			delete(Queue, jobID)
+			Jobs[jobID].Status = "processing"
 
 			// FIXME: Check RunningPods one more time?
 			// TODO: Is it make sense to use atomic over just mutex here?
 			atomic.AddInt64(&RunningPods, 1)
-			atomic.AddInt64(&RunningThreads, pod.Threads)
+			atomic.AddInt64(&RunningThreads, usePod.Threads)
 
-			go Do(jobID, pod)
+			mu.Unlock() // -- unlocked
+
+			go Do(jobID, usePod) // TODO: Choose pod depending on model requested
 		}
-
-		if GoShutdown && len(Queue) == 0 && RunningThreads == 0 {
-			app.Shutdown()
-			break
-		}
-
-		// TODO: Sync over channels
-		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -719,7 +713,7 @@ func Do(jobID string, pod *Pod) {
 	mu.Lock() // --
 
 	sessionID := Jobs[jobID].SessionID
-	Jobs[jobID].pod = pod
+	Jobs[jobID].Pod = pod
 	Jobs[jobID].Model = pod.model.ID
 	Jobs[jobID].StartedAt = now
 	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
@@ -752,19 +746,39 @@ func Do(jobID string, pod *Pod) {
 		}
 	}
 
-	// -- Inject context vars: ${DATE}, etc
-	locale := monday.LocaleEnUS
-	if pod.model.Locale != "" {
-		locale = pod.model.Locale
+	//model := Models[pod.Model]
+	prompt, ok := Prompts[pod.Prompt]
+	if !ok {
+		Colorize("\n[magenta][ ERROR ][white] Error while getting prompt [magenta][ %s ]\n\n", pod.Prompt)
+		os.Exit(0)
 	}
+	/*
+		TODO: Do we need sampling here?
+
+		sampling, ok := Samplings[pod.Sampling]
+		if !ok {
+			Colorize("\n[magenta][ ERROR ][white] Error while getting sampling [magenta][ %s ]\n\n", pod.Sampling)
+			os.Exit(0)
+		}
+	*/
+
+	// -- Inject context vars: ${DATE}, etc
+
+	locale := monday.LocaleEnUS
+	if prompt.Locale != "" {
+		locale = prompt.Locale
+	}
+
 	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
 	date = strings.ToLower(date)
-	preamble := strings.Replace(pod.model.Preamble, "${DATE}", date, 1)
-	// fmt.Printf("\nPREAMBLE: %s", preamble) // DEBUG
-	// --
+	// fmt.Printf("\nPREAMBLE BEFORE: %s", prompt.Preamble)
+	preamble := strings.Replace(prompt.Preamble, "{DATE}", date, 1)
+	preamble = strings.Replace(preamble, "${DATE}", date, 1) // TODO: Support just one syntax?
+	// fmt.Printf("\nPREAMBLE AFTER: %s", preamble)                    // DEBUG
 
-	prompt := Jobs[jobID].Prompt
-	fullPrompt := pod.model.Prefix + prompt + pod.model.Suffix
+	// FIXME ASAP TODO - new prompt sheme
+	//prompt := Jobs[jobID].Prompt
+	fullPrompt := prompt.Prefix + Jobs[jobID].Prompt + prompt.Suffix
 	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
 
 	if history == "" {
@@ -801,7 +815,7 @@ func Do(jobID string, pod *Pod) {
 
 	*/
 
-	// FIXME: if model hparams were changes, session files are obsolete
+	// FIXME: if model hparams were changed, session files are obsolete
 
 	// do_inference: attempting to load saved session from './session.data.bin'
 	// llama_load_session_file_internal : model hparams didn't match from session file!
@@ -863,7 +877,7 @@ func Do(jobID string, pod *Pod) {
 	Jobs[jobID].PromptEval = promptEval
 	Jobs[jobID].TokenEval = eval
 	Jobs[jobID].Output = result
-	Jobs[jobID].pod = nil
+	Jobs[jobID].Pod = nil
 	pod.isBusy = false
 
 	mu.Unlock() // --
@@ -878,7 +892,7 @@ func Do(jobID string, pod *Pod) {
 	}
 
 	log.Infow(
-		"[JOB] Job was finished",
+		"[ JOB ] Job was finished",
 		"jobID", jobID,
 		"inLen", promptTokenCount,
 		"outLen", outputTokenCount,
@@ -906,6 +920,7 @@ func PlaceJob(jobID, mode, model, sessionID, prompt, translate string) {
 		Model:     model,
 		SessionID: sessionID,
 		Prompt:    prompt,
+		// TODO: Sampling?
 		Translate: translate,
 		Status:    "queued",
 		CreatedAt: timing,
@@ -943,6 +958,7 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	if err := ctx.BodyParser(&payload); err != nil {
 		// TODO: Proper error handling
+		Colorize("\n[magenta][ ERROR ][white] Error while parsing incoming request: [magenta]%s\n\n", err.Error())
 	}
 
 	// -- normalize prompt
@@ -954,13 +970,18 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	// -- validate prompt
 
-	if payload.Mode != "" {
-		if _, ok := Modes[payload.Mode]; !ok {
-			return ctx.
-				Status(fiber.StatusBadRequest).
-				SendString("Wrong mode!")
+	/*
+
+		FIXME: [ mode ] VS combination of [ prompt + model + sampling ]
+
+		if payload.Mode != "" {
+			if _, ok := Modes[payload.Mode]; !ok {
+				return ctx.
+					Status(fiber.StatusBadRequest).
+					SendString("Wrong mode!")
+			}
 		}
-	}
+	*/
 
 	//if payload.Model != "" {
 	//	if _, ok := Models[payload.Model]; !ok {
@@ -973,7 +994,8 @@ func NewJob(ctx *fiber.Ctx) error {
 	if _, err := uuid.Parse(payload.ID); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("{\n\"error\": \"wrong request ID, please use UUIDv4 format\n}")
+			// SendString("{\n\"error\": \"wrong request ID, please use UUIDv4 format\"\n}")
+			JSON(map[string]string{"error": "wrong request ID, please use UUIDv4 format"})
 	}
 
 	mu.Lock()
@@ -981,7 +1003,8 @@ func NewJob(ctx *fiber.Ctx) error {
 		mu.Unlock()
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("{\n\"error\": \"request with the same ID is already processing\n}")
+			// SendString("{\n\"error\": \"request with the same ID is already processing\"\n}")
+			JSON(map[string]string{"error": "request with the same ID is already processing"})
 	}
 	mu.Unlock()
 
@@ -1055,8 +1078,8 @@ func StopJob(ctx *fiber.Ctx) error {
 
 	Jobs[jobID].Status = "stopped"
 
-	if Jobs[jobID].pod != nil {
-		C.stopInference(C.int(Jobs[jobID].pod.idx))
+	if Jobs[jobID].Pod != nil {
+		C.stopInference(C.int(Jobs[jobID].Pod.idx))
 	}
 
 	mu.Unlock() // --

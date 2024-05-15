@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"syscall"
@@ -42,7 +44,7 @@ import (
 	"github.com/gotzmann/collider/pkg/server"
 )
 
-const VERSION = "2.0.0"
+const VERSION = "3.0.0"
 
 type Options struct {
 	Prompt        string  `long:"prompt" description:"Text prompt from user to feed the model input"`
@@ -131,24 +133,22 @@ func Run() {
 
 		// -- user-friendly naming for some fields
 
-		for i := range conf.Models {
+		for _, sampling := range conf.Samplings {
 
-			model := &conf.Models[i]
-
-			if model.Temperature == 0.0 && model.Temp != 0.0 {
-				model.Temperature = model.Temp
+			if sampling.Temperature == 0.0 && sampling.Temp != 0.0 {
+				sampling.Temperature = sampling.Temp
 			}
 
-			if model.TopK == 0 && model.Top_K != 0 {
-				model.TopK = model.Top_K
+			if sampling.TopK == 0 && sampling.Top_K != 0 {
+				sampling.TopK = sampling.Top_K
 			}
 
-			if model.TopP == 0.0 && model.Top_P != 0.0 {
-				model.TopP = model.Top_P
+			if sampling.TopP == 0.0 && sampling.Top_P != 0.0 {
+				sampling.TopP = sampling.Top_P
 			}
 
-			if model.RepetitionPenalty == 0.0 && model.Repetition_Penalty != 0.0 {
-				model.RepetitionPenalty = model.Repetition_Penalty
+			if sampling.RepetitionPenalty == 0.0 && sampling.Repetition_Penalty != 0.0 {
+				sampling.RepetitionPenalty = sampling.Repetition_Penalty
 			}
 		}
 
@@ -190,19 +190,24 @@ func Run() {
 	model := "undefined"
 	sampling := "default"
 	if conf.ID != "" {
-		model = conf.Models[0].Path
-		if conf.Models[0].Janus > 0 {
-			sampling = "Janus v1"
-		}
+		// model = conf.Models[0].Path
+		model = reflect.ValueOf(conf.Models).MapKeys()[0].String()
+		log.Infof("[ DEBUG ] MODEL = %s", model)
+		// if conf.Models[0].Janus > 0 {
+		sampling = reflect.ValueOf(conf.Samplings).MapKeys()[0].String()
+		log.Infof("[ DEBUG ] SAMPLING = %s", sampling)
+		//if conf.Models[0].Janus > 0 {
+		//	sampling = "Janus v1"
+		//}
 	} else {
 		model = opts.Model
 		sampling = "default"
 	}
 	if !opts.Server || opts.Debug {
-		showLogo(model, sampling)
+		showLogo(conf.Models[model].Path, sampling)
 	}
 
-	log.Infof("[START] Collider v%s is starting...", VERSION)
+	log.Infof("[ START ] Collider v%s is starting...", VERSION)
 
 	// --- Allow graceful shutdown via OS signals
 	// https://ieftimov.com/posts/four-steps-daemonize-your-golang-programs/
@@ -262,7 +267,7 @@ func Run() {
 			log,
 			/*opts.Pods*/ 1, opts.Threads, // TODO: Support N pods
 			//opts.GPUs, opts.GPULayers,
-			0, 0, // TODO: Support GPUs from command-line
+			0, 0, 0, 0, // TODO: Support GPUs from command-line
 			//NUMA, LowVRAM,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
@@ -282,22 +287,46 @@ func Run() {
 
 	if opts.Debug {
 		go func() {
+
+			jobCount := 0
+			needUpdate := false
+
 			for {
 
-				Colorize("\n[magenta]======================================== [ JOBS ] ========================================\n")
+				time.Sleep(5 * time.Second)
 
 				for _, job := range server.Jobs {
+					if job.Status == "processing" || job.Status == "queued" {
+						needUpdate = true
+						break
+					}
+				}
 
-					var output string
-					output = C.GoString(C.status(C.CString(job.ID)))
+				if !needUpdate && jobCount == len(server.Jobs) {
+					continue
+				}
+
+				Colorize("\n\n[magenta]======================================================== [ JOBS ] ========================================================\n")
+
+				// TODO: Show jobs in timing order (need extra slice)
+				for _, job := range server.Jobs {
+
+					//var output string
+					output := C.GoString(C.status(C.CString(job.ID)))
 					// FIXME: Avoid LLaMA v2 leading space
 					if len(output) > 0 && output[0] == ' ' {
 						output = output[1:]
 					}
 
-					Colorize("\n[light_magenta]%s [light_green][ %s ] [dark_gray][ %s ] [dark_gray]%d => %d tokens | %d => %d ms. | seed %d [light_blue]\n\n%s\n",
+					podID := "--"
+					if job.Pod != nil {
+						podID = job.Pod.ID
+					}
+
+					Colorize("\n[light_magenta]%s [light_green][ %s ] [light_yellow][ %s ] [light_magenta][ %s ] [light_gray]TOKENS: IN [ %d => %d ] OUT || MILLISECONDS: IN [ %d => %d ] OUT || SEED: %d [light_blue]\n\n%s\n",
 						job.ID,
 						job.Status,
+						podID,
 						job.Model,
 						C.getPromptTokenCount(C.CString(job.ID)),
 						job.OutputTokenCount,
@@ -311,7 +340,11 @@ func Run() {
 					break
 				}
 
-				time.Sleep(5 * time.Second)
+				if !needUpdate {
+					jobCount = len(server.Jobs)
+				}
+
+				needUpdate = false
 			}
 		}()
 	}
@@ -418,6 +451,9 @@ func Colorize(format string, opts ...interface{}) (n int, err error) {
 
 func showLogo(model, sampling string) {
 
+	model = filepath.Base(model)
+	model = strings.TrimSuffix(model, filepath.Ext(model))
+
 	// Colorize(
 	// 	"\n[magenta]▒▒▒[light_magenta] [ Collider v" +
 	//		VERSION +
@@ -425,15 +461,23 @@ func showLogo(model, sampling string) {
 
 	// Rozzo + 3-D + some free time
 	// https://patorjk.com/software/taag/#p=display&f=3-D&t=llama.go%0A%0ALLaMA.go
-	// Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
+	// Some other interesting options: Isometric 1, Modular, Rectangles, Rozzo, Small Isometric 1, 3-D
 
 	logo := `
-  /8888/888   /8888/888  /88       /88       /8888 /8888/888   /8888/888  /8888/888  
- /8888 ///88 /8888 //888 /888      /888      /8888 /8888//8888 /8888///   /8888///888 
- /888    //  /888  /8888 /8888/88  /8888/88  /8888 /8888 /8888 /8888/888  /8888/8888 
- //8888/888  //888/8888  /8888/888 /8888/888 /8888 /8888/8888  /8888/8888 /8888//8888 
-  //// ///    /// ////   //// ///  //// ///  ////  //// ////   //// ////  ////  ////`
+  /88888/888  /88888/8888 /88888/8888 /8888/8888 /88888/8888 /8888/8888  /8888/888
+  /8888/88888 /8888 //888 /8888 //888 /88888///  /8888/88888 /888/88//   /888 //8888
+  /88888//888 /888  /8888 /888  /8888 ////888888 ///888/88/  /8888/888   /8888/8888
+  /8888/88888 /8888/88888 /8888/88888 /8888/8888   /888/88   /8888/88888 /8888//8888
+  ///// ////  //// /////  //// /////  //// ////    /// //    //// /////  ////  ////`
 
+	/*
+	   	logo := `
+	     /8888/888   /8888/888  /88       /88       /8888 /8888/888   /8888/888  /8888/888
+	    /8888 ///88 /8888 //888 /888      /888      /8888 /8888//8888 /8888///   /8888///888
+	    /888    //  /888  /8888 /8888/88  /8888/88  /8888 /8888 /8888 /8888/888  /8888/8888
+	    //8888/888  //888/8888  /8888/888 /8888/888 /8888 /8888/8888  /8888/8888 /8888//8888
+	     //// ///    /// ////   //// ///  //// ///  ////  //// ////   //// ////  ////  ////`
+	*/
 	/*
 	   	logo := `
 	     /88       /88         /888/888   /88/8888/88   /888/888  /888/8888 /888/888   /888/888
@@ -467,10 +511,13 @@ func showLogo(model, sampling string) {
 
 	Colorize(logoColored)
 
-	Colorize("\n\n  [magenta]▒▒▒[light_magenta] [ Collider v" + VERSION +
-		" ] [light_blue][ The Open Platform for local Large Language Models ] [magenta]▒▒▒\n")
+	// Colorize("\n\n  [magenta]▒▒▒[light_magenta] [ Booster v" + VERSION +
+	//	" ] [light_blue][ The Open Platform for serving Large Language Models ] [magenta]▒▒▒\n")
 
-	Colorize("\n  [magenta][    model ][light_magenta] [ " + model)
-	Colorize("\n  [blue][ sampling ][light_blue] [ " + sampling + "\n\n")
+	Colorize("\n\n  [magenta]===[light_magenta] [ Booster v" + VERSION +
+		" ] [light_blue][ The Open Platform for serving Large Language Models ] [magenta]===\n")
+
+	Colorize("\n  [magenta][    model ][light_magenta] " + model)
+	Colorize("\n  [blue][ sampling ][light_blue] " + sampling + "\n")
 
 }

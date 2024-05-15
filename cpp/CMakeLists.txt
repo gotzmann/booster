@@ -103,6 +103,8 @@ set(LLAMA_CUDA_KQUANTS_ITER "2" CACHE STRING "llama: iters./thread per block for
 set(LLAMA_CUDA_PEER_MAX_BATCH_SIZE "128" CACHE STRING
                                              "llama: max. batch size for using peer access")
 option(LLAMA_CUDA_NO_PEER_COPY               "llama: do not use peer to peer copies"            OFF)
+option(LLAMA_CUDA_NO_VMM                     "llama: do not try to use CUDA VMM"                OFF)
+
 option(LLAMA_CURL                            "llama: use libcurl to download model from an URL" OFF)
 option(LLAMA_HIPBLAS                         "llama: use hipBLAS"                               OFF)
 option(LLAMA_HIP_UMA                         "llama: use HIP unified memory architecture"       OFF)
@@ -121,6 +123,7 @@ set(LLAMA_METAL_MACOSX_VERSION_MIN "" CACHE STRING
 set(LLAMA_METAL_STD "" CACHE STRING          "llama: metal standard version (-std flag)")
 option(LLAMA_KOMPUTE                         "llama: use Kompute"                               OFF)
 option(LLAMA_MPI                             "llama: use MPI"                                   OFF)
+option(LLAMA_RPC                             "llama: use RPC"                                   OFF)
 option(LLAMA_QKK_64                          "llama: use super-block size of 64 for k-quants"   OFF)
 option(LLAMA_SYCL                            "llama: use SYCL"                                  OFF)
 option(LLAMA_SYCL_F16                        "llama: use 16 bit floats for sycl calculations"   OFF)
@@ -294,7 +297,7 @@ if (LLAMA_BLAS)
     if (LLAMA_STATIC)
         set(BLA_STATIC ON)
     endif()
-    if ($(CMAKE_VERSION) VERSION_GREATER_EQUAL 3.22)
+    if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.22)
         set(BLA_SIZEOF_INTEGER 8)
     endif()
 
@@ -403,11 +406,15 @@ if (LLAMA_CUDA)
         list(APPEND GGML_SOURCES_CUDA "ggml-cuda.cu")
 
         add_compile_definitions(GGML_USE_CUDA)
+        add_compile_definitions(GGML_CUDA_USE_GRAPHS)
         if (LLAMA_CUDA_FORCE_DMMV)
             add_compile_definitions(GGML_CUDA_FORCE_DMMV)
         endif()
         if (LLAMA_CUDA_FORCE_MMQ)
             add_compile_definitions(GGML_CUDA_FORCE_MMQ)
+        endif()
+        if (LLAMA_CUDA_NO_VMM)
+            add_compile_definitions(GGML_CUDA_NO_VMM)
         endif()
         add_compile_definitions(GGML_CUDA_DMMV_X=${LLAMA_CUDA_DMMV_X})
         add_compile_definitions(GGML_CUDA_MMV_Y=${LLAMA_CUDA_MMV_Y})
@@ -425,7 +432,7 @@ if (LLAMA_CUDA)
 
         if (LLAMA_STATIC)
             if (WIN32)
-                # As of 12.3.1 CUDA Tookit for Windows does not offer a static cublas library
+                # As of 12.3.1 CUDA Toolkit for Windows does not offer a static cublas library
                 set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} CUDA::cudart_static CUDA::cublas CUDA::cublasLt)
             else ()
                 set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} CUDA::cudart_static CUDA::cublas_static CUDA::cublasLt_static)
@@ -434,7 +441,11 @@ if (LLAMA_CUDA)
             set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} CUDA::cudart CUDA::cublas CUDA::cublasLt)
         endif()
 
-        set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} CUDA::cuda_driver)
+        if (LLAMA_CUDA_NO_VMM)
+            # No VMM requested, no need to link directly with the cuda driver lib (libcuda.so)
+        else()
+            set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} CUDA::cuda_driver) # required by cuDeviceGetAttribute(), cuMemGetAllocationGranularity(...), ...
+        endif()
 
     if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
         # 52 == lowest CUDA 12 standard
@@ -482,6 +493,17 @@ if (LLAMA_MPI)
     else()
         message(WARNING "MPI not found")
     endif()
+endif()
+
+if (LLAMA_RPC)
+    add_compile_definitions(GGML_USE_RPC)
+
+    if (WIN32)
+        set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} ws2_32)
+    endif()
+
+    set(GGML_HEADERS_RPC ggml-rpc.h)
+    set(GGML_SOURCES_RPC ggml-rpc.cpp)
 endif()
 
 if (LLAMA_CLBLAST)
@@ -1166,6 +1188,7 @@ add_library(ggml OBJECT
             ${GGML_SOURCES_OPENCL}    ${GGML_HEADERS_OPENCL}
             ${GGML_SOURCES_METAL}     ${GGML_HEADERS_METAL}
             ${GGML_SOURCES_MPI}       ${GGML_HEADERS_MPI}
+            ${GGML_SOURCES_RPC}       ${GGML_HEADERS_RPC}
             ${GGML_SOURCES_EXTRA}     ${GGML_HEADERS_EXTRA}
             ${GGML_SOURCES_SYCL}      ${GGML_HEADERS_SYCL}
             ${GGML_SOURCES_KOMPUTE}   ${GGML_HEADERS_KOMPUTE}
@@ -1262,17 +1285,6 @@ install(TARGETS llama LIBRARY PUBLIC_HEADER)
 
 install(
     FILES convert.py
-    PERMISSIONS
-        OWNER_READ
-        OWNER_WRITE
-        OWNER_EXECUTE
-        GROUP_READ
-        GROUP_EXECUTE
-        WORLD_READ
-        WORLD_EXECUTE
-    DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(
-    FILES convert-lora-to-ggml.py
     PERMISSIONS
         OWNER_READ
         OWNER_WRITE
