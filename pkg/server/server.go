@@ -41,6 +41,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -55,6 +56,8 @@ import (
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
 	"go.uber.org/zap"
+
+	// "github.com/elliotchance/orderedmap"
 
 	"github.com/gotzmann/booster/pkg/llama"
 	"github.com/gotzmann/booster/pkg/ml"
@@ -74,12 +77,12 @@ const LLAMA_DEFAULT_SEED = uint32(0xFFFFFFFF)
 // https://dev.to/stripe/how-stripe-designs-for-dates-and-times-in-the-api-3eoh
 // TODO: UUID vs string for job ID
 // TODO: Unix timestamp vs ISO for date and time
-
+/*
 type Mode struct {
 	id string
 	//HyperParams
 }
-
+*/
 type Model struct {
 	ID string // short internal name of the model
 
@@ -93,21 +96,27 @@ type Model struct {
 	Predict     int
 }
 
-type Prompt struct {
-	ID string
-
-	// -- older format
-
-	Preamble string
-	Prefix   string // prompt prefix for instruct-type models
-	Suffix   string // prompt suffix
-
-	// -- new format
-
-	Locale    string
+type Templates struct {
 	System    string
 	User      string
 	Assistant string
+}
+
+type Prompt struct {
+	ID string
+
+	Locale string
+	System string
+
+	// -- new format
+
+	Templates
+
+	// -- older format
+
+	//Preamble string
+	//Prefix   string // prompt prefix for instruct-type models
+	//Suffix   string // prompt suffix
 }
 
 type Sampling struct {
@@ -124,10 +133,8 @@ type Sampling struct {
 	// -- Mirostat
 
 	Mirostat    uint32
-	MirostatLR  float32 // aka eta, learning rate
-	MirostatENT float32 // aka tau, target entropy
-	///// MirostatTAU float32 // obsolete
-	///// MirostatETA float32 // obsolete
+	MirostatLR  float32 // Learning Rate, aka ETA
+	MirostatENT float32 // Target Entropy, aka TAU
 
 	// -- Basic
 
@@ -150,16 +157,11 @@ type Config struct {
 	ID    string // server key, should be unique within cluster
 	Debug string // cuda, full, janus, etc
 
-	//	Modes map[string]string // Mapping inference modes [ default, fast, ... ] to available models
-	Modes []Mode
+	//Modes []Mode
 
 	Host string
 	Port string
 	Log  string // path and name of logging file
-
-	//	AVX  bool
-	//	NEON bool
-	//	CUDA bool
 
 	Swap string // path to store session files
 
@@ -167,8 +169,6 @@ type Config struct {
 	Models    map[string]*Model
 	Prompts   map[string]*Prompt
 	Samplings map[string]*Sampling
-
-	//DefaultModel string // default model ID
 
 	Deadline int64 // deadline in seconds after which unprocessed jobs will be deleted from the queue
 }
@@ -182,7 +182,7 @@ type Pod struct {
 	Model    string // model ID within config
 	Prompt   string // TODO: Allow any prompt on request
 	Sampling string // sampling ID within config (TODO: Allow any sampling method on request)
-	//	Mode      string // TODO
+
 	BatchSize int
 
 	isBusy bool // do we doing some job righ not?
@@ -206,7 +206,7 @@ type Job struct {
 
 	Seed int64 // TODO: Store seed
 
-	Mode  string
+	//Mode  string
 	Model string // TODO: Store model ID, "" for default should be then replaced
 
 	PreambleTokenCount int64
@@ -226,7 +226,7 @@ const (
 )
 
 var (
-	ServerMode int // LLAMA_CPP by default
+	ServerMode int
 	Debug      string
 
 	Host string
@@ -240,14 +240,12 @@ var (
 	ctx    *llama.Context
 	params *llama.ModelParams
 
-	//DefaultModel string // it's empty string "" for simple CLI mode and some unique key when working with configs
-
 	// NB! All vars below are int64 to be used as atomic counters
 	MaxThreads     int64 // used for PROD mode // TODO: detect hardware abilities automatically
 	RunningThreads int64
 	RunningPods    int64 // number of pods running at the moment - SHOULD BE int64 for atomic manipulations
 
-	// FIXME TODO ASAP : Remove extra sessions from disk to prevent full disk DDoS
+	// TODO: Remove extra sessions from disk to prevent full disk DDoS
 	Swap        string // path to store session files
 	MaxSessions int    // how many sessions allowed per server, remove extra session files
 
@@ -376,14 +374,17 @@ func Init(
 
 		Prompts[pod] = &Prompt{
 			Locale: "", // TODO: Set Locale
+			System: "", // TODO: prompt.System,
 
-			Preamble: preamble,
-			Prefix:   prefix,
-			Suffix:   suffix,
+			//Preamble: preamble,
+			//Prefix:   prefix,
+			//Suffix:   suffix,
 
-			System:    "", // TODO: prompt.System,
-			User:      "", // TODO: prompt.User,
-			Assistant: "", // TODO: prompt.Assistant,
+			Templates: Templates{
+				System:    "", // TODO: prompt.User,
+				User:      "", // TODO: prompt.User,
+				Assistant: "", // TODO: prompt.Assistant,
+			},
 		}
 
 		Samplings[pod] = &Sampling{
@@ -578,7 +579,7 @@ func Run(showStatus bool) {
 
 	// -- OpenAI compatible API
 
-	app.Post("v1/chat/completions", NewChatCompletions)
+	app.Post("/v1/chat/completions", NewChatCompletions)
 
 	// -- Monitoring Endpoints
 
@@ -700,95 +701,94 @@ func Engine(app *fiber.App) {
 
 func Do(jobID string, pod *Pod) {
 
-	// TODO: still need mutext for subtract both counters at the SAME time
 	defer atomic.AddInt64(&RunningPods, -1)
 	defer atomic.AddInt64(&RunningThreads, -pod.Threads)
 	defer runtime.GC() // TODO: GC or not GC?
 
-	// TODO: Proper logging
-	// fmt.Printf("\n[ PROCESSING ] Starting job # %s", jobID)
 	now := time.Now().UnixMilli()
-	//isGPU := pod.isGPU
 
 	mu.Lock() // --
 
+	prompt := ""
+	fullPrompt := ""
 	sessionID := Jobs[jobID].SessionID
+
 	Jobs[jobID].Pod = pod
 	Jobs[jobID].Model = pod.model.ID
 	Jobs[jobID].StartedAt = now
-	//Jobs[jobID].Timings = make([]int64, 0, 1024) // Reserve reasonable space (like context size) for storing token evaluation timings
-	// TODO: Play with prompt without leading space
-	//prompt := " " + Jobs[jobID].Prompt // add a space to match LLaMA tokenizer behavior
-	// TODO: Allow setting prefix/suffix from CLI
-	// TODO: Implement translation for prompt elsewhere
 
-	// -- check if we are possibly going to grow out of context limit [ 2048 tokens ] and need to drop session data
+	// NB! Prompt is empty when formatted request is placed in history via Chat Completion API and there no need in formatting it again
 
-	if sessionID != "" {
+	if Jobs[jobID].Prompt == "" {
+		fullPrompt = Sessions[sessionID]
+	} else {
 
-		var SessionFile string
+		// -- check if we are possibly going to grow out of context limit [ 2048 tokens ] and need to drop session data
 
-		if !pod.isGPU && Swap != "" && sessionID != "" {
-			SessionFile = Swap + "/" + sessionID
-		}
+		if sessionID != "" {
 
-		// -- null the session when near the context limit (allow up to 1/2 of max predict size)
-		// TODO: We need a better (smart) context data handling here
+			var SessionFile string
 
-		if (TokensCount[sessionID] + (pod.model.Predict / 2) + 4) > pod.model.ContextSize {
+			if !pod.isGPU && Swap != "" && sessionID != "" {
+				SessionFile = Swap + "/" + sessionID
+			}
 
-			Sessions[sessionID] = ""
-			TokensCount[sessionID] = 0
+			// -- null the session when near the context limit (allow up to 1/2 of max predict size)
+			// TODO: We need a better (smart) context data handling here
 
-			if !pod.isGPU && SessionFile != "" {
-				os.Remove(SessionFile)
+			if (TokensCount[sessionID] + (pod.model.Predict / 2) + 4) > pod.model.ContextSize {
+
+				Sessions[sessionID] = ""
+				TokensCount[sessionID] = 0
+
+				if !pod.isGPU && SessionFile != "" {
+					os.Remove(SessionFile)
+				}
 			}
 		}
-	}
 
-	//model := Models[pod.Model]
-	prompt, ok := Prompts[pod.Prompt]
-	if !ok {
-		Colorize("\n[magenta][ ERROR ][white] Error while getting prompt [magenta][ %s ]\n\n", pod.Prompt)
-		os.Exit(0)
-	}
-	/*
-		TODO: Do we need sampling here?
-
-		sampling, ok := Samplings[pod.Sampling]
+		prompt, ok := Prompts[pod.Prompt]
 		if !ok {
-			Colorize("\n[magenta][ ERROR ][white] Error while getting sampling [magenta][ %s ]\n\n", pod.Sampling)
+			Colorize("\n[magenta][ ERROR ][white] Error while getting prompt [magenta][ %s ]\n\n", pod.Prompt)
 			os.Exit(0)
 		}
-	*/
 
-	// -- Inject context vars: ${DATE}, etc
+		// -- Inject context vars: ${DATE}, etc
 
-	locale := monday.LocaleEnUS
-	if prompt.Locale != "" {
-		locale = prompt.Locale
+		locale := monday.LocaleEnUS
+		if prompt.Locale != "" {
+			locale = prompt.Locale
+		}
+
+		date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
+		system := strings.Replace(prompt.System, "{DATE}", strings.ToLower(date), 1)
+
+		var user, assistant string
+
+		if strings.Contains(prompt.Templates.User, "{USER}") {
+			user = strings.Replace(prompt.Templates.User, "{USER}", Jobs[jobID].Prompt, 1)
+		} else {
+			user = prompt.Templates.User + Jobs[jobID].Prompt
+		}
+
+		if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
+			// adding prefix for next assistant take at the end
+			cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
+			assistant = prompt.Templates.Assistant[:cut]
+		} else {
+			assistant = prompt.Templates.Assistant
+		}
+
+		// history is empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
+		history := Sessions[sessionID]
+		if history == "" {
+			fullPrompt = system + user + assistant
+		} else {
+			fullPrompt = history + user + assistant
+		}
+
+		Jobs[jobID].FullPrompt = fullPrompt
 	}
-
-	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
-	date = strings.ToLower(date)
-	// fmt.Printf("\nPREAMBLE BEFORE: %s", prompt.Preamble)
-	preamble := strings.Replace(prompt.Preamble, "{DATE}", date, 1)
-	preamble = strings.Replace(preamble, "${DATE}", date, 1) // TODO: Support just one syntax?
-	// fmt.Printf("\nPREAMBLE AFTER: %s", preamble)                    // DEBUG
-
-	// FIXME ASAP TODO - new prompt sheme
-	//prompt := Jobs[jobID].Prompt
-	fullPrompt := prompt.Prefix + Jobs[jobID].Prompt + prompt.Suffix
-	history := Sessions[sessionID] // empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
-
-	if history == "" {
-		fullPrompt = preamble + fullPrompt
-	} else {
-		fullPrompt = history + fullPrompt
-	}
-	//fullPrompt = strings.Replace(fullPrompt, `\n`, "\n", -1)
-
-	Jobs[jobID].FullPrompt = fullPrompt
 
 	mu.Unlock() // --
 
@@ -857,6 +857,8 @@ func Do(jobID string, pod *Pod) {
 		result = strings.Trim(result, "\n ")
 	}
 
+	// FIXME: TODO: Remove assistant suffix <|im_end|> here, not in the Completion API Handler
+
 	//fmt.Printf("\n\nRESULT: [[[%s]]]", result)
 	//fmt.Printf("\n\nPROMPT: [[[%s]]]", fullPrompt)
 
@@ -900,7 +902,7 @@ func Do(jobID string, pod *Pod) {
 		"outMS", eval,
 		"inTPS", inTPS,
 		"outTPS", outTPS,
-		"prompt", prompt,
+		"prompt", prompt, // TODO: it will be empty for OpenAI API calls
 		"output", result,
 		// "fullPrompt", fullPrompt,
 	)
@@ -908,7 +910,7 @@ func Do(jobID string, pod *Pod) {
 
 // --- Place new job into queue
 
-func PlaceJob(jobID, mode, model, sessionID, prompt, translate string) {
+func PlaceJob(jobID /*mode,*/, model, sessionID, prompt /*, translate*/ string) {
 
 	timing := time.Now().UnixMilli()
 
@@ -916,12 +918,11 @@ func PlaceJob(jobID, mode, model, sessionID, prompt, translate string) {
 
 	Jobs[jobID] = &Job{
 		ID:        jobID,
-		Mode:      mode,
 		Model:     model,
 		SessionID: sessionID,
 		Prompt:    prompt,
 		// TODO: Sampling?
-		Translate: translate,
+		// Translate: translate,
 		Status:    "queued",
 		CreatedAt: timing,
 	}
@@ -944,13 +945,13 @@ func NewJob(ctx *fiber.Ctx) error {
 	if GoShutdown {
 		return ctx.
 			Status(fiber.StatusServiceUnavailable).
-			SendString("{\n\"error\": \"service is shutting down\"\n}")
+			// SendString("{\n\"error\": \"service is shutting down\"\n}")
+			JSON(fiber.Map{"error": "service is shutting down"})
 	}
 
 	payload := struct {
 		ID        string `json:"id"`
 		Session   string `json:"session,omitempty"`
-		Mode      string `json:"mode,omitempty"`
 		Model     string `json:"model,omitempty"`
 		Prompt    string `json:"prompt"`
 		Translate string `json:"translate"`
@@ -970,19 +971,6 @@ func NewJob(ctx *fiber.Ctx) error {
 
 	// -- validate prompt
 
-	/*
-
-		FIXME: [ mode ] VS combination of [ prompt + model + sampling ]
-
-		if payload.Mode != "" {
-			if _, ok := Modes[payload.Mode]; !ok {
-				return ctx.
-					Status(fiber.StatusBadRequest).
-					SendString("Wrong mode!")
-			}
-		}
-	*/
-
 	//if payload.Model != "" {
 	//	if _, ok := Models[payload.Model]; !ok {
 	//		return ctx.
@@ -995,7 +983,7 @@ func NewJob(ctx *fiber.Ctx) error {
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			// SendString("{\n\"error\": \"wrong request ID, please use UUIDv4 format\"\n}")
-			JSON(map[string]string{"error": "wrong request ID, please use UUIDv4 format"})
+			JSON(fiber.Map{"error": "wrong request ID, please use UUIDv4 format"})
 	}
 
 	mu.Lock()
@@ -1004,7 +992,7 @@ func NewJob(ctx *fiber.Ctx) error {
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			// SendString("{\n\"error\": \"request with the same ID is already processing\"\n}")
-			JSON(map[string]string{"error": "request with the same ID is already processing"})
+			JSON(fiber.Map{"error": "request with the same ID is already processing"})
 	}
 	mu.Unlock()
 
@@ -1027,12 +1015,10 @@ func NewJob(ctx *fiber.Ctx) error {
 	//	payload.Model = DefaultModel
 	//}
 
-	// FIXME ASAP : Use payload Model and Mode selectors !!!
-	payload.Model = "" // TODO: DefaultModel
+	// TODO: Use payload Model selector
+	PlaceJob(payload.ID /*payload.Mode,*/, "" /* payload.Model */, payload.Session, payload.Prompt /*, payload.Translate*/)
 
-	PlaceJob(payload.ID, payload.Mode, payload.Model, payload.Session, payload.Prompt, payload.Translate)
-
-	log.Infow("[JOB] New job", "jobID", payload.ID, "mode", payload.Mode, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
+	log.Infow("[JOB] New job", "jobID", payload.ID /*"mode", payload.Mode,*/, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
 	// TODO: Guard with mutex Jobs[payload.ID] access
 	// TODO: Return [model] and [session] if not empty
@@ -1202,7 +1188,7 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 	if GoShutdown {
 		return ctx.
 			Status(fiber.StatusServiceUnavailable).
-			SendString("{\n\"error\": \"service is shutting down\"\n}")
+			JSON(fiber.Map{"error": "service is shutting down"})
 	}
 
 	type Message struct {
@@ -1211,8 +1197,9 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 	}
 
 	payload := struct {
-		Model    string    `json:"model,omitempty"`
-		Messages []Message `json:"messages"`
+		Model       string     `json:"model,omitempty"`
+		Messages    []*Message `json:"messages"`
+		Temperature string     `json:"temperature,omitempty"` // TODO
 	}{}
 
 	if err := ctx.BodyParser(&payload); err != nil {
@@ -1220,25 +1207,8 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 		// TODO: Proper error handling
 		return ctx.
 			Status(fiber.StatusBadRequest).
-			SendString("{\n\"error\": \"error parsing request body\n}")
+			JSON(fiber.Map{"error": "error parsing request body"})
 	}
-
-	// -- normalize prompt
-
-	//payload.Prompt = strings.Trim(payload.Prompt, "\n ")
-	//payload.Mode = strings.Trim(payload.Mode, "\n ")
-	//payload.Model = strings.Trim(payload.Model, "\n ")
-	//payload.Translate = strings.Trim(payload.Translate, "\n ")
-
-	// -- validate prompt
-
-	//if payload.Mode != "" {
-	//	if _, ok := Modes[payload.Mode]; !ok {
-	//		return ctx.
-	//			Status(fiber.StatusBadRequest).
-	//			SendString("Wrong mode!")
-	//	}
-	//}
 
 	jobID := uuid.New().String()
 
@@ -1276,59 +1246,166 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 	//	payload.Model = DefaultModel
 	//}
 
-	// FIXME ASAP : Use payload Model and Mode selectors !!!
-	payload.Model = ""                                          // TODO: DefaultModel
-	prompt := payload.Messages[len(payload.Messages)-1].Content // TODO: Validate the last message role == "user"
+	// -- create new session with history for any Chat Completion request
 
-	PlaceJob(jobID /*payload.Mode*/, "", payload.Model, "", prompt, "")
+	sessionID := uuid.New().String()
+	Sessions[sessionID] = ""
+	TokensCount[sessionID] = 0
 
-	log.Infow("[JOB] New job just queued", "id", jobID, "session", "", "model", payload.Model, "prompt", prompt)
+	promptID := reflect.ValueOf(Prompts).MapKeys()[0].String() // use ANY available prompt
+	prompt, ok := Prompts[promptID]
+	if !ok {
+		Colorize("\n[magenta][ ERROR ][white] Error while getting ANY prompt settings\n\n")
+		os.Exit(0)
+	}
 
-	now := time.Now()
-	finish := now.Add(time.Duration(deadline) * time.Second) // TODO: Change global type + naming?
+	locale := monday.LocaleEnUS
+	if prompt.Locale != "" {
+		locale = prompt.Locale
+	}
+
+	// try to find system prompt or use one from template
+
+	//for _, message := range payload.Messages {
+	//	if message.Role == "system" {
+	//		system = message.Content
+	//		break
+	//	}
+	//}
+
+	///// prompt := payload.Messages[len(payload.Messages)-1].Content // TODO: Validate the last message role == "user"
+
+	var system, history string
+	for _, message := range payload.Messages {
+
+		switch message.Role {
+		case "system":
+			system = message.Content
+		case "user":
+			if strings.Contains(prompt.Templates.User, "{USER}") {
+				history += strings.Replace(prompt.Templates.User, "{USER}", message.Content, 1)
+			} else {
+				history += prompt.Templates.User + message.Content
+			}
+		case "assistant":
+			if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
+				history += strings.Replace(prompt.Templates.Assistant, "{ASSISTANT}", message.Content, 1)
+			} else {
+				history += prompt.Templates.Assistant + message.Content
+			}
+		}
+
+	}
+
+	// adding prefix for the next assistant take at the end
+	if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
+		cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
+		history += prompt.Templates.Assistant[:cut]
+	} else {
+		history += prompt.Templates.Assistant
+	}
+
+	// finally adding system prompt at the beginning
+	if system == "" {
+		system = prompt.System
+	}
+
+	// inject context vars: {DATE}, etc
+
+	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
+	system = strings.Replace(system, "{DATE}", strings.ToLower(date), 1)
+
+	if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
+		history = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1) + history
+	} else {
+		history = prompt.Templates.System + system + history
+	}
+
+	Sessions[sessionID] = history
+
+	// TODO: Use payload Model selector !!!
+	// NB! Empty prompt! Only history is filled
+	PlaceJob(jobID /* "" payload.Mode*/, "" /* payload.Model */, sessionID /* prompt */, "" /*, "" translate*/)
+
+	log.Infow("[ JOB ] New job just queued", "id", jobID, "session", "", "model", payload.Model, "prompt", prompt)
+
+	finish := time.Now().Add(time.Duration(deadline) * time.Second) // TODO: Change global type + naming?
 	output := ""
 	status := ""
+	created := int64(0)
 
-	for now.Before(finish) {
-		time.Sleep(1 * time.Second)
+	for time.Now().Before(finish) {
 
-		mu.Lock() // --
+		time.Sleep(1 * time.Second) // TODO: Right timing OR channels
+		mu.Lock()
+
+		if _, queued := Queue[jobID]; queued {
+			mu.Unlock()
+			continue
+		}
+
 		job, ok := Jobs[jobID]
 		if !ok {
-			// TODO: Error Handling
-			// TODO: Other places too
-		}
-		status = job.Status
-		//prompt := Jobs[jobID].Prompt
-		//fullPrompt := Jobs[jobID].FullPrompt // we need the full prompt with prefix and suffix here
-		output = job.Output
-		//created := Jobs[jobID].CreatedAt
-		//finished := Jobs[jobID].FinishedAt
-		//model := Jobs[jobID].Model
-		mu.Unlock() // --
-
-		if status == "finished" {
+			// TODO: Really Unexpected! Do some error handling here
+			mu.Unlock()
 			break
 		}
 
-		now = time.Now()
+		status = job.Status
+		mu.Unlock()
+
+		if status == "finished" {
+			mu.Lock()
+
+			// FIXME: Do it in proper place
+			//        Do it inside Do() function around server.go:860 line
+			// remove suffix from the output (and leave it for the session history)
+			if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
+				cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
+				ending := prompt.Templates.Assistant[cut+len("{ASSISTANT}"):]
+				job.Output, _ = strings.CutSuffix(job.Output, ending)
+			}
+
+			output = job.Output
+			created = job.CreatedAt
+
+			mu.Unlock()
+			break
+		}
 	}
 
-	// TODO: Guard with mutex Jobs[payload.ID] access
-	// TODO: Return [model] and [session] if not empty
 	return ctx.JSON(fiber.Map{
-		"id": jobID,
+		"id":      jobID,
+		"created": created,
+		"model":   payload.Model,
+
+		"usage": fiber.Map{
+			"prompt_tokens":     0, // TODO
+			"completion_tokens": 0, // TODO
+			"total_tokens":      0, // TODO
+		},
+
+		"choices": []fiber.Map{
+			{
+				"message": fiber.Map{
+					"role":    "assistant",
+					"content": output,
+				},
+				"logprobs":      nil,
+				"finish_reason": "stop",
+				"index":         0, // TODO
+			},
+		},
+
 		//"session": payload.Session,
-		//"model":   payload.Model,
 		//"prompt": payload.Prompt,
-		//"created": Jobs[payload.ID].CreatedAt,
 		//"started":  Jobs[payload.ID].StartedAt,
 		//"finished": Jobs[payload.ID].FinishedAt,
 		//"model":    "model-xx", // TODO: Real model ID
 		//"source":   "api",      // TODO: Enum for sources
 		//"status": Jobs[payload.ID].Status,
-		"output": output,
-		"status": status,
+		///// "output": output,
+		///// "status": status,
 	})
 }
 

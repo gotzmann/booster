@@ -1,8 +1,8 @@
 {
-    "id": "mac-m1-pro",
+    "id": "mac",
     "host": "localhost",
     "port": "8080",
-    "log": "collider.log",
+    "log": "booster.log",
     "deadline": 180,
     "swap": "/home/sessions",
     "debug": "",
@@ -10,7 +10,6 @@
     "pods": {
 
         "cpu": {
-
             "model": "default",
             "prompt": "default",
             "sampling": "janus",
@@ -23,11 +22,8 @@
     "models": {
 
         "default": {
-
-            "name": "Airoboros 7B",
-            "path": "~/models/7B/airoboros-7b-ggml-q4_0.bin",
-            "locale": "en_US",
-
+            "name": "Hermes 8B",
+            "path": "~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf",
             "contextSize": 2048,
             "predict": 1024
         }
@@ -36,21 +32,19 @@
     "prompts": {
 
         "default": {
-
-            "system": "<|im_start|>system\nToday is {DATE}. You are virtual assistant.<|im_end|>",
-            "user": "\n<|im_start|>user\n{USER}<|im_end|>",
-            "assistant": "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>",
-
-            "preamble": "Today is {DATE}. You are virtual assistant.",
-            "prefix": "\nUSER: ",
-            "suffix": "\nASSISTANT:"
+            "locale": "en_US",
+            "system": "Today is {DATE}. You are virtual assistant.",
+            "templates": {
+                "system": "<|im_start|>system\n{SYSTEM}<|im_end|>",
+                "user": "\n<|im_start|>user\n{USER}<|im_end|>",
+                "assistant": "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>"
+            }
         }
     },
 
     "samplings": {
 
         "janus": {
-
             "janus": 1,
             "depth": 200,
             "scale": 0.97,
@@ -59,14 +53,12 @@
         },
 
         "mirostat": {
-
             "mirostat": 0,
             "mirostatENT": 0,
             "mirostatLR": 0
         },
 
         "basic": {
-
             "temperature": 0.1,
             "top_k": 8,
             "top_p": 0.4,
