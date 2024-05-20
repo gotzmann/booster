@@ -53,7 +53,8 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 
 - [x] Rebrand project again :) **Collider => Booster**
 - [x] Complete LLaMA v3 support
-- [ ] Release OpenAI API compatible endpoints
+- [ ] Release OpenAI API Chat Completion  compatible endpoints
+- [ ] Implement Ollama compatible endpoints
 - [ ] Allow native Windows support
 - [ ] Prebuilt binaries for all platforms
 - [ ] Support LLaVA multi-modal models inference

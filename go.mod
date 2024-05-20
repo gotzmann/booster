@@ -3,17 +3,17 @@ module github.com/gotzmann/booster
 go 1.21
 
 require (
-	github.com/gofiber/fiber/v2 v2.44.0
+	github.com/gofiber/fiber/v2 v2.52.4
 	github.com/golobby/config/v3 v3.4.2
 	github.com/goodsign/monday v1.0.1
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.5.0
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/pkg/profile v1.7.0
 	github.com/x448/float16 v0.8.4
 	go.uber.org/zap v1.24.0
-	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
 )
 
 require (
@@ -24,19 +24,19 @@ require (
 	github.com/golobby/dotenv v1.3.2 // indirect
 	github.com/golobby/env/v2 v2.2.4 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/klauspost/compress v1.16.3 // indirect
-	github.com/mattn/go-isatty v0.0.18 // indirect
-	github.com/mattn/go-runewidth v0.0.14 // indirect
+	github.com/klauspost/compress v1.17.0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/philhofer/fwd v1.1.2 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/savsgio/dictpool v0.0.0-20221023140959-7bf2e61cea94 // indirect
 	github.com/savsgio/gotils v0.0.0-20230208104028-c358bd845dee // indirect
 	github.com/tinylib/msgp v1.1.8 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.45.0 // indirect
+	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/sys v0.7.0 // indirect
+	golang.org/x/sys v0.15.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

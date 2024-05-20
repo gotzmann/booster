@@ -51,6 +51,7 @@ import (
 	"unsafe"
 
 	fiber "github.com/gofiber/fiber/v2"
+	cors "github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/goodsign/monday"
 	"github.com/google/uuid"
 	colorable "github.com/mattn/go-colorable"
@@ -570,6 +571,8 @@ func Run(showStatus bool) {
 		DisableStartupMessage: true,
 	})
 
+	app.Use(cors.New()) // enable CORS
+
 	// -- Collider API
 
 	app.Post("/jobs/", NewJob)
@@ -580,6 +583,17 @@ func Run(showStatus bool) {
 	// -- OpenAI compatible API
 
 	app.Post("/v1/chat/completions", NewChatCompletions)
+
+	// -- ollama compatible API
+
+	app.Get("/api/tags", GetModels)
+
+	app.Get("/api/version", func(ctx *fiber.Ctx) error {
+		return ctx.
+			JSON(fiber.Map{
+				"version": "3.0.0", // TODO
+			})
+	})
 
 	// -- Monitoring Endpoints
 
@@ -1380,6 +1394,32 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 		//"status": Jobs[payload.ID].Status,
 		///// "output": output,
 		///// "status": status,
+	})
+}
+
+// --- GET /api/models
+
+// https://github.com/ollama/ollama/blob/main/docs/api.md#list-local-models
+func GetModels(ctx *fiber.Ctx) error {
+	models := make([]fiber.Map, 0)
+
+	for name := range Models {
+		models = append(models, fiber.Map{
+			"name": name,
+			// "modified_at": "2023-11-04T14:56:49.277302595-07:00",
+			// "size": 7365960935,
+			// "digest": "9f438cb9cd581fc025612d27f7c1a6669ff83a8bb0ed86c94fcf4c5440555697",
+			// "details": {
+			// "format": "gguf",
+			// "family": "llama",
+			// "families": null,
+			// "parameter_size": "13B",
+			// "quantization_level": "Q4_0"
+		})
+	}
+
+	return ctx.JSON(fiber.Map{
+		"models": models,
 	})
 }
 
