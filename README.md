@@ -25,6 +25,29 @@ Within first month of **[llama.go](https://github.com/gotzmann/llama.go)** devel
 
 So I've decided to start a new project where best-in-class C++ / CUDA core will be embedded into mighty Golang server ready for robust and performant inference at large scale within real production environments.
 
+## V3 Roadmap - Summer'24
+
+- [x] Rebrand project again :) **Collider => Booster**
+- [x] Complete LLaMA v3 support
+- [ ] Release OpenAI API Chat Completion  compatible endpoints
+- [ ] Implement Ollama compatible endpoints
+- [ ] Allow native Windows support
+- [ ] Prebuilt binaries for all platforms
+- [ ] Support LLaVA multi-modal models inference
+- [ ] Better test coverage
+- [ ] Perplexity computation [ useful for benchmarking ]
+
+## V2 Roadmap - Spring'24
+
+- [x] Full LLaMA v2 support
+- [x] Freeze JSON / YAML config format for Native API
+
+## V1 Roadmap - Winter'23
+
+- [x] Rebrand project: LLaMAZoo => Large Model Collider
+- [x] Is it 2023, 30th of November? First birthday of ChatGPT! **Celebrate ...**
+- [x] **... then release Collider V1** after half a year of honing it :)
+
 ## V0 Roadmap - Fall'23
 
 - [x] Draft implementation with CGO llama.cpp backend
@@ -37,29 +60,6 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 - [x] Support moderm GGUF V3 model format
 - [x] Inference for most popular LLM architectures
 - [x] Janus Sampling for better non-English text generation
-
-## V1 Roadmap - Winter'23
-
-- [x] Rebrand project: LLaMAZoo => Large Model Collider
-- [x] Is it 2023, 30th of November? First birthday of ChatGPT! **Celebrate ...**
-- [x] **... then release Collider V1** after half a year of honing it :)
-
-## V2 Roadmap - Spring'24
-
-- [x] Full LLaMA v2 support
-- [x] Freeze JSON / YAML config format for Native API
-
-## V3 Roadmap - Summer'24
-
-- [x] Rebrand project again :) **Collider => Booster**
-- [x] Complete LLaMA v3 support
-- [ ] Release OpenAI API Chat Completion  compatible endpoints
-- [ ] Implement Ollama compatible endpoints
-- [ ] Allow native Windows support
-- [ ] Prebuilt binaries for all platforms
-- [ ] Support LLaVA multi-modal models inference
-- [ ] Better test coverage
-- [ ] Perplexity computation [ useful for benchmarking ]
 
 ## How to build on Mac?
 
