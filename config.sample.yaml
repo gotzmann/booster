@@ -18,7 +18,7 @@ pods:
     sampling: janus
     threads: 8
     gpus: [ 0 ]
-    batchsize: 512
+    batch: 512
 
 # -- models
 
@@ -27,7 +27,7 @@ models:
   default:
     name: Hermes 8B
     path: ~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
-    contextsize: 8192
+    context: 8192
     predict: 1024
 
 # -- prompts

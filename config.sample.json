@@ -15,7 +15,7 @@
             "sampling": "janus",
             "threads": 8,
             "gpus": [ 0 ],
-            "batchSize": 512
+            "batch": 512
         }
     },
 
@@ -24,7 +24,7 @@
         "default": {
             "name": "Hermes 8B",
             "path": "~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf",
-            "contextSize": 2048,
+            "context": 2048,
             "predict": 1024
         }
     },

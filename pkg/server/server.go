@@ -90,10 +90,8 @@ type Model struct {
 	Path string // path to binary file
 	// Locale string
 
-	Context unsafe.Pointer // *llama.Context
-
-	ContextSize int
-	Predict     int
+	Context int
+	Predict int
 }
 
 type Templates struct {
@@ -175,7 +173,7 @@ type Config struct {
 
 type Pod struct {
 	ID  string // pod name
-	idx int    // pod index
+	idx int    // pod index [ it vary due to undeterministic Go map iteration order ]
 
 	Threads  int64  // how many threads to use
 	GPUs     []int  // GPU split in percents
@@ -183,12 +181,13 @@ type Pod struct {
 	Prompt   string // TODO: Allow any prompt on request
 	Sampling string // sampling ID within config (TODO: Allow any sampling method on request)
 
-	BatchSize int
+	Batch int
 
 	isBusy bool // do we doing some job righ not?
 	isGPU  bool // pod uses GPU resources
 
-	model *Model // real model instance
+	// model *Model // real model instance
+	Context unsafe.Pointer // *llama.Context
 }
 
 type Job struct {
@@ -365,11 +364,12 @@ func Init(
 			os.Exit(0)
 		}
 
+		Pods[pod].Context = ctx
+
 		Models[pod] = &Model{
-			Path:        model,
-			Context:     ctx,
-			ContextSize: context,
-			Predict:     predict,
+			Path:    model,
+			Context: context,
+			Predict: predict,
 		}
 
 		Prompts[pod] = &Prompt{
@@ -491,6 +491,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 
 		pod.ID = id
 		pod.idx = podNum
+		Pods[id] = pod
 
 		for _, layers := range pod.GPUs {
 			if layers > 0 {
@@ -532,9 +533,9 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			C.int(podNum),
 			C.CString(model.Path),
 			C.int(pod.Threads),
-			C.int(pod.BatchSize),
+			C.int(pod.Batch),
 			C.int(gpu1), C.int(gpu2), C.int(gpu3), C.int(gpu4), // FIXME: Slice of GPUs
-			C.int(model.ContextSize), C.int(model.Predict),
+			C.int(model.Context), C.int(model.Predict),
 			C.int32_t(sampling.Mirostat), C.float(sampling.MirostatENT), C.float(sampling.MirostatLR),
 			C.float(sampling.Temperature), C.int(sampling.TopK), C.float(sampling.TopP),
 			C.float(sampling.TypicalP),
@@ -552,9 +553,8 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 		C.init(C.CString(Swap), C.CString(Debug))
 
 		// FIXME TODO: Allow only ONE MODEL instance per ONE POD
-		model.Context = ctx
-		pod.model = model
-		Pods[id] = pod
+		pod.Context = ctx
+		// pod.model = model
 		podNum++
 	}
 }
@@ -714,7 +714,7 @@ func Do(jobID string, pod *Pod) {
 	sessionID := Jobs[jobID].SessionID
 
 	Jobs[jobID].Pod = pod
-	Jobs[jobID].Model = pod.model.ID
+	Jobs[jobID].Model = pod.Model // pod.model.ID
 	Jobs[jobID].StartedAt = now
 
 	// NB! Prompt is empty when formatted request is placed in history via Chat Completion API and there no need in formatting it again
@@ -736,7 +736,7 @@ func Do(jobID string, pod *Pod) {
 			// -- null the session when near the context limit (allow up to 1/2 of max predict size)
 			// TODO: We need a better (smart) context data handling here
 
-			if (TokensCount[sessionID] + (pod.model.Predict / 2) + 4) > pod.model.ContextSize {
+			if (TokensCount[sessionID] + (Models[pod.Model].Predict /*pod.model.Predict*/ / 2) + 4) > /*pod.model.ContextSize*/ Models[pod.Model].Context {
 
 				Sessions[sessionID] = ""
 				TokensCount[sessionID] = 0
@@ -821,7 +821,7 @@ func Do(jobID string, pod *Pod) {
 	// llama_load_session_file_internal : model hparams didn't match from session file!
 	// do_inference: error: failed to load session file './session.data.bin'
 
-	outputTokenCount := C.doInference(C.int(pod.idx), pod.model.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
+	outputTokenCount := C.doInference(C.int(pod.idx), pod.Context /*pod.model.Context*/, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
 	result := C.GoString(C.status(C.CString(jobID)))
 	promptTokenCount := C.getPromptTokenCount(C.CString(jobID))
 
