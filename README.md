@@ -134,19 +134,19 @@ pods:
     sampling: janus
     threads: 1
     gpus: [ 100 ]
-    batchsize: 512
+    batch: 512
 
 models:
   hermes:
     name: Hermes2 Pro 8B
     path: ~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
-    contextsize: 8192
+    context: 8192
     predict: 1024
 
 prompts:
 
   chat:
-    locale: ru_RU
+    locale: en_US
     system: "<|im_start|>system\nToday is {DATE}. You are virtual assistant. Please answer the question.<|im_end|>"
     user: "\n<|im_start|>user\n{USER}<|im_end|>"
     assistant: "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>"

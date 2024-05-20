@@ -327,7 +327,7 @@ func Run() {
 						job.ID,
 						job.Status,
 						podID,
-						job.Model,
+						job.ModelID,
 						C.getPromptTokenCount(C.CString(job.ID)),
 						job.OutputTokenCount,
 						job.PromptEval,

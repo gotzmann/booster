@@ -205,8 +205,8 @@ type Job struct {
 
 	Seed int64 // TODO: Store seed
 
-	//Mode  string
-	Model string // TODO: Store model ID, "" for default should be then replaced
+	PromptID string
+	ModelID  string
 
 	PreambleTokenCount int64
 	PromptTokenCount   int64 // total tokens processed (icnluding prompt)
@@ -706,6 +706,7 @@ func Do(jobID string, pod *Pod) {
 	defer runtime.GC() // TODO: GC or not GC?
 
 	now := time.Now().UnixMilli()
+	job := Jobs[jobID]
 
 	mu.Lock() // --
 
@@ -713,9 +714,10 @@ func Do(jobID string, pod *Pod) {
 	fullPrompt := ""
 	sessionID := Jobs[jobID].SessionID
 
-	Jobs[jobID].Pod = pod
-	Jobs[jobID].Model = pod.Model // pod.model.ID
-	Jobs[jobID].StartedAt = now
+	job.Pod = pod
+	job.ModelID = pod.Model
+	job.PromptID = pod.Prompt
+	job.StartedAt = now
 
 	// NB! Prompt is empty when formatted request is placed in history via Chat Completion API and there no need in formatting it again
 
@@ -771,8 +773,8 @@ func Do(jobID string, pod *Pod) {
 			user = prompt.Templates.User + Jobs[jobID].Prompt
 		}
 
+		// adding template prefix for next assistant take at the end
 		if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-			// adding prefix for next assistant take at the end
 			cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
 			assistant = prompt.Templates.Assistant[:cut]
 		} else {
@@ -836,31 +838,19 @@ func Do(jobID string, pod *Pod) {
 
 	// Save exact result as history for future session work if storage enabled
 	if sessionID != "" {
-		mu.Lock() // --
+		mu.Lock()
 		Sessions[sessionID] = result
 		TokensCount[sessionID] += int(outputTokenCount)
-		mu.Unlock() // --
+		mu.Unlock()
 	}
-
-	//if strings.HasPrefix(result, fullPrompt) {
-	//	result = result[len(fullPrompt):]
-	//}
-	//result = strings.Trim(result, "\n ")
-	//Colorize("\n=== RESULT AFTER ===\n%s\n", result)
 
 	// NB! Do show nothing if output is shorter than the whole history before
 	if len(result) <= len(fullPrompt) {
-		//mt.Printf("\n===> ZEROING")
 		result = ""
 	} else {
 		result = result[len(fullPrompt):]
 		result = strings.Trim(result, "\n ")
 	}
-
-	// FIXME: TODO: Remove assistant suffix <|im_end|> here, not in the Completion API Handler
-
-	//fmt.Printf("\n\nRESULT: [[[%s]]]", result)
-	//fmt.Printf("\n\nPROMPT: [[[%s]]]", fullPrompt)
 
 	now = time.Now().UnixMilli()
 	promptEval := int64(C.promptEval(C.CString(jobID)))
@@ -873,6 +863,13 @@ func Do(jobID string, pod *Pod) {
 		Jobs[jobID].Status = "finished"
 	}
 
+	// remove suffix like <|im_end|> from the output BUT leave it for the session history
+	cut := strings.Index(Prompts[job.PromptID].Templates.Assistant, "{ASSISTANT}")
+	if cut >= 0 {
+		ending := Prompts[job.PromptID].Templates.Assistant[cut+len("{ASSISTANT}"):]
+		result, _ = strings.CutSuffix(result, ending)
+	}
+
 	// FIXME ASAP : Log all meaninful details !!!
 	Jobs[jobID].PromptTokenCount = int64(promptTokenCount)
 	Jobs[jobID].OutputTokenCount = int64(outputTokenCount)
@@ -880,8 +877,8 @@ func Do(jobID string, pod *Pod) {
 	Jobs[jobID].TokenEval = eval
 	Jobs[jobID].Output = result
 	Jobs[jobID].Pod = nil
-	pod.isBusy = false
 
+	pod.isBusy = false
 	mu.Unlock() // --
 
 	// NB! Avoid division by zero
@@ -918,11 +915,11 @@ func PlaceJob(jobID /*mode,*/, model, sessionID, prompt /*, translate*/ string) 
 
 	Jobs[jobID] = &Job{
 		ID:        jobID,
-		Model:     model,
+		ModelID:   model,
 		SessionID: sessionID,
 		Prompt:    prompt,
 		// TODO: Sampling?
-		// Translate: translate,
+		// TODO: PromptID?
 		Status:    "queued",
 		CreatedAt: timing,
 	}
@@ -1264,17 +1261,6 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 		locale = prompt.Locale
 	}
 
-	// try to find system prompt or use one from template
-
-	//for _, message := range payload.Messages {
-	//	if message.Role == "system" {
-	//		system = message.Content
-	//		break
-	//	}
-	//}
-
-	///// prompt := payload.Messages[len(payload.Messages)-1].Content // TODO: Validate the last message role == "user"
-
 	var system, history string
 	for _, message := range payload.Messages {
 
@@ -1305,13 +1291,12 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 		history += prompt.Templates.Assistant
 	}
 
-	// finally adding system prompt at the beginning
+	// finally prepend system prompt at the beginning
 	if system == "" {
 		system = prompt.System
 	}
 
 	// inject context vars: {DATE}, etc
-
 	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
 	system = strings.Replace(system, "{DATE}", strings.ToLower(date), 1)
 
@@ -1352,26 +1337,15 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 		}
 
 		status = job.Status
-		mu.Unlock()
-
 		if status == "finished" {
-			mu.Lock()
-
-			// FIXME: Do it in proper place
-			//        Do it inside Do() function around server.go:860 line
-			// remove suffix from the output (and leave it for the session history)
-			if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-				cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
-				ending := prompt.Templates.Assistant[cut+len("{ASSISTANT}"):]
-				job.Output, _ = strings.CutSuffix(job.Output, ending)
-			}
-
 			output = job.Output
 			created = job.CreatedAt
 
 			mu.Unlock()
 			break
 		}
+
+		mu.Unlock()
 	}
 
 	return ctx.JSON(fiber.Map{
