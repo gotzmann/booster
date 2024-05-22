@@ -198,9 +198,9 @@ llama_token llama_sample_token(
 // Shared map for storing pairs of [UUID] -> [Output] while processing within C++ side
 // After returning final result to Go side, we can safely remove the current result from the map
 
-/*mutable*/ std::shared_mutex mutex;
+std::shared_mutex mutex;
 
-// NB! Always use mutex to access map  thread-safe way
+// NB! Always use mutex to access map thread-safe way
 
 // https://www.geeksforgeeks.org/map-vs-unordered_map-c/
 // https://github.com/bdasgupta02/dynamap/issues/1
@@ -708,20 +708,6 @@ int64_t do_inference(
             if (!sparams.janus) {
                 id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
             } else {
-                /* Collider
-                struct llama_context * guidance = NULL;
-                struct llama_grammar * grammar = NULL;
-                llama_token id = llama_sample_token(
-                    ctx,
-                    guidance,
-                    grammar,
-                    ::sparams[idx],
-                    last_tokens,
-                    candidates,
-                    embd_inp.size(),
-                    n_past / * - n_consumed * /,
-                    ::params[idx].n_predict); */
-
                 struct llama_context * guidance = NULL;
                 struct llama_grammar * grammar = NULL;
                 id = llama_sample_token(
@@ -762,11 +748,7 @@ int64_t do_inference(
             }
         }
 
-        // if not currently processing queued inputs;
-        ///// if ((int) embd_inp.size() <= n_consumed) {
-        ///// }
-
-        // -- Collider: update job text buffer
+        // -- update job text buffer
         mutex.lock();
         for (auto id : embd) {
             //if (id == BOS || id == EOS) { fprintf(stderr, "\n\n... SKIPPING BOS or EOS ..."); continue; };
@@ -776,8 +758,6 @@ int64_t do_inference(
         mutex.unlock();
 
         // end of text token
-        // if (!embd.empty() && embd.back() == llama_token_eos(model) && !(params.instruct || params.interactive || params.chatml)) {
-        // WAS if (!embd.empty() && embd.back() == llama_token_eos(model)) {
         if (!embd.empty() && llama_token_is_eog(model, embd.back())) {
             break;
         }
@@ -798,40 +778,40 @@ int64_t do_inference(
     return timings.n_p_eval + timings.n_eval;
 }
 
-// TODO: Safer lock/unlock - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
+// lock() is safer that lock_shared() - https://stackoverflow.com/questions/59809405/shared-mutex-in-c
 
 const char * statusCPP(const std::string & jobID) {
-    mutex.lock_shared();
+    mutex.lock();
     const char * res = jobs[jobID].c_str();
-    mutex.unlock_shared();
+    mutex.unlock();
     return res;
 }
 
 int64_t promptEvalCPP(const std::string & jobID) {
-    mutex.lock_shared();
+    mutex.lock();
     int64_t res = promptEvals[jobID];
-    mutex.unlock_shared();
+    mutex.unlock();
     return res;
 }
 
 int64_t getPromptTokenCountCPP(const std::string & jobID) {
-    mutex.lock_shared();
+    mutex.lock();
     int64_t res = promptTokenCount[jobID];
-    mutex.unlock_shared();
+    mutex.unlock();
     return res;
 }
 
 int64_t timingCPP(const std::string & jobID) {
-    mutex.lock_shared();
+    mutex.lock();
     int64_t res = ::timings[jobID];
-    mutex.unlock_shared();
+    mutex.unlock();
     return res;
 }
 
 uint32_t getSeedCPP(const std::string & jobID) {
-    mutex.lock_shared();
+    mutex.lock();
     uint32_t res = ::seeds[jobID];
-    mutex.unlock_shared();
+    mutex.unlock();
     return res;
 }
 

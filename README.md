@@ -10,14 +10,14 @@
 ## Superpowers
 
 - Built with performance and scaling in mind **thanks Golang and C++**
-- **No more problems with Python** dependencies and broken compatibility
-- **Most of modern CPUs are supported**: any Intel/AMD x64 platofrms, server and Mac ARM64
-- GPUs supported as well: **Nvidia CUDA, Apple Metal, OpenCL** cards
+- **No more problems with Python** dependencies
+- **All modern CPUs are supported**: any Intel or AMD x64 platofrms, server ARM64 and Apple Silicon
+- GPUs supported as well: **Nvidia CUDA, Apple Metal, even OpenCL cards**
 - Split really big models between a number of GPU (**warp LLaMA 70B with 2x RTX 3090**)
-- Not bad performance on shy CPU machines, **fast as hell inference on monsters with beefy GPUs**
+- Great performance on CPU only machines, **fast as hell inference on monsters with beefy GPUs**
 - Both regular FP16/FP32 models and their quantised versions are supported - **4-bit really rocks!**
-- **Popular LLM architectures** already there: **LLaMA**, Starcoder, Baichuan, Mistral, etc...
-- **Special bonus: proprietary Janus Sampling** for code generation and non English languages
+- **Popular LLM architectures** already there: **LLaMA**, Mistral, Gemma, etc...
+- **Special bonus: SOTA Janus Sampling implementation** for code generation and non English languages
 
 ## Motivation
 
@@ -29,13 +29,17 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 
 - [x] Rebrand project again :) **Collider => Booster**
 - [x] Complete LLaMA v3 support
-- [ ] Release OpenAI API Chat Completion  compatible endpoints
-- [ ] Implement Ollama compatible endpoints
+- [x] OpenAI API Chat Completion compatible endpoints
+- [ ] Ollama compatible endpoints
+- [ ] Interactive mode for chatting from command line
+- [ ] Broader integration with Ollama ecosystem
+- [ ] Smarter context shrinking when reaching its limits chatting with model
+- [ ] Embedded web UI with no external dependencies
 - [ ] Allow native Windows support
 - [ ] Prebuilt binaries for all platforms
 - [ ] Support LLaVA multi-modal models inference
-- [ ] Better test coverage
-- [ ] Perplexity computation [ useful for benchmarking ]
+- [ ] Better code test coverage
+- [ ] Perplexity computation useful for benchmarking
 
 ## V2 Roadmap - Spring'24
 

@@ -22,6 +22,7 @@ int64_t getPromptTokenCount(char * jobID);
 import "C"
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -34,6 +35,7 @@ import (
 
 	config "github.com/golobby/config/v3"
 	"github.com/golobby/config/v3/pkg/feeder"
+	"github.com/google/uuid"
 	flags "github.com/jessevdk/go-flags"
 	colorable "github.com/mattn/go-colorable"
 	"github.com/mitchellh/colorstring"
@@ -215,31 +217,30 @@ func Run() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// --- Listen for OS signals in background
+	// --- Listen for OS signals in background when Server mode
 
 	go func() {
-		select {
-		case <-signalChan:
 
-			// -- break execution immediate when DEBUG
+		<-signalChan
 
-			if opts.Debug {
-				Colorize("\n[light_magenta][ STOP ][light_blue] Immediate shutdown...\n\n")
-				log.Info("[STOP] Immediate shutdown...")
-				os.Exit(0)
-			}
+		// -- break execution immediate when DEBUG
 
-			// -- wait while job will be done otherwise
+		if opts.Debug || !opts.Server {
+			Colorize("\n[light_magenta][ STOP ][light_blue] Immediate shutdown...\n\n")
+			log.Info("[STOP] Immediate shutdown...")
+			os.Exit(0)
+		}
 
-			server.GoShutdown = true
-			Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
-			log.Info("[STOP] Graceful shutdown...")
-			pending := len(server.Queue)
-			if pending > 0 {
-				pending += 1 /*conf.Pods*/ // TODO: Allow N pods
-				Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
-				log.Infof("[STOP] Wait while [ %d ] requests will be finished...", pending)
-			}
+		// -- wait while job will be done otherwise
+
+		server.GoShutdown = true
+		Colorize("\n[light_magenta][ STOP ][light_blue] Graceful shutdown...")
+		log.Info("[STOP] Graceful shutdown...")
+		pending := len(server.Queue)
+		if pending > 0 {
+			pending += 1 /*conf.Pods*/ // TODO: Allow N pods
+			Colorize("\n[light_magenta][ STOP ][light_blue] Wait while [light_magenta][ %d ][light_blue] requests will be finished...", pending)
+			log.Infof("[STOP] Wait while [ %d ] requests will be finished...", pending)
 		}
 	}()
 
@@ -265,10 +266,8 @@ func Run() {
 		server.Init(
 			opts.Host, opts.Port,
 			log,
-			/*opts.Pods*/ 1, opts.Threads, // TODO: Support N pods
-			//opts.GPUs, opts.GPULayers,
-			0, 0, 0, 0, // TODO: Support GPUs from command-line
-			//NUMA, LowVRAM,
+			1, opts.Threads,
+			0, 0, 0, 0,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
 			int(opts.Context), int(opts.Predict),
@@ -279,8 +278,74 @@ func Run() {
 			opts.Deadline,
 			opts.Seed,
 			opts.Swap,
-			"", // TODO: Debug Level
+			"",
 		)
+	}
+
+	// --- Interactive mode for chatting with models from command line
+
+	if !opts.Server {
+		go func() {
+
+			time.Sleep(1 * time.Second)
+			sessionID := uuid.New().String()
+			Colorize("\n[magenta][ INIT ][light_blue] Interactive mode, enter your prompts and commands below")
+
+			for {
+
+				Colorize("\n\n[magenta]>>> [light_magenta]")
+				prompt, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+
+				jobID := uuid.New().String()
+				server.PlaceJob(jobID, "" /* payload.Model */, sessionID, prompt)
+
+				prevOutput := ""
+				history := server.Sessions[sessionID]
+
+				Colorize("\n[blue]<<< [light_blue]")
+
+				for {
+
+					time.Sleep(1 * time.Second)
+					server.Mutex.Lock()
+
+					// history was shrunk after job really started and detected that context is too long
+					if server.Jobs[jobID].Status != "finished" && history != server.Sessions[sessionID] {
+						history = server.Sessions[sessionID]
+					}
+
+					output := C.GoString(C.status(C.CString(jobID)))
+					// waiting while prompt history will be processed completely
+					if server.Jobs[jobID].Status == "processing" && len(output) < len(server.Jobs[jobID].FullPrompt) {
+						server.Mutex.Unlock()
+						continue
+					}
+					output, _ = strings.CutPrefix(output, server.Jobs[jobID].FullPrompt)
+
+					if server.Jobs[jobID].Status == "finished" {
+						assistantTemplate := server.Prompts[server.Jobs[jobID].PromptID].Templates.Assistant
+						if strings.Contains(assistantTemplate, "{ASSISTANT}") {
+							cut := strings.Index(assistantTemplate, "{ASSISTANT}") + len("{ASSISTANT}")
+							assistantSuffix := assistantTemplate[cut:]
+							output, _ = strings.CutSuffix(output, assistantSuffix)
+						}
+					}
+
+					if len(output) > len(prevOutput) {
+						Colorize("[light_blue]%s", output[len(prevOutput):])
+						prevOutput = output
+					}
+
+					if server.Jobs[jobID].Status == "finished" {
+						server.Mutex.Unlock()
+						break
+					}
+
+					server.Mutex.Unlock()
+				}
+			}
+
+		}()
 	}
 
 	// --- Debug output of results and stop after 1 hour in case of running withous --server flag
@@ -311,12 +376,11 @@ func Run() {
 				// TODO: Show jobs in timing order (need extra slice)
 				for _, job := range server.Jobs {
 
-					//var output string
 					output := C.GoString(C.status(C.CString(job.ID)))
 					// FIXME: Avoid LLaMA v2 leading space
-					if len(output) > 0 && output[0] == ' ' {
-						output = output[1:]
-					}
+					//if len(output) > 0 && output[0] == ' ' {
+					//	output = output[1:]
+					//}
 
 					podID := "--"
 					if job.Pod != nil {
@@ -349,7 +413,12 @@ func Run() {
 		}()
 	}
 
-	server.Run(!opts.Server || opts.Debug)
+	if opts.Server {
+		server.Run(!opts.Server || opts.Debug)
+	} else {
+		go server.Engine(nil)
+		<-signalChan
+	}
 }
 
 func parseOptions() *Options {
@@ -362,15 +431,19 @@ func parseOptions() *Options {
 		os.Exit(0)
 	}
 
-	if opts.Server == false && opts.Model == "" {
-		Colorize("\n[magenta][ ERROR ][white] Please specify correct model path with [light_magenta]--model[white] parameter!\n\n")
-		os.Exit(0)
-	}
+	/*
+		FIXME: Do we need these checks when there INTERACTIVE mode by default?
 
-	if opts.Server == false && opts.Prompt == "" && len(os.Args) > 1 && os.Args[1] != "load" {
-		Colorize("\n[magenta][ ERROR ][white] Please specify correct prompt with [light_magenta]--prompt[white] parameter!\n\n")
-		os.Exit(0)
-	}
+		if opts.Server == false && opts.Model == "" {
+			Colorize("\n[magenta][ ERROR ][white] Please specify correct model path with [light_magenta]--model[white] parameter!\n\n")
+			os.Exit(0)
+		}
+
+		if opts.Server == false && opts.Prompt == "" && len(os.Args) > 1 && os.Args[1] != "load" {
+			Colorize("\n[magenta][ ERROR ][white] Please specify correct prompt with [light_magenta]--prompt[white] parameter!\n\n")
+			os.Exit(0)
+		}
+	*/
 
 	// Allow to use ALL cores for the program itself and CLI specified number of cores for the parallel tensor math
 	// TODO Optimize default settings for CPUs with P and E cores like M1 Pro = 8 performant and 2 energy cores
@@ -506,13 +579,9 @@ func showLogo(model, sampling string) {
 
 	Colorize(logoColored)
 
-	// Colorize("\n\n  [magenta]▒▒▒[light_magenta] [ Booster v" + VERSION +
-	//	" ] [light_blue][ The Open Platform for serving Large Language Models ] [magenta]▒▒▒\n")
-
 	Colorize("\n\n  [magenta]===[light_magenta] [ Booster v" + VERSION +
 		" ] [light_blue][ The Open Platform for serving Large Language Models ] [magenta]===\n")
 
 	Colorize("\n  [magenta][    model ][light_magenta] " + model)
 	Colorize("\n  [blue][ sampling ][light_blue] " + sampling + "\n")
-
 }

@@ -58,8 +58,6 @@ import (
 	"github.com/mitchellh/colorstring"
 	"go.uber.org/zap"
 
-	// "github.com/elliotchance/orderedmap"
-
 	"github.com/gotzmann/booster/pkg/llama"
 	"github.com/gotzmann/booster/pkg/ml"
 )
@@ -235,10 +233,9 @@ var (
 	GoShutdown bool // signal the service should go graceful shutdown
 
 	// Data for running one model from CLI without pods instantiating
-	vocab  *ml.Vocab
-	model  *llama.Model
-	ctx    *llama.Context
-	params *llama.ModelParams
+	vocab *ml.Vocab
+	model *llama.Model
+	ctx   *llama.Context
 
 	// NB! All vars below are int64 to be used as atomic counters
 	MaxThreads     int64 // used for PROD mode // TODO: detect hardware abilities automatically
@@ -249,7 +246,7 @@ var (
 	Swap        string // path to store session files
 	MaxSessions int    // how many sessions allowed per server, remove extra session files
 
-	mu sync.Mutex // guards any Jobs change
+	Mutex sync.Mutex // guards any Jobs change
 
 	Jobs  map[string]*Job     // all seen jobs in any state
 	Queue map[string]struct{} // queue of job IDs waiting for start
@@ -260,24 +257,18 @@ var (
 	Samplings map[string]*Sampling
 
 	Sessions    map[string]string // Session store ID => HISTORY of continuous dialog with user (and the state is on the disk)
-	TokensCount map[string]int    // Store tokens within each session ID => COUNT to prevent growth over context limit
+	TokensCount map[string]int    // Store tokens generated within each SESSIONID => COUNT to prevent growth over context limit
 
 	log      *zap.SugaredLogger
 	deadline int64
 )
 
 func init() {
-	Jobs = make(map[string]*Job, 1024)       // 1024 is like some initial space to grow
-	Queue = make(map[string]struct{}, 1024)  // same here
-	Sessions = make(map[string]string, 1024) // same here
-	TokensCount = make(map[string]int, 1024) // same here
-
-	// FIXME: ASAP Check those are set from within Init()
-	// --- set model parameters from user settings and safe defaults
-	params = &llama.ModelParams{
-		Seed:       -1,
-		MemoryFP16: true,
-	}
+	// Limit of 100 was chosen as initial space to grow
+	Jobs = make(map[string]*Job, 100)
+	Queue = make(map[string]struct{}, 100)
+	Sessions = make(map[string]string, 100)
+	TokensCount = make(map[string]int, 100)
 }
 
 // Init allocates contexts for independent pods
@@ -302,7 +293,7 @@ func Init(
 	log = zapLog
 	deadline = deadlineIn
 	RunningPods = 0
-	params.CtxSize = uint32(context)
+	//params.CtxSize = uint32(context)
 
 	Pods = make(map[string]*Pod, pods)
 	Models = make(map[string]*Model, 1)       // TODO: N
@@ -565,40 +556,40 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 func Run(showStatus bool) {
 
 	app := fiber.New(fiber.Config{
-		// Prefork:   true,
-		Immutable: true,
-
+		Immutable:             true,
 		DisableStartupMessage: true,
 	})
 
 	app.Use(cors.New()) // enable CORS
 
-	// -- Collider API
+	WireRoutes(app)
+	/*
+		// -- Collider API
 
-	app.Post("/jobs/", NewJob)
-	app.Delete("/jobs/:id", StopJob)
-	app.Get("/jobs/status/:id", GetJobStatus)
-	app.Get("/jobs/:id", GetJob)
+		app.Post("/jobs/", NewJob)
+		app.Delete("/jobs/:id", StopJob)
+		app.Get("/jobs/status/:id", GetJobStatus)
+		app.Get("/jobs/:id", GetJob)
 
-	// -- OpenAI compatible API
+		// -- OpenAI compatible API
 
-	app.Post("/v1/chat/completions", NewChatCompletions)
+		app.Post("/v1/chat/completions", NewChatCompletions)
 
-	// -- ollama compatible API
+		// -- ollama compatible API
 
-	app.Get("/api/tags", GetModels)
+		app.Get("/api/tags", GetModels)
 
-	app.Get("/api/version", func(ctx *fiber.Ctx) error {
-		return ctx.
-			JSON(fiber.Map{
-				"version": "3.0.0", // TODO
-			})
-	})
+		app.Get("/api/version", func(ctx *fiber.Ctx) error {
+			return ctx.
+				JSON(fiber.Map{
+					"version": "3.0.0", // TODO
+				})
+		})
 
-	// -- Monitoring Endpoints
+		// -- Monitoring Endpoints
 
-	app.Get("/health", GetHealth)
-
+		app.Get("/health", GetHealth)
+	*/
 	go Engine(app)
 
 	if showStatus {
@@ -621,7 +612,9 @@ func Engine(app *fiber.App) {
 	for {
 
 		if GoShutdown && len(Queue) == 0 && RunningThreads == 0 {
-			app.Shutdown()
+			if app != nil {
+				app.Shutdown()
+			}
 			break
 		}
 
@@ -631,41 +624,20 @@ func Engine(app *fiber.App) {
 
 		for jobID := range Queue {
 
-			// TODO: MaxThreads instead of MaxPods
-			// FIXME: Move to outer loop?
-
-			// simple mode with settings from CLI
-			//if MaxPods > 0 && RunningPods >= MaxPods {
-			//	continue
-			//}
-
-			// production mode with settings from config file
-			// TODO: >= MaxThreads + pod.Model.Threads
-			// TODO: Think of parallel GPU and CPU execution
 			if RunningThreads >= MaxThreads {
-				// continue
 				break
 			}
-
-			// TODO: Better to store model name right there with JobID to avoid locking
-			/////mu.Lock()
-			/////model := Jobs[jobID].Model
-			/////mu.Unlock()
-
-			/////if MaxThreads > 0 && len(IdlePods[model]) == 0 {
-			/////	continue
-			/////}
 
 			// -- move job from waiting queue to processing and assign it pod from idle pool
 			// TODO: Use different mutexes for Jobs map, Pods map and maybe for atomic counters
 
 			now := time.Now().UnixMilli()
-			mu.Lock() // -- locked
+			Mutex.Lock() // -- locked
 
 			// ignore jobs placed more than [ deadline ] seconds ago
 			if deadline > 0 && (now-Jobs[jobID].CreatedAt) > deadline*1000 {
 				delete(Jobs, jobID)
-				mu.Unlock()
+				Mutex.Unlock()
 				log.Infow("[ JOB ] Job was removed from queue after deadline", zap.String("jobID", jobID), zap.Int64("deadline", deadline))
 				continue
 			}
@@ -691,7 +663,7 @@ func Engine(app *fiber.App) {
 			if usePod == nil {
 				// FIXME: Something really wrong going here! We need to fix this ASAP
 				// TODO: Log this case!
-				mu.Unlock()
+				Mutex.Unlock()
 				// Colorize("\n[magenta][ INFO ][white] There no idle pods to do the job!")
 				break
 			}
@@ -704,7 +676,7 @@ func Engine(app *fiber.App) {
 			atomic.AddInt64(&RunningPods, 1)
 			atomic.AddInt64(&RunningThreads, usePod.Threads)
 
-			mu.Unlock() // -- unlocked
+			Mutex.Unlock() // -- unlocked
 
 			go Do(jobID, usePod) // TODO: Choose pod depending on model requested
 		}
@@ -720,52 +692,53 @@ func Do(jobID string, pod *Pod) {
 	defer runtime.GC() // TODO: GC or not GC?
 
 	now := time.Now().UnixMilli()
-	job := Jobs[jobID]
 
-	mu.Lock() // --
+	Mutex.Lock() // --
+
+	job := Jobs[jobID]
 
 	prompt := ""
 	fullPrompt := ""
-	sessionID := Jobs[jobID].SessionID
+	sessionID := job.SessionID
 
 	job.Pod = pod
-	job.ModelID = pod.Model
-	job.PromptID = pod.Prompt
+	job.ModelID = pod.Model   // TODO: Assign if empty
+	job.PromptID = pod.Prompt // TODO: Assign if empty
 	job.StartedAt = now
+
+	// -- check if we are possibly going to grow out of context limit and need to drop session data
+
+	if sessionID != "" {
+
+		///// var SessionFile string
+
+		///// if !pod.isGPU && Swap != "" && sessionID != "" {
+		///// 	SessionFile = Swap + "/" + sessionID
+		///// }
+
+		// -- null the session when near the context limit (allow up to 1/2 of max predict size)
+		// TODO: We need a better (smart) context data handling here
+
+		if (TokensCount[sessionID] + Models[job.ModelID].Predict/2) > Models[job.ModelID].Context {
+
+			Sessions[sessionID] = ""
+			TokensCount[sessionID] = 0
+
+			///// if !pod.isGPU && SessionFile != "" {
+			///// 	os.Remove(SessionFile)
+			///// }
+		}
+	}
 
 	// NB! Prompt is empty when formatted request is placed in history via Chat Completion API and there no need in formatting it again
 
-	if Jobs[jobID].Prompt == "" {
+	if job.Prompt == "" {
 		fullPrompt = Sessions[sessionID]
 	} else {
 
-		// -- check if we are possibly going to grow out of context limit [ 2048 tokens ] and need to drop session data
-
-		if sessionID != "" {
-
-			var SessionFile string
-
-			if !pod.isGPU && Swap != "" && sessionID != "" {
-				SessionFile = Swap + "/" + sessionID
-			}
-
-			// -- null the session when near the context limit (allow up to 1/2 of max predict size)
-			// TODO: We need a better (smart) context data handling here
-
-			if (TokensCount[sessionID] + (Models[pod.Model].Predict /*pod.model.Predict*/ / 2) + 4) > /*pod.model.ContextSize*/ Models[pod.Model].Context {
-
-				Sessions[sessionID] = ""
-				TokensCount[sessionID] = 0
-
-				if !pod.isGPU && SessionFile != "" {
-					os.Remove(SessionFile)
-				}
-			}
-		}
-
-		prompt, ok := Prompts[pod.Prompt]
+		prompt, ok := Prompts[job.PromptID]
 		if !ok {
-			Colorize("\n[magenta][ ERROR ][white] Error while getting prompt [magenta][ %s ]\n\n", pod.Prompt)
+			Colorize("\n[magenta][ ERROR ][white] Error while getting prompt [magenta][ %s ]\n\n", job.PromptID)
 			os.Exit(0)
 		}
 
@@ -782,9 +755,9 @@ func Do(jobID string, pod *Pod) {
 		var user, assistant string
 
 		if strings.Contains(prompt.Templates.User, "{USER}") {
-			user = strings.Replace(prompt.Templates.User, "{USER}", Jobs[jobID].Prompt, 1)
+			user = strings.Replace(prompt.Templates.User, "{USER}", job.Prompt, 1)
 		} else {
-			user = prompt.Templates.User + Jobs[jobID].Prompt
+			user = prompt.Templates.User + job.Prompt
 		}
 
 		// adding template prefix for next assistant take at the end
@@ -803,10 +776,10 @@ func Do(jobID string, pod *Pod) {
 			fullPrompt = history + user + assistant
 		}
 
-		Jobs[jobID].FullPrompt = fullPrompt
+		job.FullPrompt = fullPrompt
 	}
 
-	mu.Unlock() // --
+	Mutex.Unlock() // --
 
 	// FIXME: Do not work as expected. Empty file rise CGO exception here
 	//        error loading session file: unexpectedly reached end of file
@@ -837,7 +810,7 @@ func Do(jobID string, pod *Pod) {
 	// llama_load_session_file_internal : model hparams didn't match from session file!
 	// do_inference: error: failed to load session file './session.data.bin'
 
-	outputTokenCount := C.doInference(C.int(pod.idx), pod.Context /*pod.model.Context*/, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
+	outputTokenCount := C.doInference(C.int(pod.idx), pod.Context, C.CString(jobID), C.CString(sessionID), C.CString(fullPrompt))
 	result := C.GoString(C.status(C.CString(jobID)))
 	promptTokenCount := C.getPromptTokenCount(C.CString(jobID))
 
@@ -850,12 +823,12 @@ func Do(jobID string, pod *Pod) {
 		result = result[1:]
 	}
 
-	// Save exact result as history for future session work if storage enabled
+	// Save exact result as history for the future session work if storage enabled
 	if sessionID != "" {
-		mu.Lock()
+		Mutex.Lock()
 		Sessions[sessionID] = result
-		TokensCount[sessionID] += int(outputTokenCount)
-		mu.Unlock()
+		TokensCount[sessionID] = int(outputTokenCount)
+		Mutex.Unlock()
 	}
 
 	// NB! Do show nothing if output is shorter than the whole history before
@@ -870,11 +843,11 @@ func Do(jobID string, pod *Pod) {
 	promptEval := int64(C.promptEval(C.CString(jobID)))
 	eval := int64(C.timing(C.CString(jobID)))
 
-	mu.Lock() // --
+	Mutex.Lock() // --
 
-	Jobs[jobID].FinishedAt = now
-	if Jobs[jobID].Status != "stopped" {
-		Jobs[jobID].Status = "finished"
+	job.FinishedAt = now
+	if job.Status != "stopped" {
+		job.Status = "finished"
 	}
 
 	// remove suffix like <|im_end|> from the output BUT leave it for the session history
@@ -885,15 +858,15 @@ func Do(jobID string, pod *Pod) {
 	}
 
 	// FIXME ASAP : Log all meaninful details !!!
-	Jobs[jobID].PromptTokenCount = int64(promptTokenCount)
-	Jobs[jobID].OutputTokenCount = int64(outputTokenCount)
-	Jobs[jobID].PromptEval = promptEval
-	Jobs[jobID].TokenEval = eval
-	Jobs[jobID].Output = result
-	Jobs[jobID].Pod = nil
+	job.PromptTokenCount = int64(promptTokenCount)
+	job.OutputTokenCount = int64(outputTokenCount)
+	job.PromptEval = promptEval
+	job.TokenEval = eval
+	job.Output = result
+	job.Pod = nil
 
 	pod.isBusy = false
-	mu.Unlock() // --
+	Mutex.Unlock() // --
 
 	// NB! Avoid division by zero
 	var inTPS, outTPS int64
@@ -921,11 +894,11 @@ func Do(jobID string, pod *Pod) {
 
 // --- Place new job into queue
 
-func PlaceJob(jobID /*mode,*/, model, sessionID, prompt /*, translate*/ string) {
+func PlaceJob(jobID, model, sessionID, prompt string) {
 
 	timing := time.Now().UnixMilli()
 
-	mu.Lock()
+	Mutex.Lock()
 
 	Jobs[jobID] = &Job{
 		ID:        jobID,
@@ -940,7 +913,7 @@ func PlaceJob(jobID /*mode,*/, model, sessionID, prompt /*, translate*/ string) 
 
 	Queue[jobID] = struct{}{}
 
-	mu.Unlock()
+	Mutex.Unlock()
 }
 
 // --- POST /jobs
@@ -997,15 +970,15 @@ func NewJob(ctx *fiber.Ctx) error {
 			JSON(fiber.Map{"error": "wrong request ID, please use UUIDv4 format"})
 	}
 
-	mu.Lock()
+	Mutex.Lock()
 	if _, ok := Jobs[payload.ID]; ok {
-		mu.Unlock()
+		Mutex.Unlock()
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			// SendString("{\n\"error\": \"request with the same ID is already processing\"\n}")
 			JSON(fiber.Map{"error": "request with the same ID is already processing"})
 	}
-	mu.Unlock()
+	Mutex.Unlock()
 
 	// FIXME: Return check!
 	// TODO: Tokenize and check for max tokens properly
@@ -1027,7 +1000,7 @@ func NewJob(ctx *fiber.Ctx) error {
 	//}
 
 	// TODO: Use payload Model selector
-	PlaceJob(payload.ID /*payload.Mode,*/, "" /* payload.Model */, payload.Session, payload.Prompt /*, payload.Translate*/)
+	PlaceJob(payload.ID, "" /* payload.Model */, payload.Session, payload.Prompt)
 
 	log.Infow("[JOB] New job", "jobID", payload.ID /*"mode", payload.Mode,*/, "model", payload.Model, "session", payload.Session, "prompt", payload.Prompt)
 
@@ -1060,10 +1033,10 @@ func StopJob(ctx *fiber.Ctx) error {
 			SendString("Wrong UUID4 id for request!")
 	}
 
-	mu.Lock() // --
+	Mutex.Lock() // --
 
 	if _, ok := Jobs[jobID]; !ok {
-		mu.Unlock()
+		Mutex.Unlock()
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			SendString("Request ID was not found!")
@@ -1079,7 +1052,7 @@ func StopJob(ctx *fiber.Ctx) error {
 		C.stopInference(C.int(Jobs[jobID].Pod.idx))
 	}
 
-	mu.Unlock() // --
+	Mutex.Unlock() // --
 
 	log.Infow("[JOB] Job was stopped", "jobID", jobID)
 
@@ -1131,7 +1104,7 @@ func GetJob(ctx *fiber.Ctx) error {
 			SendString("Requested ID was not found!")
 	}
 
-	mu.Lock() // --
+	Mutex.Lock() // --
 	status := Jobs[jobID].Status
 	prompt := Jobs[jobID].Prompt
 	fullPrompt := Jobs[jobID].FullPrompt // we need the full prompt with prefix and suffix here
@@ -1139,7 +1112,7 @@ func GetJob(ctx *fiber.Ctx) error {
 	//created := Jobs[jobID].CreatedAt
 	//finished := Jobs[jobID].FinishedAt
 	//model := Jobs[jobID].Model
-	mu.Unlock() // --
+	Mutex.Unlock() // --
 
 	//fullPrompt = strings.Trim(fullPrompt, "\n ")
 
@@ -1324,7 +1297,7 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 
 	// TODO: Use payload Model selector !!!
 	// NB! Empty prompt! Only history is filled
-	PlaceJob(jobID /* "" payload.Mode*/, "" /* payload.Model */, sessionID /* prompt */, "" /*, "" translate*/)
+	PlaceJob(jobID, "" /* payload.Model */, sessionID /* prompt */, "")
 
 	log.Infow("[ JOB ] New job just queued", "id", jobID, "session", "", "model", payload.Model, "prompt", prompt)
 
@@ -1336,17 +1309,17 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 	for time.Now().Before(finish) {
 
 		time.Sleep(1 * time.Second) // TODO: Right timing OR channels
-		mu.Lock()
+		Mutex.Lock()
 
 		if _, queued := Queue[jobID]; queued {
-			mu.Unlock()
+			Mutex.Unlock()
 			continue
 		}
 
 		job, ok := Jobs[jobID]
 		if !ok {
 			// TODO: Really Unexpected! Do some error handling here
-			mu.Unlock()
+			Mutex.Unlock()
 			break
 		}
 
@@ -1355,11 +1328,11 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 			output = job.Output
 			created = job.CreatedAt
 
-			mu.Unlock()
+			Mutex.Unlock()
 			break
 		}
 
-		mu.Unlock()
+		Mutex.Unlock()
 	}
 
 	return ctx.JSON(fiber.Map{
