@@ -298,21 +298,13 @@ func Run() {
 
 				jobID := uuid.New().String()
 				server.PlaceJob(jobID, "" /* payload.Model */, sessionID, prompt)
-
 				prevOutput := ""
-				history := server.Sessions[sessionID]
-
 				Colorize("\n[blue]<< [light_blue]")
 
 				for {
 
 					time.Sleep(1 * time.Second)
 					server.Mutex.Lock()
-
-					// history was shrunk after job really started and detected that context is too long
-					if server.Jobs[jobID].Status != "finished" && history != server.Sessions[sessionID] {
-						history = server.Sessions[sessionID]
-					}
 
 					output := C.GoString(C.status(C.CString(jobID)))
 					// waiting while prompt history will be processed completely

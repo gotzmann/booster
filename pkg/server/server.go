@@ -37,6 +37,7 @@ int64_t getPromptTokenCount(char * jobID);
 import "C"
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -734,6 +735,7 @@ func Do(jobID string, pod *Pod) {
 
 	if job.Prompt == "" {
 		fullPrompt = Sessions[sessionID]
+		job.FullPrompt = fullPrompt
 	} else {
 
 		prompt, ok := Prompts[job.PromptID]
@@ -1167,6 +1169,18 @@ func GetJob(ctx *fiber.Ctx) error {
 //		]
 // }
 
+type CompletionMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type CompletionPayload struct {
+	Model       string               `json:"model,omitempty"`
+	Messages    []*CompletionMessage `json:"messages"`
+	Options     *map[string]string   `json:"options,omitempty"`     // TODO
+	Temperature string               `json:"temperature,omitempty"` // TODO
+}
+
 func NewChatCompletions(ctx *fiber.Ctx) error {
 
 	if GoShutdown {
@@ -1175,20 +1189,9 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 			JSON(fiber.Map{"error": "service is shutting down"})
 	}
 
-	type Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-
-	payload := struct {
-		Model       string     `json:"model,omitempty"`
-		Messages    []*Message `json:"messages"`
-		Temperature string     `json:"temperature,omitempty"` // TODO
-	}{}
-
-	if err := ctx.BodyParser(&payload); err != nil {
-		fmt.Printf(err.Error())
-		// TODO: Proper error handling
+	payload := &CompletionPayload{}
+	///// if err := ctx.BodyParser(payload); err != nil {
+	if err := json.Unmarshal(ctx.Body(), payload); err != nil {
 		return ctx.
 			Status(fiber.StatusBadRequest).
 			JSON(fiber.Map{"error": "error parsing request body"})
@@ -1233,73 +1236,14 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 	// -- create new session with history for any Chat Completion request
 
 	sessionID := uuid.New().String()
-	Sessions[sessionID] = ""
-	TokensCount[sessionID] = 0
-
-	promptID := reflect.ValueOf(Prompts).MapKeys()[0].String() // use ANY available prompt
-	prompt, ok := Prompts[promptID]
-	if !ok {
-		Colorize("\n[magenta][ ERROR ][white] Error while getting ANY prompt settings\n\n")
-		os.Exit(0)
-	}
-
-	locale := monday.LocaleEnUS
-	if prompt.Locale != "" {
-		locale = prompt.Locale
-	}
-
-	var system, history string
-	for _, message := range payload.Messages {
-
-		switch message.Role {
-		case "system":
-			system = message.Content
-		case "user":
-			if strings.Contains(prompt.Templates.User, "{USER}") {
-				history += strings.Replace(prompt.Templates.User, "{USER}", message.Content, 1)
-			} else {
-				history += prompt.Templates.User + message.Content
-			}
-		case "assistant":
-			if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-				history += strings.Replace(prompt.Templates.Assistant, "{ASSISTANT}", message.Content, 1)
-			} else {
-				history += prompt.Templates.Assistant + message.Content
-			}
-		}
-
-	}
-
-	// adding prefix for the next assistant take at the end
-	if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-		cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
-		history += prompt.Templates.Assistant[:cut]
-	} else {
-		history += prompt.Templates.Assistant
-	}
-
-	// finally prepend system prompt at the beginning
-	if system == "" {
-		system = prompt.System
-	}
-
-	// inject context vars: {DATE}, etc
-	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
-	system = strings.Replace(system, "{DATE}", strings.ToLower(date), 1)
-
-	if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
-		history = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1) + history
-	} else {
-		history = prompt.Templates.System + system + history
-	}
-
-	Sessions[sessionID] = history
+	promptID := reflect.ValueOf(Prompts).MapKeys()[0].String()             // FIXME: using ANY available prompt for a while
+	Sessions[sessionID], _ = buildCompletion(sessionID, promptID, payload) // TODO: error handling
 
 	// TODO: Use payload Model selector !!!
 	// NB! Empty prompt! Only history is filled
-	PlaceJob(jobID, "" /* payload.Model */, sessionID /* prompt */, "")
+	PlaceJob(jobID, "" /* payload.Model */, sessionID, "" /* prompt */)
 
-	log.Infow("[ JOB ] New job just queued", "id", jobID, "session", "", "model", payload.Model, "prompt", prompt)
+	log.Infow("[ JOB ] New job just queued", "id", jobID, "session", "", "model", payload.Model, "prompt", "") // TODO: last prompt of conversation
 
 	finish := time.Now().Add(time.Duration(deadline) * time.Second) // TODO: Change global type + naming?
 	output := ""
@@ -1370,30 +1314,64 @@ func NewChatCompletions(ctx *fiber.Ctx) error {
 	})
 }
 
-// --- GET /api/models
-
-// https://github.com/ollama/ollama/blob/main/docs/api.md#list-local-models
-func GetModels(ctx *fiber.Ctx) error {
-	models := make([]fiber.Map, 0)
-
-	for name := range Models {
-		models = append(models, fiber.Map{
-			"name": name,
-			// "modified_at": "2023-11-04T14:56:49.277302595-07:00",
-			// "size": 7365960935,
-			// "digest": "9f438cb9cd581fc025612d27f7c1a6669ff83a8bb0ed86c94fcf4c5440555697",
-			// "details": {
-			// "format": "gguf",
-			// "family": "llama",
-			// "families": null,
-			// "parameter_size": "13B",
-			// "quantization_level": "Q4_0"
-		})
+func buildCompletion(sessionID, promptID string, payload *CompletionPayload) (string, error) {
+	prompt, ok := Prompts[promptID]
+	if !ok {
+		Colorize("\n[magenta][ ERROR ][white] Error while getting ANY prompt settings\n\n")
+		os.Exit(0)
 	}
 
-	return ctx.JSON(fiber.Map{
-		"models": models,
-	})
+	locale := monday.LocaleEnUS
+	if prompt.Locale != "" {
+		locale = prompt.Locale
+	}
+
+	var system, history string
+	for _, message := range payload.Messages {
+
+		switch message.Role {
+		case "system":
+			system = message.Content
+		case "user":
+			if strings.Contains(prompt.Templates.User, "{USER}") {
+				history += strings.Replace(prompt.Templates.User, "{USER}", message.Content, 1)
+			} else {
+				history += prompt.Templates.User + message.Content
+			}
+		case "assistant":
+			if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
+				history += strings.Replace(prompt.Templates.Assistant, "{ASSISTANT}", message.Content, 1)
+			} else {
+				history += prompt.Templates.Assistant + message.Content
+			}
+		}
+
+	}
+
+	// adding prefix for the next assistant take at the end
+	if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
+		cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
+		history += prompt.Templates.Assistant[:cut]
+	} else {
+		history += prompt.Templates.Assistant
+	}
+
+	// finally prepend system prompt at the beginning
+	if system == "" {
+		system = prompt.System
+	}
+
+	// inject context vars: {DATE}, etc
+	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
+	system = strings.Replace(system, "{DATE}", strings.ToLower(date), 1)
+
+	if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
+		history = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1) + history
+	} else {
+		history = prompt.Templates.System + system + history
+	}
+
+	return history, nil
 }
 
 // --- GET /health

@@ -130,7 +130,8 @@ port: 8080
 log: booster.log
 deadline: 180
 
-pods: 
+pods:
+
   gpu:
     model: hermes
     prompt: chat
@@ -140,6 +141,7 @@ pods:
     batch: 512
 
 models:
+
   hermes:
     name: Hermes2 Pro 8B
     path: ~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
