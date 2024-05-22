@@ -129,8 +129,6 @@ host: localhost
 port: 8080
 log: booster.log
 deadline: 180
-debug:
-swap:
 
 pods: 
   gpu:
@@ -181,11 +179,19 @@ samplings:
 
 4) When all is done, start the server with debug enabled to be sure it working
 
+Launch Booster in interactive mode to just chatting with the model:
+
+```shell
+./booster
+```
+
+Launch Booster as server to handle all API endpoints and show debug info:
+
 ```shell
 ./booster --server --debug
 ```
 
-5) Now POST JSON with unique ID and your question to `localhost:8080/jobs`
+5) Now use Booster with Ollama / OpenAI API or POST JSON to native Async API `http://localhost:8080/jobs`
 
 ```shell
 {
@@ -194,4 +200,18 @@ samplings:
 }
 ```
 
-6) See instructions within `booster.service` file on how to create daemond service out of this API server.
+
+6) See results with native HTTP GET to native Async API `http://localhost:8080/jobs/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6`
+
+```shell
+{
+{
+    "id": "5fb8ebd0-e0c9-4759-8f7d-35590f6c9f77",
+    "output": "I'm a virtual assistant.",
+    "prompt": "Who are you?",
+    "status": "finished"
+}
+}
+```
+
+7) See instructions within `booster.service` file on how to create daemond service out of this API server.
