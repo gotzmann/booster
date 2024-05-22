@@ -30,8 +30,8 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 - [x] Rebrand project again :) **Collider => Booster**
 - [x] Complete LLaMA v3 support
 - [x] OpenAI API Chat Completion compatible endpoints
-- [ ] Ollama compatible endpoints
-- [ ] Interactive mode for chatting from command line
+- [x] Ollama compatible endpoints
+- [x] Interactive mode for chatting from command line
 - [ ] Broader integration with Ollama ecosystem
 - [ ] Smarter context shrinking when reaching its limits chatting with model
 - [ ] Embedded web UI with no external dependencies
