@@ -293,7 +293,7 @@ func Run() {
 
 			for {
 
-				Colorize("\n\n[magenta]>>> [light_magenta]")
+				Colorize("\n\n[magenta]>> [light_magenta]")
 				prompt, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 
 				jobID := uuid.New().String()
@@ -302,7 +302,7 @@ func Run() {
 				prevOutput := ""
 				history := server.Sessions[sessionID]
 
-				Colorize("\n[blue]<<< [light_blue]")
+				Colorize("\n[blue]<< [light_blue]")
 
 				for {
 
