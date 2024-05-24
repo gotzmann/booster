@@ -15,14 +15,14 @@ default: cuda
 # -- Nvidia GPUs with CUDA
 cuda:
 	cd cpp && \
-	LLAMA_CUDA=1 CUDA_USE_GRAPHS=1 make -j cudaobjs && \
+	LLAMA_CUDA=1 CUDA_USE_GRAPHS=1 USE_LLAMAFILE=1 make -j cudaobjs && \
 	cd .. && \
 	CGO_ENABLED=1 go build booster.go
 
 # -- Apple Silicon with both ARM CPU with Neon and GPU Metal support
 mac:
 	cd cpp && \
-	LLAMA_METAL_EMBED_LIBRARY=1 make -j macobjs && \
+	LLAMA_METAL_EMBED_LIBRARY=1 USE_LLAMAFILE=1 make -j macobjs && \
 	cd .. && \
 	CGO_ENABLED=1 go build booster.go
 
@@ -30,7 +30,7 @@ mac:
 #    TODO: Exclude CUDA drivers as linker requirements
 cpu:
 	cd cpp && \
-	LLAMA_NO_METAL=1 make -j cpuobjs && \
+	LLAMA_NO_METAL=1 USE_LLAMAFILE=1 make -j cpuobjs && \
 	cd .. && \
 	CGO_ENABLED=1 go build -o booster booster_cpu.go
 
