@@ -1,5 +1,11 @@
 cpuobjs:  llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o unicode.o unicode-data.o sgemm.o
-cudaobjs: llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o ggml-cuda.o unicode.o unicode-data.o sgemm.o
+cudaobjs: llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o ggml-cuda.o unicode.o unicode-data.o sgemm.o \
+	cpp/ggml-cuda/acc.o cpp/ggml-cuda/arange.o cpp/ggml-cuda/argsort.o cpp/ggml-cuda/binbcast.o cpp/ggml-cuda/clamp.o \
+	cpp/ggml-cuda/concat.o cpp/ggml-cuda/convert.o cpp/ggml-cuda/cpy.o cpp/ggml-cuda/diagmask.o cpp/ggml-cuda/dmmv.o \
+	cpp/ggml-cuda/fattn-tile-f16.o cpp/ggml-cuda/fattn-tile-f32.o cpp/ggml-cuda/fattn-vec-f16.o cpp/ggml-cuda/fattn-vec-f32.o \
+	cpp/ggml-cuda/fattn.o cpp/ggml-cuda/getrows.o cpp/ggml-cuda/im2col.o cpp/ggml-cuda/mmq.o cpp/ggml-cuda/mmvq.o cpp/ggml-cuda/norm.o \
+	cpp/ggml-cuda/pad.o cpp/ggml-cuda/pool2d.o cpp/ggml-cuda/quantize.o cpp/ggml-cuda/rope.o cpp/ggml-cuda/scale.o cpp/ggml-cuda/softmax.o \
+	cpp/ggml-cuda/sumrows.o cpp/ggml-cuda/tsembd.o cpp/ggml-cuda/unary.o cpp/ggml-cuda/upscale.o
 macobjs:  llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o ggml-metal.o ggml-metal-embed.o unicode.o unicode-data.o sgemm.o
 
 bridge.o: bridge.cpp
