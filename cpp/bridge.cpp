@@ -233,7 +233,8 @@ static void log_nothing(ggml_log_level level, const char * text, void * user_dat
 }
 
 void hide() {
-    llama_log_set(log_nothing, NULL); // disable logging
+    fprintf(stderr, "\n strlen(::debug) = %d \n", strlen(::debug));
+    if (strlen(::debug) == 0) llama_log_set(log_nothing, NULL); // disable logging
     ///// (void) !freopen(NULL_DEVICE, "w", stdout);
     ///// (void) !freopen(NULL_DEVICE, "w", stderr);
 }    
@@ -470,8 +471,12 @@ int64_t do_inference(
 */    
     
     // -- DEBUG
-    if (strstr(debug, "tokenizer")) {
+    fprintf(stderr, "\n\n=== DEBUG = %s", ::debug);
+    if (strstr(::debug, "tokenizer")) {
+
         fprintf(stderr, "\n\n=== ADD_BOS = %d ===", add_bos);
+
+        fprintf(stderr, "\n\n=== PROMPT ===\n\n%s", prompt);
 
         fprintf(stderr, "\n\n=== IDS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
