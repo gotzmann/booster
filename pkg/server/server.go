@@ -744,7 +744,9 @@ func Do(jobID string, pod *Pod) {
 			os.Exit(0)
 		}
 
-		// -- Inject context vars: ${DATE}, etc
+		// inject context vars: ${DATE}, etc
+
+		var system, user, assistant string
 
 		locale := monday.LocaleEnUS
 		if prompt.Locale != "" {
@@ -752,9 +754,13 @@ func Do(jobID string, pod *Pod) {
 		}
 
 		date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
-		system := strings.Replace(prompt.System, "{DATE}", strings.ToLower(date), 1)
+		system = strings.Replace(prompt.System, "{DATE}", strings.ToLower(date), 1)
 
-		var user, assistant string
+		if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
+			system = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1)
+		} else {
+			system = prompt.Templates.System + system
+		}
 
 		if strings.Contains(prompt.Templates.User, "{USER}") {
 			user = strings.Replace(prompt.Templates.User, "{USER}", job.Prompt, 1)
@@ -1366,7 +1372,8 @@ func buildCompletion(sessionID, promptID string, payload *CompletionPayload) (st
 	system = strings.Replace(system, "{DATE}", strings.ToLower(date), 1)
 
 	if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
-		history = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1) + history
+		system = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1)
+		history = system + history
 	} else {
 		history = prompt.Templates.System + system + history
 	}

@@ -475,7 +475,7 @@ int64_t do_inference(
 
         fprintf(stderr, "\n\n=== ADD_BOS = %d ===", add_bos);
         fprintf(stderr, "\n\n=== PROMPT ===\n\n%s", prompt.c_str());
-        
+
         fprintf(stderr, "\n\n=== IDS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
             fprintf(stderr, "%d, ", embd_inp.data()[i]);
@@ -494,7 +494,7 @@ int64_t do_inference(
             else if (id == 128006) fprintf(stderr, "<|start_header_id|>");
             else if (id == 128007) fprintf(stderr, "<|end_header_id|>");
             else if (id == 128009) fprintf(stderr, "<|eot_id|>");
-            else if (id >= 32000) fprintf(stderr, "{ #%d }", id);
+            else if (id >= 128000) fprintf(stderr, "{ #%d }", id);
             else fprintf(stderr, "{%s}",  llama_token_to_piece(ctx, embd_inp.data()[i]).c_str());
         }
     }
