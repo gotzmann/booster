@@ -28,7 +28,6 @@ static std::vector<llama_token> * g_input_tokens;
 static std::vector<llama_token> * g_output_tokens;
 static bool is_interacting = false;
 
-
 // -- NB! llama_sample_token() is an older implementation of newer janus.cpp::llama_sampling_sample()
 
 // pos => index of current position within generation window [ 0 .. max )
@@ -233,7 +232,7 @@ static void log_nothing(ggml_log_level level, const char * text, void * user_dat
 }
 
 void hide() {
-    fprintf(stderr, "\n strlen(::debug) = %d \n", strlen(::debug));
+    //fprintf(stderr, "\n strlen(::debug) = %d \n", strlen(::debug));
     if (strlen(::debug) == 0) llama_log_set(log_nothing, NULL); // disable logging
     ///// (void) !freopen(NULL_DEVICE, "w", stdout);
     ///// (void) !freopen(NULL_DEVICE, "w", stderr);
@@ -471,12 +470,12 @@ int64_t do_inference(
 */    
     
     // -- DEBUG
-    fprintf(stderr, "\n\n=== DEBUG = %s", ::debug);
+
     if (strstr(::debug, "tokenizer")) {
 
         fprintf(stderr, "\n\n=== ADD_BOS = %d ===", add_bos);
 
-        fprintf(stderr, "\n\n=== PROMPT ===\n\n%s", prompt);
+        fprintf(stderr, "\n\n=== PROMPT ===\n\n%s", prompt.c_str());
 
         fprintf(stderr, "\n\n=== IDS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
@@ -486,6 +485,7 @@ int64_t do_inference(
         fprintf(stderr, "\n\n=== TOKENS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
             auto id = embd_inp.data()[i];
+            fprintf(stderr, "{ #%d }", id);
             if (id == 13) fprintf(stderr, "{\\n}\n");
             else if (id == 1) fprintf(stderr, "{ BOS #1 }");
             else if (id == 2) fprintf(stderr, "{ EOS #2 }");
