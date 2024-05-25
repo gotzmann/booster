@@ -474,9 +474,8 @@ int64_t do_inference(
     if (strstr(::debug, "tokenizer")) {
 
         fprintf(stderr, "\n\n=== ADD_BOS = %d ===", add_bos);
-
         fprintf(stderr, "\n\n=== PROMPT ===\n\n%s", prompt.c_str());
-
+        
         fprintf(stderr, "\n\n=== IDS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
             fprintf(stderr, "%d, ", embd_inp.data()[i]);
@@ -485,8 +484,9 @@ int64_t do_inference(
         fprintf(stderr, "\n\n=== TOKENS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
             auto id = embd_inp.data()[i];
-            fprintf(stderr, "{ #%d }", id);
+            // fprintf(stderr, "{ #%d }", id);
             if (id == 13) fprintf(stderr, "{\\n}\n");
+            else if (id == 271) fprintf(stderr, "{\\n\\n}\n\n");
             else if (id == 1) fprintf(stderr, "{ BOS #1 }");
             else if (id == 2) fprintf(stderr, "{ EOS #2 }");
             else if (id == 128000) fprintf(stderr, "<|begin_of_text|>");
