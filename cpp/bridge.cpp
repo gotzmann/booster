@@ -484,7 +484,7 @@ int64_t do_inference(
         fprintf(stderr, "\n\n=== TOKENS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
             auto id = embd_inp.data()[i];
-            // fprintf(stderr, "{ #%d }", id);
+            fprintf(stderr, "{ #%d }", id);
             if (id == 13) fprintf(stderr, "{\\n}\n");
             else if (id == 271) fprintf(stderr, "{\\n\\n}\n\n");
             else if (id == 1) fprintf(stderr, "{ BOS #1 }");

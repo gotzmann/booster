@@ -33,7 +33,7 @@
 
         "default": {
             "locale": "en_US",
-            "system": "Today is {DATE}. You are virtual assistant.",
+            "system": "Today is {DATE}. You are a helpful virtual assistant.",
             "templates": {
                 "system": "<|im_start|>system\n{SYSTEM}<|im_end|>",
                 "user": "\n<|im_start|>user\n{USER}<|im_end|>",
