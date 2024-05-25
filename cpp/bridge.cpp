@@ -15,19 +15,16 @@
 #include "ggml-common.h"
 #include "ggml-backend.h"
 #include "llama.h"
-//#include "llama.cpp"
 
 #include "bridge.h"
 #include "janus.h"
 
-char * debug; // debug level = "" | "full" | "cuda"
+char * debug; // debug level = "cuda|tokenizer", etc
 
-// NEW
 static llama_context           ** g_ctx;
 static llama_model             ** g_model;
 static gpt_params               * g_params;
 static std::vector<llama_token> * g_input_tokens;
-///// static std::ostringstream       * g_output_ss;
 static std::vector<llama_token> * g_output_tokens;
 static bool is_interacting = false;
 
@@ -329,7 +326,7 @@ int64_t do_inference(
     struct llama_context * ctx, 
     const std::string & jobID, 
     const std::string & sessionID, 
-    const std::string & text
+    const std::string & prompt
 
 ) {
 
@@ -410,14 +407,9 @@ int64_t do_inference(
     }
 */
     // tokenize the prompt
-    //std::vector<llama_token> embd_inp;
-    // WAS: const bool add_bos = llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM;
     const bool add_bos = llama_should_add_bos_token(model);
-    // GGML_ASSERT(llama_add_eos_token(model) != 1);
     std::vector<llama_token> embd_inp;
-    //embd_inp = llama_tokenize(model, text, add_bos, true);
-    embd_inp = ::llama_tokenize(ctx, /*params.prompt*/ text, add_bos, true);
-    // ::llama_tokenize(ctx, "\n\n### Instruction:\n\n", add_bos, true);
+    embd_inp = ::llama_tokenize(ctx, prompt, add_bos, true);
 
     // Should not run without any tokens
     if (embd_inp.empty()) {
@@ -477,24 +469,31 @@ int64_t do_inference(
     exit(1);
 */    
     
-/*
     // -- DEBUG
-    fprintf(stderr, "\n\nADD_BOS: %d\n\n", add_bos);
-    fprintf(stderr, "\n\nTOKENS: [ ");
-    for(size_t i = 0; i < embd_inp.size(); i++) {
-        fprintf(stderr, "%d, ", embd_inp.data()[i]);
+    if (strstr(debug, "tokenizer")) {
+        fprintf(stderr, "\n\n=== ADD_BOS = %d ===", add_bos);
+
+        fprintf(stderr, "\n\n=== IDS ===\n\n");
+        for(size_t i = 0; i < embd_inp.size(); i++) {
+            fprintf(stderr, "%d, ", embd_inp.data()[i]);
+        }
+
+        fprintf(stderr, "\n\n=== TOKENS ===\n\n");
+        for(size_t i = 0; i < embd_inp.size(); i++) {
+            auto id = embd_inp.data()[i];
+            if (id == 13) fprintf(stderr, "{\\n}\n");
+            else if (id == 1) fprintf(stderr, "{ BOS #1 }");
+            else if (id == 2) fprintf(stderr, "{ EOS #2 }");
+            else if (id == 128000) fprintf(stderr, "<|begin_of_text|>");
+            else if (id == 128001) fprintf(stderr, "<|end_of_text|>");
+            else if (id == 128006) fprintf(stderr, "<|start_header_id|>");
+            else if (id == 128007) fprintf(stderr, "<|end_header_id|>");
+            else if (id == 128009) fprintf(stderr, "<|eot_id|>");
+            else if (id >= 32000) fprintf(stderr, "{ #%d }", id);
+            else fprintf(stderr, "{%s}",  llama_token_to_piece(ctx, embd_inp.data()[i]).c_str());
+        }
     }
-    fprintf(stderr, "]");
-    fprintf(stderr, "\n\nPARTS: [ ");
-    for(size_t i = 0; i < embd_inp.size(); i++) {
-        auto id = embd_inp.data()[i];
-        if (id == 13) fprintf(stderr, "<13> ");
-        else if (id == 1) fprintf(stderr, "<BOS> ");
-        else if (id == 2) fprintf(stderr, "<EOS> ");
-        else fprintf(stderr, "<%s> ",  llama_token_to_piece(ctx, embd_inp.data()[i]).c_str());
-    }
-    fprintf(stderr, "]");
-*/
+
     // const int n_ctx = llama_n_ctx(ctx); // TODO: Set it from ::params[idx] ?
     promptTokenCount[jobID] = embd_inp.size();
 
