@@ -233,7 +233,7 @@ static void log_nothing(ggml_log_level level, const char * text, void * user_dat
 
 void hide() {
     //fprintf(stderr, "\n strlen(::debug) = %d \n", strlen(::debug));
-    if (strlen(::debug) == 0) llama_log_set(log_nothing, NULL); // disable logging
+    if (strlen(::debug) < 2) llama_log_set(log_nothing, NULL); // disable logging
     ///// (void) !freopen(NULL_DEVICE, "w", stdout);
     ///// (void) !freopen(NULL_DEVICE, "w", stderr);
 }    
@@ -484,7 +484,7 @@ int64_t do_inference(
         fprintf(stderr, "\n\n=== TOKENS ===\n\n");
         for(size_t i = 0; i < embd_inp.size(); i++) {
             auto id = embd_inp.data()[i];
-            fprintf(stderr, "{ #%d }", id);
+            // fprintf(stderr, "{ #%d }", id);
             if (id == 13) fprintf(stderr, "{\\n}\n");
             else if (id == 271) fprintf(stderr, "{\\n\\n}\n\n");
             else if (id == 1) fprintf(stderr, "{ BOS #1 }");
