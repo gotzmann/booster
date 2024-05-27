@@ -404,6 +404,8 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
         //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
     }
 
+    // -- FIXME ASAP: Token IDs are different between LLaMA v2 / LLaMA v3 and other models !!!
+
     // -- Assign manually specific penalties for high-frequency tokens
     // TODO: Need more work with real texts and statistical probabilities
 

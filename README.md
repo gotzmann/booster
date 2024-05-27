@@ -32,6 +32,7 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 - [x] OpenAI API Chat Completion compatible endpoints
 - [x] Ollama compatible endpoints
 - [x] Interactive mode for chatting from command line
+- [x] Update Janus Sampling for LLaMA-3
 - [ ] Broader integration with Ollama ecosystem
 - [ ] Smarter context shrinking when reaching its limits chatting with model
 - [ ] Embedded web UI with no external dependencies
