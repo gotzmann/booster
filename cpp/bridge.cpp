@@ -232,8 +232,7 @@ static void log_nothing(ggml_log_level level, const char * text, void * user_dat
 }
 
 void hide() {
-    //fprintf(stderr, "\n strlen(::debug) = %d \n", strlen(::debug));
-    if (strlen(::debug) < 2) llama_log_set(log_nothing, NULL); // disable logging
+    llama_log_set(log_nothing, NULL); // disable logging
     ///// (void) !freopen(NULL_DEVICE, "w", stdout);
     ///// (void) !freopen(NULL_DEVICE, "w", stderr);
 }    
@@ -842,9 +841,11 @@ void init(char * swap, char * debug) {
     ///// if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
     ///// if (!debug && strcmp(debug, "")) { hide(); showFlag = true; }
     //if (strlen(debug) == 0) { hide(); fprintf(stderr, "\n\nINSIDE: %d\n\n", strlen(debug)); }
+    if (strlen(debug) < 2) hide();
     llama_backend_init();
     llama_numa_init(GGML_NUMA_STRATEGY_DISABLED); // TODO: NUMA = params.numa
     ///// if (showFlag) { show(); }
+    show();
 }
 
 // TODO: support n_threads_batch
