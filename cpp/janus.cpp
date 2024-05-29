@@ -1,5 +1,6 @@
 #include <array>
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <random>
