@@ -35,7 +35,7 @@ llama_token sample_janus_token(
 ///// std::string llama_token_to_str(const struct llama_context * ctx, llama_token token);
 
 std::vector<std::byte> getBytes(std::string const &s);
-bool isPedantic(llama_token id);
+bool isPedantic(struct llama_context * ctx, llama_token id);
 bool isLower(const llama_context *ctx, const llama_token token);
 int tokType(const llama_context *ctx, const llama_token token);
 int tokSize(const llama_context *ctx, const llama_token token);

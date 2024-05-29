@@ -306,7 +306,7 @@ llama_token sample_janus_token(
     auto topLogit = candidates.data()[0].logit;
 
     float cutoff = params.lo;
-    if (isPedantic(topToken) || topType == LANG_RU || topType == LANG_EN) {
+    if (isPedantic(ctx, topToken) || topType == LANG_RU || topType == LANG_EN) {
         cutoff = params.hi;
     }
 
@@ -327,10 +327,11 @@ llama_token sample_janus_token(
 // Tokens very often used for math, coding and JSON (aka repetitive),
 // so we should be care about them and not penalize
 
-const int MAX_PEDANTIC = 32;
-llama_token pedanticTokens[MAX_PEDANTIC];
+/*
 
-llama_token pedanticLLaMA2[MAX_PEDANTIC] = {
+    LLAMA-2
+
+llama_token pedanticTokens[] = {
 
     2,     // <EOS>
 
@@ -368,82 +369,30 @@ llama_token pedanticLLaMA2[MAX_PEDANTIC] = {
 
     // 376,   // " ""
     // 613,   // "","
-
-    0, // FIXME: zero sequence
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0
 };
+*/
 
-llama_token pedanticLLaMA3[MAX_PEDANTIC] = {
+bool isPedantic(struct llama_context * ctx, llama_token id) {
 
-    128001, // <|end_of_text|>
+    auto token = llama_token_to_piece(ctx, id);
 
-    74694,  // "```"
+    // -- numbers
 
-    // -- Math
+    char * number;
+    strtol(token.c_str(), &number, 10);
+    if (*number == 0) return true; // works fine except ID == 188 for LLaMA-3
 
-    15,     // "0"
-    16,     // "1"
-    17,     // "2"
-    18,     // "3"
-    19,     // "4"
-    20,     // "5"
-    21,     // "6"
-    22,     // "7"
-    23,     // "8"
-    24,     // "9"
-
-    353,    // " *" == "Ġ*"
-    284,    // " ="
-    482,    // " -"
-    489,    // " +" == "Ġ+"
+    if (token == " *" || token == " =" || token == " -" || token == " +") return true;
 
     // -- JSON
 
-    90,     // "{"
-    92,     // "}"
-    58,     // "["
-    60,     // "]"
+    if (token == "{" || token ==  "}" || token == "[" || token == "]") return true;
 
-    314,    // " {" == "Ġ{"
-    335,    // " }"
-    510,    // " ["
-    2331,   // " ]" == "Ġ]"
+    if (token == " {" || token == " }" || token == " [" || token == " ]") return true;
 
-    // 330,    // " "" == "Ġ\""
-    // 498,    // ""," == "\","
+    // -- other
 
-    0, // FIXME: zero sequence
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0
-};
-
-bool isPedantic(llama_token id) {
-    // size_t len = *(&pedanticTokens + 1) - pedanticTokens;
-    //fprintf(stderr, "\n SIZE = %d", MAX_PEDANTIC);
-
-    //for (llama_token i = 0; i < MAX_PEDANTIC; i++) {
-        //fprintf(stderr, "\n333 pedanticLLaMA3[%d] == %d", i, pedanticLLaMA3[i]);
-    //    fprintf(stderr, "\n??? pedanticLLaMA[%d] == %d", i, pedanticTokens[i]);
-    //}
-
-    for (llama_token i = 0; i < MAX_PEDANTIC; i++) {
-        if (id == pedanticTokens[i]) {
-            //fprintf(stderr, "\n=== *pedanticTokens[%d] == %d == %d", i, pedanticTokens[i], id);
-            //for (llama_token j = 0; j < MAX_PEDANTIC; j++) { fprintf(stderr, "\n *pedanticTokens[%d] == %d", j, pedanticTokens[j]); }
-            return true;
-        }
-    }
+    if (token == "<|end_of_text|>" || token ==  "```") return true;
 
     return false;
 }
@@ -490,19 +439,90 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
 
     float scale = params.scale;
 
-
     // -- FIXME ASAP: Token IDs are different between LLaMA v2 / LLaMA v3 and other models !!!
 
     // -- Assign manually specific penalties for high-frequency tokens
     // TODO: Need more work with real texts and statistical probabilities
 
+    for (llama_token id = 0; id < vocabSize; id++) {
+
+        auto type  = tokType(ctx, id);
+        auto lower = isLower(ctx, id);
+        size_t len = tokSize(ctx, id);
+
+        ::types[id] = type;
+
+        // -- pedantic tokens
+
+        if (isPedantic(ctx, id)) {
+            ::scales[id] = 1.0 - (1.0 - scale) * 0.20;
+            //fprintf(stderr, "\n SCALE1 %d = %f", id, ::scales[id]);
+            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
+            continue;
+        }
+
+        // -- special case for complex languages like Russian.
+        //    penalise the tokens that might be a parts of other words with less scale
+        //    NB! Fix the case of tooooo long tokens => SCALE 23831 = 5115.378906 | "printStackTrace"
+
+        float probes[] = {
+            0.20, 0.22, 0.25, 0.28, 0.30,
+            0.32, 0.33, 0.35, 0.36, 0.38,
+            0.40, 0.42, 0.44, 0.45, 0.46,
+            0.48, 0.50, 0.52, 0.53, 0.55,
+        };
+
+        if (type == LANG_RU && lower) {
+            // NB! Size in bytes is 2x of UTF-8 chars for RU
+            ::scales[id] = 1.0 - (1.0 - scale) * probes[len/2];
+            //fprintf(stderr, "\n SCALE2 %d = %f", id, ::scales[id]);
+            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
+            continue;
+        }
+
+        // -- similar hack for EN
+
+        if (type == LANG_EN && lower) {
+            ::scales[id] = 1.0 - (1.0 - scale) * probes[len];
+            //fprintf(stderr, "\n SCALE3 %d = %f", id, ::scales[id]);
+            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
+            continue;
+        }
+
+        // -- full penalization for other tokens
+
+        ::scales[id] = scale;
+        //fprintf(stderr, "\n SCALE4 %d = %f", id, ::scales[id]);
+        //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
+    }
+
+/*
+==== 00444 ==== TOP LIST ====
+  --   931 [ 46.128 * 0.970 ] "000"
+  --   410 [ 23.810 * 0.970 ] "00"
+  -- 116307 [ 21.935 * 0.970 ] "۰۰۰"
+  --  2636 [ 20.029 * 0.970 ] "500"
+  --    15 [ 19.764 * 0.994 ] "0"
+  -- 39721 [ 18.813 * 0.992 ] "ooo"
+  --   220 [ 15.582 * 0.970 ] " "
+  -- 20066 [ 15.406 * 0.970 ] "OO"
+
+==== 00444 ==== SHORTIST ====
+  --   931 [ 34.016 * 0.970 ] "000"
+  ---------------------------
+  --   410 [ 23.810 * 0.970 ] "00"
+  -- 116307 [ 21.935 * 0.970 ] "۰۰۰"
+  --    15 [ 19.764 * 0.994 ] "0"
+  --  2636 [ 18.845 * 0.970 ] "500"
+  -- 39721 [ 18.813 * 0.992 ] "ooo"
+  -- 20066 [ 15.406 * 0.970 ] "OO"
+  -- 104184 [ 15.091 * 0.970 ] "۰۰"
+*/
+
     // LLaMA v2/v3 and Mistral
     if (strstr(desc, "llama") || strstr(desc, "mistral")) {
 
         if (vocabSize > 128000) { // LLaMA-3
-
-            for (llama_token i = 0; i < MAX_PEDANTIC; i++)
-                pedanticTokens[i] = pedanticLLaMA3[i];
 
             ::scales[0] = 1.0;   // just to be safe
             ::scales[128001] = scale; // penalize <|end_of_text|> in the beginning and allow it to boost over 1.0 later
@@ -598,9 +618,6 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
 
         } else { // LLaMA-2
 
-            for (llama_token i = 0; i < MAX_PEDANTIC; i++)
-                pedanticTokens[i] = pedanticLLaMA2[i];
-
             ::scales[0]     = 1.0;   // just to be safe
             ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
             
@@ -674,59 +691,6 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
         // FIXME: Support other models
         //return
     //} 
-
-    for (llama_token id = 0; id < vocabSize; id++) {
-
-        auto type  = tokType(ctx, id);
-        auto lower = isLower(ctx, id);
-        size_t len = tokSize(ctx, id);
-
-        ::types[id] = type;
-
-        // -- pedantic tokens
-
-        if (isPedantic(id)) {
-            ::scales[id] = 1.0 - (1.0 - scale) * 0.20;
-            //fprintf(stderr, "\n SCALE1 %d = %f", id, ::scales[id]);
-            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
-            continue;
-        }   
-
-        // -- special case for complex languages like Russian.
-        //    penalise the tokens that might be a parts of other words with less scale
-        //    NB! Fix the case of tooooo long tokens => SCALE 23831 = 5115.378906 | "printStackTrace"
-
-        float probes[] = {
-            0.20, 0.22, 0.25, 0.28, 0.30,
-            0.32, 0.33, 0.35, 0.36, 0.38,
-            0.40, 0.42, 0.44, 0.45, 0.46,
-            0.48, 0.50, 0.52, 0.53, 0.55,
-        };
-
-        if (type == LANG_RU && lower) {
-            // NB! Size in bytes is 2x of UTF-8 chars for RU
-            ::scales[id] = 1.0 - (1.0 - scale) * probes[len/2];
-            //fprintf(stderr, "\n SCALE2 %d = %f", id, ::scales[id]);
-            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
-            continue;
-        }
-
-        // -- similar hack for EN
-
-        if (type == LANG_EN && lower) {
-            ::scales[id] = 1.0 - (1.0 - scale) * probes[len];
-            //fprintf(stderr, "\n SCALE3 %d = %f", id, ::scales[id]);
-            //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
-            continue;
-        }
-
-        // -- full penalization for other tokens
-
-        ::scales[id] = scale;
-        //fprintf(stderr, "\n SCALE4 %d = %f", id, ::scales[id]);
-        //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
-    }
-
 }
 
 // this function receives any std::string 
