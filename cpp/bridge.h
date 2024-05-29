@@ -54,7 +54,7 @@ llama_token llama_sampling_sample(
         struct llama_sampling_context * ctx_sampling,
         struct llama_context * ctx_main,
         struct llama_context * ctx_cfg,
-        int idx = /* 0 */ -1); // FIXME: WTF ?! LLAMA v3 [ 0 => -1 ]
+        int idx = -1); // FIXME: WTF ?! LLAMA v3 [ 0 => -1 ]
 
 void llama_sampling_accept(
         struct llama_sampling_context * ctx_sampling,
@@ -352,6 +352,19 @@ std::vector<llama_token> llama_tokenize(
            const std::string & text,
                         bool   add_bos,
                         bool   special);   
+
+// Prepares and adjusts the set of token candidates for sampling based on penalties, biases, and sampling parameters.
+llama_token_data_array llama_sampling_prepare(
+        struct llama_sampling_context * ctx_sampling,
+        struct llama_context * ctx_main,
+        struct llama_context * ctx_cfg,
+        int idx = 0,
+        bool apply_grammar = true,
+        std::vector<float> * original_logits = nullptr);  
+
+// Randomly selects a token from the candidates based on their probabilities using given std::mt19937.
+// This is a temporary workaround in order to fix race conditions when sampling with multiple sequences.
+llama_token llama_sample_token_with_rng(struct llama_context * ctx, llama_token_data_array * candidates, std::mt19937 & rng);                              
 
 ///// std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token);
 ///// std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token, bool special);

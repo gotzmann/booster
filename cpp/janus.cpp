@@ -320,7 +320,133 @@ llama_token sample_janus_token(
     return llama_sample_token(ctx, &shortlist);
 }
 
+// Tokens very often used for math, coding and JSON (aka repetitive),
+// so we should be care about them and not penalize
+
+const int MAX_PEDANTIC = 32;
+llama_token pedanticTokens[MAX_PEDANTIC];
+
+llama_token pedanticLLaMA2[MAX_PEDANTIC] = {
+
+    2,     // <EOS>
+
+    28956, // "```"
+
+    // -- Math
+
+    29900, // "0"
+    29896, // "1"
+    29906, // "2"
+    29941, // "3"
+    29946, // "4"
+    29945, // "5"
+    29953, // "6"
+    29955, // "7"
+    29947, // "8"
+    29929, // "9"
+
+    334,   // " *"
+    353,   // " ="
+    448,   // " -"
+    718,   // " +"
+
+    // -- JSON
+
+    29912, // "{"
+    29913, // "}"
+    29961, // "["
+    29962, // "]"
+
+    426,   // " {"
+    500,   // " }"
+    518,   // " ["
+    4514,  // " ]"
+
+    // 376,   // " ""
+    // 613,   // "","
+
+    0, // FIXME: zero sequence
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+};
+
+llama_token pedanticLLaMA3[MAX_PEDANTIC] = {
+
+    128001, // <|end_of_text|>
+
+    74694,  // "```"
+
+    // -- Math
+
+    15,     // "0"
+    16,     // "1"
+    17,     // "2"
+    18,     // "3"
+    19,     // "4"
+    20,     // "5"
+    21,     // "6"
+    22,     // "7"
+    23,     // "8"
+    24,     // "9"
+
+    353,    // " *" == "Ġ*"
+    284,    // " ="
+    482,    // " -"
+    489,    // " +" == "Ġ+"
+
+    // -- JSON
+
+    90,     // "{"
+    92,     // "}"
+    58,     // "["
+    60,     // "]"
+
+    314,    // " {" == "Ġ{"
+    335,    // " }"
+    510,    // " ["
+    2331,   // " ]" == "Ġ]"
+
+    // 330,    // " "" == "Ġ\""
+    // 498,    // ""," == "\","
+
+    0, // FIXME: zero sequence
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+};
+
+bool isPedantic(llama_token id) {
+    // size_t len = *(&pedanticTokens + 1) - pedanticTokens;
+    //fprintf(stderr, "\n SIZE = %d", MAX_PEDANTIC);
+
+    //for (llama_token i = 0; i < MAX_PEDANTIC; i++) {
+        //fprintf(stderr, "\n333 pedanticLLaMA3[%d] == %d", i, pedanticLLaMA3[i]);
+    //    fprintf(stderr, "\n??? pedanticLLaMA[%d] == %d", i, pedanticTokens[i]);
+    //}
+
+    for (llama_token i = 0; i < MAX_PEDANTIC; i++) {
+        if (id == pedanticTokens[i]) {
+            //fprintf(stderr, "\n=== *pedanticTokens[%d] == %d == %d", i, pedanticTokens[i], id);
+            //for (llama_token j = 0; j < MAX_PEDANTIC; j++) { fprintf(stderr, "\n *pedanticTokens[%d] == %d", j, pedanticTokens[j]); }
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // -- initJanus prefills base scaling penalties for each token depending on Janus Sampling euristics
+
+// LLaMA3 vocabSize = 128,288
 
 void initJanus(struct llama_context * ctx, struct llama_sampling_params & params) {
 
@@ -328,6 +454,14 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     auto vocabSize = llama_n_vocab(model);
     ::scales = new float[vocabSize] {};
     ::types = new float[vocabSize] {};
+
+    // fprintf(stderr, "\n\n === initJanus ===\n\n");
+    // fprintf(stderr, "\n\n === vocabSize = %d ===\n\n", vocabSize);
+
+    // llama 8B Q4_K - Medium
+    char desc[256];
+    llama_model_desc(model, desc, 256);
+    // fprintf(stderr, "\n\n === desc == %s ===\n\n", desc);
 
     /* DEBUG
     fprintf(stderr, "\n * janus = %d", params.janus);
@@ -339,10 +473,7 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
 
     // -- safe defaults
 
-    //if (params.depth <= 0 || params.depth > params.n_predict) {
-    //    params.depth = 200;
-    //}
-
+    if (params.depth <= 0) params.depth = 200;
     if (params.scale <= 0.0 || params.scale > 1.0) params.scale = 0.97;
     if (params.hi <= 0.0    || params.hi > 1.0)    params.hi = 0.99;
     if (params.lo <= 0.0    || params.lo > 1.0)    params.lo = 0.96;
@@ -351,6 +482,187 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
     //    how it was before [ with penalty = 1.06 ] : logits[id] /= 1.0 + (penalty - 1.0) * 0.10;
 
     float scale = params.scale;
+
+
+    // -- FIXME ASAP: Token IDs are different between LLaMA v2 / LLaMA v3 and other models !!!
+
+    // -- Assign manually specific penalties for high-frequency tokens
+    // TODO: Need more work with real texts and statistical probabilities
+
+    // LLaMA v2/v3 and Mistral
+    if (strstr(desc, "llama") || strstr(desc, "mistral")) {
+
+        if (vocabSize > 128000) { // LLaMA-3
+
+            for (llama_token i = 0; i < MAX_PEDANTIC; i++)
+                pedanticTokens[i] = pedanticLLaMA3[i];
+
+            ::scales[0] = 1.0;   // just to be safe
+            ::scales[128001] = scale; // penalize <|end_of_text|> in the beginning and allow it to boost over 1.0 later
+
+            for (int id = 0; id < vocabSize; id++) {
+                auto token = llama_token_to_piece(ctx, id);
+                //fprintf(stderr, "", llama_token_to_piece(ctx, id).c_str());
+                //if (id > 500 && id < 1000) 
+                //    fprintf(stderr, "\n[ TOKEN | %d == %s]", id, token.c_str());
+
+                // -- Popular RU beginning parts
+                // FIXME: Does 20K - 30K - 50K looks like good heuristics?
+
+                // 198, 271
+                if (token == "\n" || token == "\n\n") {
+                    ::scales[id] = 1.0 - (1.0 - scale) * 0.10;
+                    //fprintf(stderr, " [ TOKEN | %d == '%s' ] ", id, token.c_str());
+                    continue;
+                }
+
+                // -- Popular symbols
+
+                // 256, 257
+                if (token == "  " || token == "    ") {
+                    ::scales[id] = 1.0 - (1.0 - scale) * 0.20;
+                    //fprintf(stderr, " [ TOKEN | %d == '%s' ] ", id, token.c_str());
+                    continue;
+                } 
+
+                // 220, 11, 13
+                if (token == " " || token == "," || token == ".") {
+                    ::scales[id] = 1.0 - (1.0 - scale) * 0.10;
+                    //fprintf(stderr, " [ TOKEN | %d == '%s' ] ", id, token.c_str());
+                    continue;
+                } 
+
+                // 2001, 12, 25, 26
+                if (token == " —" || token == "-" || token == ":" || token == ";") {
+                    ::scales[id] = 1.0 - (1.0 - scale) * 0.30;
+                    //fprintf(stderr, " [ TOKEN | %d == '%s' ] ", id, token.c_str());
+                    continue;
+                } 
+
+                // 320, 570, 883, 8, 7
+                if (token == " (" || token == ")." || token == " )" || token == ")" || token == "(") {
+                    ::scales[id] = 1.0 - (1.0 - scale) * 0.30;
+                    //fprintf(stderr, " [ TOKEN | %d == '%s' ] ", id, token.c_str());
+                    continue;
+                } 
+
+                if (id < 20000 && tokType(ctx, id) == SPACE_RU) {
+                    ::scales[id]   = 1.0 - (1.0 - scale) * 0.30;
+                    continue;
+                }
+
+                if (id >= 20000 && id < 35000 && /*strlen(token.c_str()) >=2 &&*/ tokType(ctx, id) == SPACE_RU) {
+                    ::scales[id]   = 1.0 - (1.0 - scale) * 0.40;
+                    //fprintf(stderr, " [ RUSSIAN | %d == '%s' ] ", id, token.c_str());
+                    continue;
+                }
+
+                if (id >= 35000 && id < 50000 && tokType(ctx, id) == SPACE_RU) {
+                    ::scales[id]   = 1.0 - (1.0 - scale) * 0.50;
+                    continue;
+                }
+
+                // -- Popular EN beginning parts
+
+                if (id < 500 && tokType(ctx, id) == SPACE_EN) {
+                    ::scales[id]   = 1.0 - (1.0 - scale) * 0.30;
+                    continue;
+                }
+
+                if (id >= 500 && id < 800 && tokType(ctx, id) == SPACE_EN) {
+                    ::scales[id]   = 1.0 - (1.0 - scale) * 0.40;
+                    continue;
+                }
+
+                if (id >= 800 && id < 1100 && tokType(ctx, id) == SPACE_EN) {
+                    ::scales[id]   = 1.0 - (1.0 - scale) * 0.50;
+                    continue;
+                }
+
+                if (token == "\n") { ::scales[id] = 1.0 - (1.0 - scale) * 0.10; continue; } // newline
+            
+            } 
+
+        } else { // LLaMA-2
+
+            fprintf(stderr, "\n\n[ LLAMA-2 < 128,000 ]\n\n");
+
+            for (llama_token i = 0; i < MAX_PEDANTIC; i++)
+                pedanticTokens[i] = pedanticLLaMA2[i];
+
+            ::scales[0]     = 1.0;   // just to be safe
+            ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
+            
+            ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
+
+            ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
+            ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
+
+            ::scales[29871] = 1.0 - (1.0 - scale) * 0.10; // 29871 => " "
+            ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
+            ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
+
+            ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"
+            ::scales[29899] = 1.0 - (1.0 - scale) * 0.30; // 29899 => "-" [ used as bullet point ]
+            ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
+            ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
+
+            ::scales[313]   = 1.0 - (1.0 - scale) * 0.30; // 313   => " ("
+            ::scales[467]   = 1.0 - (1.0 - scale) * 0.30; // 467   => ")."
+            ::scales[1723]  = 1.0 - (1.0 - scale) * 0.30; // 1723  => " )"
+            ::scales[29897] = 1.0 - (1.0 - scale) * 0.30; // 29897 => ")"
+            ::scales[29898] = 1.0 - (1.0 - scale) * 0.30; // 29898 => "("
+    
+            // -- Popular RU parts
+
+            ::scales[490]   = 1.0 - (1.0 - scale) * 0.30; // 490  => " в"
+            ::scales[531]   = 1.0 - (1.0 - scale) * 0.30; // 531  => " с"
+            ::scales[606]   = 1.0 - (1.0 - scale) * 0.30; // 606  => " и"
+            ::scales[614]   = 1.0 - (1.0 - scale) * 0.30; // 614  => " о"
+            ::scales[665]   = 1.0 - (1.0 - scale) * 0.35; // 665  => " на"
+            ::scales[733]   = 1.0 - (1.0 - scale) * 0.35; // 733  => " по"
+            ::scales[863]   = 1.0 - (1.0 - scale) * 0.35; // 863  => " у"
+            ::scales[1077]  = 1.0 - (1.0 - scale) * 0.40; // 1077 => " за"
+            ::scales[1097]  = 1.0 - (1.0 - scale) * 0.40; // 1097 => " а"
+            ::scales[1186]  = 1.0 - (1.0 - scale) * 0.40; // 1186 => " к"
+            ::scales[1447]  = 1.0 - (1.0 - scale) * 0.45; // 1447 => " до"
+            ::scales[1538]  = 1.0 - (1.0 - scale) * 0.45; // 1538 => " не"
+            ::scales[1604]  = 1.0 - (1.0 - scale) * 0.45; // 1604 => " об"
+            ::scales[1685]  = 1.0 - (1.0 - scale) * 0.45; // 1685 => " от"
+            ::scales[4281]  = 1.0 - (1.0 - scale) * 0.50; // 4281 => " что"
+
+            ::scales[857]   = 1.0 - (1.0 - scale) * 0.50; // 857  => " С"
+            ::scales[939]   = 1.0 - (1.0 - scale) * 0.50; // 939  => " В"
+            ::scales[1651]  = 1.0 - (1.0 - scale) * 0.50; // 1651 => " О"
+
+            // -- Popular EN parts
+
+            ::scales[263]   = 1.0 - (1.0 - scale) * 0.30; // 263 => " a"
+            ::scales[278]   = 1.0 - (1.0 - scale) * 0.30; // 278 => " the"
+            ::scales[297]   = 1.0 - (1.0 - scale) * 0.30; // 297 => " in"
+            ::scales[304]   = 1.0 - (1.0 - scale) * 0.30; // 304 => " to"
+            ::scales[310]   = 1.0 - (1.0 - scale) * 0.30; // 310 => " of"
+            ::scales[322]   = 1.0 - (1.0 - scale) * 0.30; // 322 => " and"
+
+            ::scales[363]   = 1.0 - (1.0 - scale) * 0.35; // 363 => " for"
+            ::scales[372]   = 1.0 - (1.0 - scale) * 0.35; // 372 => " it"
+            ::scales[373]   = 1.0 - (1.0 - scale) * 0.35; // 373 => " on"
+            ::scales[385]   = 1.0 - (1.0 - scale) * 0.35; // 385 => " an"
+            ::scales[393]   = 1.0 - (1.0 - scale) * 0.35; // 393 => " that"
+            ::scales[408]   = 1.0 - (1.0 - scale) * 0.35; // 408 => " as"
+            ::scales[411]   = 1.0 - (1.0 - scale) * 0.35; // 411 => " with"
+            
+            ::scales[470]   = 1.0 - (1.0 - scale) * 0.40; // 470 => " or"
+            ::scales[472]   = 1.0 - (1.0 - scale) * 0.40; // 472 => " at"
+            ::scales[526]   = 1.0 - (1.0 - scale) * 0.40; // 526 => " are"
+
+            ::scales[319]   = 1.0 - (1.0 - scale) * 0.50; // 319 => " A"
+        }
+
+    } //else {
+        // FIXME: Support other models
+        //return
+    //} 
 
     for (llama_token id = 0; id < vocabSize; id++) {
 
@@ -404,133 +716,6 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
         //fprintf(stderr, " | \"%s\"", llama_token_to_piece(ctx, id).c_str());
     }
 
-    // -- FIXME ASAP: Token IDs are different between LLaMA v2 / LLaMA v3 and other models !!!
-
-    // -- Assign manually specific penalties for high-frequency tokens
-    // TODO: Need more work with real texts and statistical probabilities
-
-    ::scales[0]     = 1.0;   // just to be safe
-    ::scales[EOS]   = scale; // penalize <EOS> in the beginning and allow it to boost over 1.0 later
-    
-    ::scales[NL]    = 1.0 - (1.0 - scale) * 0.10; // newline
-
-    ::scales[259]   = 1.0 - (1.0 - scale) * 0.20; //   259 => "  "
-    ::scales[268]   = 1.0 - (1.0 - scale) * 0.20; //   268 => "    "
-
-    ::scales[29871] = 1.0 - (1.0 - scale) * 0.10; // 29871 => " "
-    ::scales[29892] = 1.0 - (1.0 - scale) * 0.10; // 29892 => ","
-    ::scales[29889] = 1.0 - (1.0 - scale) * 0.20; // 29889 => "."
-
-    ::scales[813]   = 1.0 - (1.0 - scale) * 0.30; // 813   => " —"
-    ::scales[29899] = 1.0 - (1.0 - scale) * 0.30; // 29899 => "-" [ used as bullet point ]
-    ::scales[29901] = 1.0 - (1.0 - scale) * 0.30; // 29901 => ":"
-    ::scales[29936] = 1.0 - (1.0 - scale) * 0.30; // 29936 => ";"
-
-    ::scales[313]   = 1.0 - (1.0 - scale) * 0.30; // 313   => " ("
-    ::scales[467]   = 1.0 - (1.0 - scale) * 0.30; // 467   => ")."
-    ::scales[1723]  = 1.0 - (1.0 - scale) * 0.30; // 1723  => " )"
-    ::scales[29897] = 1.0 - (1.0 - scale) * 0.30; // 29897 => ")"
-    ::scales[29898] = 1.0 - (1.0 - scale) * 0.30; // 29898 => "("
-    
-    // -- Popular RU parts
-
-    ::scales[490]   = 1.0 - (1.0 - scale) * 0.30; // 490  => " в"
-    ::scales[531]   = 1.0 - (1.0 - scale) * 0.30; // 531  => " с"
-    ::scales[606]   = 1.0 - (1.0 - scale) * 0.30; // 606  => " и"
-    ::scales[614]   = 1.0 - (1.0 - scale) * 0.30; // 614  => " о"
-    ::scales[665]   = 1.0 - (1.0 - scale) * 0.35; // 665  => " на"
-    ::scales[733]   = 1.0 - (1.0 - scale) * 0.35; // 733  => " по"
-    ::scales[863]   = 1.0 - (1.0 - scale) * 0.35; // 863  => " у"
-    ::scales[1077]  = 1.0 - (1.0 - scale) * 0.40; // 1077 => " за"
-    ::scales[1097]  = 1.0 - (1.0 - scale) * 0.40; // 1097 => " а"
-    ::scales[1186]  = 1.0 - (1.0 - scale) * 0.40; // 1186 => " к"
-    ::scales[1447]  = 1.0 - (1.0 - scale) * 0.45; // 1447 => " до"
-    ::scales[1538]  = 1.0 - (1.0 - scale) * 0.45; // 1538 => " не"
-    ::scales[1604]  = 1.0 - (1.0 - scale) * 0.45; // 1604 => " об"
-    ::scales[1685]  = 1.0 - (1.0 - scale) * 0.45; // 1685 => " от"
-    ::scales[4281]  = 1.0 - (1.0 - scale) * 0.50; // 4281 => " что"
-
-    ::scales[857]   = 1.0 - (1.0 - scale) * 0.50; // 857  => " С"
-    ::scales[939]   = 1.0 - (1.0 - scale) * 0.50; // 939  => " В"
-    ::scales[1651]  = 1.0 - (1.0 - scale) * 0.50; // 1651 => " О"
-
-    // -- Popular EN parts
-
-    ::scales[263]   = 1.0 - (1.0 - scale) * 0.30; // 263 => " a"
-    ::scales[278]   = 1.0 - (1.0 - scale) * 0.30; // 278 => " the"
-    ::scales[297]   = 1.0 - (1.0 - scale) * 0.30; // 297 => " in"
-    ::scales[304]   = 1.0 - (1.0 - scale) * 0.30; // 304 => " to"
-    ::scales[310]   = 1.0 - (1.0 - scale) * 0.30; // 310 => " of"
-    ::scales[322]   = 1.0 - (1.0 - scale) * 0.30; // 322 => " and"
-
-    ::scales[363]   = 1.0 - (1.0 - scale) * 0.35; // 363 => " for"
-    ::scales[372]   = 1.0 - (1.0 - scale) * 0.35; // 372 => " it"
-    ::scales[373]   = 1.0 - (1.0 - scale) * 0.35; // 373 => " on"
-    ::scales[385]   = 1.0 - (1.0 - scale) * 0.35; // 385 => " an"
-    ::scales[393]   = 1.0 - (1.0 - scale) * 0.35; // 393 => " that"
-    ::scales[408]   = 1.0 - (1.0 - scale) * 0.35; // 408 => " as"
-    ::scales[411]   = 1.0 - (1.0 - scale) * 0.35; // 411 => " with"
-    
-    ::scales[470]   = 1.0 - (1.0 - scale) * 0.40; // 470 => " or"
-    ::scales[472]   = 1.0 - (1.0 - scale) * 0.40; // 472 => " at"
-    ::scales[526]   = 1.0 - (1.0 - scale) * 0.40; // 526 => " are"
-
-    ::scales[319]   = 1.0 - (1.0 - scale) * 0.50; // 319 => " A"
-
-    //exit(1); // DEBUG
-}
-
-// Tokens very often used for math, coding and JSON (aka repetitive),
-// so we should be care about them and not penalize
-
-llama_token pedanticTokens[] = {
-
-    2,     // <EOS>
-
-    28956, // "```"
-
-    // -- Math
-
-    29900, // "0"
-    29896, // "1"
-    29906, // "2"
-    29941, // "3"
-    29946, // "4"
-    29945, // "5"
-    29953, // "6"
-    29955, // "7"
-    29947, // "8"
-    29929, // "9"
-
-    334,   // " *"
-    353,   // " ="
-    448,   // " -"
-    718,   // " +"
-
-    // -- JSON
-
-    29912, // "{"
-    29913, // "}"
-    29961, // "["
-    29962, // "]"
-
-    426,   // " {"
-    500,   // " }"
-    518,   // " ["
-    4514,  // " ]"
-
-    // 376,   //  " ""
-    // 613,   // "","
-};
-
-bool isPedantic(llama_token id) {
-    size_t len = *(&pedanticTokens + 1) - pedanticTokens;
-    for (size_t i = 0; i < len; i++) {
-        if (id == pedanticTokens[i]) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // this function receives any std::string 
@@ -754,7 +939,169 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
         }
     }
 }
+/*
+// -- NB! llama_sample_token() is an older implementation of newer janus.cpp::llama_sampling_sample()
+// TODO: use llama_sampling_sample();
 
+// pos => index of current position within generation window [ 0 .. max )
+// max => how many tokens were generated via the last iteration?
+//        remember, that sessions might have one or multiple iterations
+//        before reaching context limit of 4K tokens
+
+llama_token llama_sample_token(
+                  struct llama_context * ctx,
+                  struct llama_context * ctx_guidance,
+                  struct llama_grammar * grammar,
+          struct llama_sampling_params & params,
+        const std::vector<llama_token> & last_tokens,
+         std::vector<llama_token_data> & candidates,
+                            const size_t promptLen,
+                            const size_t pos,
+                            const size_t max) {                              
+
+    auto model = llama_get_model(ctx);
+
+    const int n_ctx   = llama_n_ctx(ctx);
+    const int n_vocab = llama_n_vocab(llama_get_model(ctx));
+
+    const int32_t top_k          = params.top_k <= 0 ? n_vocab : params.top_k;
+    const int32_t penalty_last_n = params.penalty_last_n < 0 ? n_ctx : params.penalty_last_n;
+
+
+    // DEBUG GQA
+    // auto hparams = model->hparams;
+    // fprintf(stderr, "\n\n === GQA HPARAMS ===");
+    // fprintf(stderr, "\n * n_embd = %d", hparams.n_embd);
+    // fprintf(stderr, "\n * n_head = %d", hparams.n_head);
+    // fprintf(stderr, "\n * n_head_kv = %d", hparams.n_head_kv);
+    // fprintf(stderr, "\n * n_gqa() = n_head/n_head_kv = %d", hparams.n_gqa());
+    // fprintf(stderr, "\n * n_embd_head() = n_embd/n_head = %d", hparams.n_embd_head());
+    // fprintf(stderr, "\n * n_embd_gqa() = n_embd/n_gqa() = %d", hparams.n_embd_gqa());
+
+    // DEBUG JANUS
+    // fprintf(stderr, "\n\n === JANUS ===");
+    // fprintf(stderr, "\n * janus = %d", params.janus);
+    // fprintf(stderr, "\n * depth = %d", params.depth);
+    // fprintf(stderr, "\n * scale = %f", params.scale);
+    // fprintf(stderr, "\n * lo = %f", params.lo);
+    // fprintf(stderr, "\n * hi = %f", params.hi);
+
+    // DEBUG HPARAMS
+    // fprintf(stderr, "\n\n === HPARAMS ===");
+    // fprintf(stderr, "\n * n_ctx = %d", n_ctx);
+    // fprintf(stderr, "\n * n_vocab = %d", n_vocab);
+    // fprintf(stderr, "\n * temp = %f", params.temp);
+    // fprintf(stderr, "\n * top_k = %d", top_k);
+    // fprintf(stderr, "\n * top_p = %f", params.top_p);
+    // fprintf(stderr, "\n * penalty_last_n = %d", penalty_last_n);
+    // fprintf(stderr, "\n * penalty_repeat = %f", params.penalty_repeat);
+    // fprintf(stderr, "\n * mirostat = %d", params.mirostat);
+    // fprintf(stderr, "\n * mirostat_eta = %f", params.mirostat_eta);
+    // fprintf(stderr, "\n * mirostat_tau = %f", params.mirostat_tau); 
+
+    //llama_token id = 0;
+    //float * logits = llama_get_logits(ctx);
+    //candidates.clear();
+
+    // Experimental Janus Sampling - creative for text and pedantic for math / coding
+    if (params.janus > 0) {
+        return sample_janus_token(ctx, params, last_tokens, promptLen, pos, max);
+    }
+
+    llama_token id = 0;
+    float * logits = llama_get_logits(ctx);
+    ///// candidates.clear();
+
+    // Deterministic sampling with great performance
+    if (top_k == 1) {
+        return sample_top_token(logits, n_vocab);
+    }
+
+    // Apply params.logit_bias map
+    //for (auto it = params.logit_bias.begin(); it != params.logit_bias.end(); it++) {
+    //    logits[it->first] += it->second;
+    //}
+
+    candidates.clear();
+    for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
+        candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
+    }
+
+    llama_token_data_array cur_p = { candidates.data(), candidates.size(), false };
+
+    if (ctx_guidance) {
+    /////     llama_sample_classifier_free_guidance(ctx, &cur_p, ctx_guidance, params.cfg_scale);
+    }
+
+    // apply penalties
+    if (!last_tokens.empty()) {
+
+        const float nl_logit = logits[llama_token_nl(model)];
+        const int last_n = std::min(
+            std::min(
+                (int)last_tokens.size(), 
+                penalty_last_n), 
+            n_ctx);
+
+        llama_sample_repetition_penalties(
+                ctx, 
+                &cur_p,
+                last_tokens.data() + last_tokens.size() - last_n, 
+                last_n, 
+                params.penalty_repeat,
+                params.penalty_freq, 
+                params.penalty_present
+            );
+
+        if (!params.penalize_nl) {
+            for (size_t idx = 0; idx < cur_p.size; idx++) {
+                if (cur_p.data[idx].id == llama_token_nl(model)) {
+                    cur_p.data[idx].logit = nl_logit;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (grammar != NULL) {
+        llama_sample_grammar(ctx, &cur_p, grammar);
+    }
+
+    if (params.temp <= 0) {
+        // Greedy sampling
+        id = llama_sample_token_greedy(ctx, &cur_p);
+    } else {
+        if (params.mirostat == 1) {
+            static float mirostat_mu = 2.0f * params.mirostat_tau;
+            const int mirostat_m = 100;
+            llama_sample_temp(ctx, &cur_p, params.temp);
+            id = llama_sample_token_mirostat(ctx, &cur_p, params.mirostat_tau, params.mirostat_eta, mirostat_m, &mirostat_mu);
+        } else if (params.mirostat == 2) {
+            static float mirostat_mu = 2.0f * params.mirostat_tau;
+            // Experimental step!
+            if (top_k > 0) {
+                llama_sample_top_k(ctx, &cur_p, top_k, 1);
+            }
+            llama_sample_temp(ctx, &cur_p, params.temp);
+            id = llama_sample_token_mirostat_v2(ctx, &cur_p, params.mirostat_tau, params.mirostat_eta, &mirostat_mu);
+        } else {
+            // Temperature sampling
+            llama_sample_top_k      (ctx, &cur_p, top_k, 1);
+            //llama_sample_tail_free  (ctx, &cur_p, tfs_z, 1);
+            //llama_sample_typical    (ctx, &cur_p, params.typical_p, 1);
+            llama_sample_top_p      (ctx, &cur_p, params.top_p, 1);
+            llama_sample_temp       (ctx, &cur_p, params.temp);
+            id = llama_sample_token (ctx, &cur_p);
+        }
+    }
+
+    if (grammar != NULL) {
+        llama_grammar_accept_token(ctx, grammar, id);
+    }
+
+    return id;
+}
+*/
 // -- FIXME: DUP JANUS + BRIDGE
 
 // no reasons to expose this function in header
