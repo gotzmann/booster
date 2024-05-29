@@ -184,6 +184,9 @@ int64_t do_inference(
     gpt_params & params = ::params[idx];
     llama_sampling_params & sparams = ::sparams[idx];
 
+    // fprintf(stderr, "\n GLOBAL DEBUG = %s", debug); // DEBUG
+    initJanus(ctx, sparams, debug); // NB!
+
     llama_context * ctx_guidance = NULL;
     g_model = &model;
     g_ctx = &ctx;

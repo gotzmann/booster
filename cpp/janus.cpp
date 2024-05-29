@@ -17,6 +17,8 @@
 #include "bridge.h"
 #include "janus.h"
 
+char * janusDebug; // debug level = "cuda|tokenizer", etc
+
 // The Guardian has always been a newspaper for writers, 
 // and so a newspaper for readers.
 
@@ -193,7 +195,7 @@ llama_token sample_janus_token(
         const size_t max) {
 
     if (!::isJanusInitialized) {
-        initJanus(ctx, params);
+        initJanus(ctx, params, janusDebug);
         ::isJanusInitialized = true;
     }
 
@@ -209,6 +211,7 @@ llama_token sample_janus_token(
     fprintf(stderr, "\n * promptLen = %d", promptLen);
     //exit(1); */
 
+    // fprintf(stderr, "\n JANUS DEBUG = %s", janusDebug); // DEBUG
     printDebug(ctx, pos, 0, "TOP LIST"); // -- DEBUG
 
     auto model       = llama_get_model(ctx);
@@ -449,7 +452,10 @@ bool isPedantic(llama_token id) {
 
 // LLaMA3 vocabSize = 128,288
 
-void initJanus(struct llama_context * ctx, struct llama_sampling_params & params) {
+void initJanus(struct llama_context * ctx, struct llama_sampling_params & params, char * debug) {
+
+    ::isJanusInitialized = true;
+    ::janusDebug = debug;
 
     auto model = llama_get_model(ctx);
     auto vocabSize = llama_n_vocab(model);
@@ -502,7 +508,13 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
             ::scales[128001] = scale; // penalize <|end_of_text|> in the beginning and allow it to boost over 1.0 later
 
             for (int id = 0; id < vocabSize; id++) {
+
                 auto token = llama_token_to_piece(ctx, id);
+
+                //if (token == "0" || token == "9" || token == "```" || token == " *") {
+                //    fprintf(stderr, "\n[ TOKEN | %d == %s]", id, token.c_str());
+                //}
+
                 //fprintf(stderr, "", llama_token_to_piece(ctx, id).c_str());
                 //if (id > 500 && id < 1000) 
                 //    fprintf(stderr, "\n[ TOKEN | %d == %s]", id, token.c_str());
@@ -585,8 +597,6 @@ void initJanus(struct llama_context * ctx, struct llama_sampling_params & params
             } 
 
         } else { // LLaMA-2
-
-            fprintf(stderr, "\n\n[ LLAMA-2 < 128,000 ]\n\n");
 
             for (llama_token i = 0; i < MAX_PEDANTIC; i++)
                 pedanticTokens[i] = pedanticLLaMA2[i];
@@ -875,7 +885,9 @@ int tokSize(const llama_context *ctx, const llama_token token) {
 }
 
 void printDebug(struct llama_context * ctx, const int pos, const size_t shortlist, const char * text) {
-    return; // DEBUG
+
+    if (::janusDebug == NULL) return; // DEBUG
+    if (!strstr(::janusDebug, "sampling")) return; // DEBUG
 
     auto model = llama_get_model(ctx);
     float * logits = llama_get_logits(ctx);
@@ -912,6 +924,8 @@ void printDebug(struct llama_context * ctx, const int pos, const size_t shortlis
         if (shortlist > 0 && i == shortlist) {
             fprintf(stderr, "\n  ---------------------------");
         }
+
+        // TODO: LLaMA-3
 
         if (id == NL) {
             fprintf(stderr, 
