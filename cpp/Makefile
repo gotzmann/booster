@@ -3,7 +3,7 @@ cpuobjs: llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants
 cudaobjs: llama.o bridge.o janus.o ggml.o ggml-backend.o ggml-alloc.o ggml-quants.o ggml-cuda.o unicode.o unicode-data.o sgemm.o \
 	ggml-cuda/acc.o ggml-cuda/arange.o ggml-cuda/argsort.o ggml-cuda/binbcast.o ggml-cuda/clamp.o \
 	ggml-cuda/concat.o ggml-cuda/convert.o ggml-cuda/cpy.o ggml-cuda/diagmask.o ggml-cuda/dmmv.o \
-	ggml-cuda/fattn-tile-f16.o ggml-cuda/fattn-tile-f32.o ggml-cuda/fattn-vec-f16.o ggml-cuda/fattn-vec-f32.o \
+	ggml-cuda/fattn-tile-f16.o ggml-cuda/fattn-tile-f32.o ggml-cuda/fattn-vec-f32.o \
 	ggml-cuda/fattn.o ggml-cuda/fattn-wmma-f16.o ggml-cuda/mma.o ggml-cuda/getrows.o ggml-cuda/im2col.o ggml-cuda/mmq.o ggml-cuda/mmvq.o ggml-cuda/norm.o \
 	ggml-cuda/pad.o ggml-cuda/pool2d.o ggml-cuda/quantize.o ggml-cuda/rope.o ggml-cuda/scale.o ggml-cuda/softmax.o \
 	ggml-cuda/sumrows.o ggml-cuda/tsembd.o ggml-cuda/unary.o ggml-cuda/upscale.o
