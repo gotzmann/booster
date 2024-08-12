@@ -11,10 +11,18 @@
 #include <unordered_set>
 #include <shared_mutex>
 
+#include "llama.h"
+#include "common.h"
+#include "sampling.h"
+
 #include "ggml.h"
 #include "ggml-common.h"
 #include "ggml-backend.h"
-#include "llama.h"
+
+#include "llama-impl.h"
+#include "llama-vocab.h"
+// #include "llama-grammar.h"
+// #include "llama-sampling.h"
 
 #include "bridge.h"
 #include "janus.h"
@@ -78,6 +86,7 @@ static void log_nothing(ggml_log_level level, const char * text, void * user_dat
 
 void hide() {
     llama_log_set(log_nothing, NULL); // disable logging
+
     ///// (void) !freopen(NULL_DEVICE, "w", stdout);
     ///// (void) !freopen(NULL_DEVICE, "w", stderr);
 }    
@@ -92,6 +101,7 @@ void show() {
 
 gpt_params params[8];             // main params 
 llama_sampling_params sparams[8]; // sampling params
+janus_params jparams[8];          // Janus Sampling params
 llama_model * models[8];          // models
 llama_context * contexts[8];      // contexts
 
@@ -110,15 +120,15 @@ struct llama_context * init_context(int idx) {
     auto modelName = params[idx].model.c_str();
 
     // -- initialize the model
+    // TODO: Use llama_init_from_gpt_params :: llama_load_model_from_hf
 
-    // WAS: llama_model_params settings = llama_model_default_params();
-    llama_model_params /* model_params */ settings = llama_model_params_from_gpt_params(::params[idx]);
+    auto mparams = llama_model_params_from_gpt_params(::params[idx]);
 
-    settings.main_gpu     = ::params[idx].main_gpu;
-    settings.n_gpu_layers = ::params[idx].n_gpu_layers;
-    settings.tensor_split = ::params[idx].tensor_split;
+    mparams.main_gpu     = ::params[idx].main_gpu;
+    mparams.n_gpu_layers = ::params[idx].n_gpu_layers;
+    mparams.tensor_split = ::params[idx].tensor_split;
 
-    llama_model * model = llama_load_model_from_file(modelName, settings);
+    llama_model * model = llama_load_model_from_file(modelName, mparams);
     if (model == NULL) {
         fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, modelName);
         // return std::make_tuple(nullptr, nullptr);
@@ -129,13 +139,12 @@ struct llama_context * init_context(int idx) {
 
     // -- initialize the context
 
-    // WAS: auto defaults = llama_context_default_params();
-    llama_context_params /* ctx_params */ defaults = llama_context_params_from_gpt_params(params[idx]);
+    auto cparams = llama_context_params_from_gpt_params(params[idx]);
 
-    defaults.n_ctx           = ::params[idx].n_ctx;
-    defaults.seed            = ::params[idx].seed;
-    defaults.n_threads       = ::params[idx].n_threads;
-    defaults.n_threads_batch = ::params[idx].n_threads_batch;
+    cparams.n_ctx           = ::params[idx].n_ctx;
+    cparams.seed            = ::params[idx].seed;
+    cparams.n_threads       = ::params[idx].n_threads;
+    cparams.n_threads_batch = ::params[idx].n_threads_batch;
 
     // TODO: Determine best batch size for GPU (and maybe different depending on VRAM size)
     // NB! It crashes with batch of 32/64 and go loop with 128. So use batching of 256 or more
@@ -143,24 +152,21 @@ struct llama_context * init_context(int idx) {
     bool isGPU = ::params[idx].n_gpu_layers > 0 ? true : false;
 
     if (::params[idx].n_batch > 0 && ::params[idx].n_batch <= ::params[idx].n_ctx) {
-        defaults.n_batch = ::params[idx].n_batch;
+        cparams.n_batch = ::params[idx].n_batch;
     } else if (isGPU) {
-        defaults.n_batch = 512;
+        cparams.n_batch = 512;
     } else {
-        defaults.n_batch = ::params[idx].n_ctx;
+        cparams.n_batch = ::params[idx].n_ctx;
     }
 
-    llama_context * ctx = llama_new_context_with_model(model, defaults);
+    llama_context * ctx = llama_new_context_with_model(model, cparams);
     if (ctx == NULL) {
         fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, modelName);
         llama_free_model(model);
-        // return std::make_tuple(nullptr, nullptr);
         return NULL;
     }
 
     contexts[idx] = ctx;
-
-    // return std::make_tuple(model, lctx);
     return ctx;
 }
 
@@ -185,11 +191,11 @@ int64_t do_inference(
 
     gpt_params & params = ::params[idx];
     llama_sampling_params & sparams = ::sparams[idx];
+    janus_params & jparams = ::jparams[idx];
 
-    // fprintf(stderr, "\n GLOBAL DEBUG = %s", debug); // DEBUG
-    initJanus(ctx, sparams, debug); // NB!
+    initJanus(ctx, jparams, debug); // NB!
 
-    llama_context * ctx_guidance = NULL;
+    [[maybe_unused]] llama_context * ctx_guidance = NULL;
     g_model = &model;
     g_ctx = &ctx;
     g_params = &params;
@@ -255,15 +261,26 @@ int64_t do_inference(
         }
     }
 */
+
     // tokenize the prompt
     const bool add_bos = llama_should_add_bos_token(model);
+    // fprintf(stderr, "\n\nADD_BOS: %d\n\n", add_bos);
+    // FIXME: Check out what this assert actually means
+    ///// if (!llama_model_has_encoder(model)) {
+        ///// GGML_ASSERT(llama_add_eos_token(model) != 1);
+    /////    fprintf(stderr, "\ndo_inference :: [ 3-1 ] "); // DEBUG
+    /////    return NULL;
+    ///// }
+
     std::vector<llama_token> embd_inp;
-    embd_inp = ::llama_tokenize(ctx, prompt, add_bos, true);
+    // WAS: embd_inp = ::llama_tokenize(ctx, prompt, add_bos, true);
+    // embd_inp = ::llama_tokenize(ctx, prompt, true);
+    embd_inp = ::llama_tokenize(ctx, prompt, false);
 
     // Should not run without any tokens
-    if (embd_inp.empty()) {
-        embd_inp.push_back(llama_token_bos(model)); // FIXME
-    }
+    ///// if (embd_inp.empty()) {
+    /////     embd_inp.push_back(llama_token_bos(model)); // FIXME
+    ///// }
 
     // number of tokens to keep when resetting context
     if (params.n_keep < 0 || params.n_keep > (int) embd_inp.size() /* || params.instruct || params.chatml */ ) {
@@ -280,8 +297,9 @@ int64_t do_inference(
     }
     fprintf(stderr, "]");
 */
+
 /*
-    auto tokens = ::llama_tokenize(ctx, doc, true); 
+    auto tokens = ::llama_tokenize(ctx, prompt, true); 
     std::unordered_map<llama_token, size_t> tokmap;
     for(int i = 0; i < tokens.size(); i++) {
         auto id = tokens[i];
@@ -312,7 +330,7 @@ int64_t do_inference(
             id,
             logit,
             logit / tokens.size(),
-            llama_token_to_str(ctx, id).c_str()
+            llama_token_to_piece(ctx, id).c_str()
         );
     }    
     exit(1);
@@ -435,7 +453,7 @@ int64_t do_inference(
     std::vector<llama_token> embd;
     std::vector<llama_token> embd_guidance;
 
-    struct llama_sampling_context * ctx_sampling = llama_sampling_init((const struct llama_sampling_params) sparams);
+    struct llama_sampling_context * ctx_sampling = llama_sampling_init((const struct llama_sampling_params &) sparams);
 
     // -- fix hallucinations from previously polluted cache 
     llama_kv_cache_clear(ctx);
@@ -566,17 +584,19 @@ int64_t do_inference(
             }
 */
             llama_token id;
-            if (sparams.janus) {
+            // FIXME: Allow standard samplings
+            ///// if (sparams.janus) {
                 id = sample_janus_token(
                     ctx,
                     sparams,
+                    jparams,
                     last_tokens,
                     embd_inp.size(),
                     n_past,
                     ::params[idx].n_predict);
-            } else {
-                id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
-            }
+            ///// } else {
+            /////     id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
+            ///// }
 
             // we still need to maintain this for Janus Sampling
             last_tokens.erase(last_tokens.begin());
@@ -688,14 +708,9 @@ void init(char * swap, char * debug) {
     ::path_session = swap;
     // fprintf(stderr, "\n\nDEBUG: %s\n\n", debug);
     // fprintf(stderr, "\n\nLEN: %d\n\n", strlen(debug));
-    ///// bool showFlag = false;
-    ///// if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
-    ///// if (!debug && strcmp(debug, "")) { hide(); showFlag = true; }
-    //if (strlen(debug) == 0) { hide(); fprintf(stderr, "\n\nINSIDE: %d\n\n", strlen(debug)); }
     if (strlen(debug) < 2) hide();
     llama_backend_init();
     llama_numa_init(GGML_NUMA_STRATEGY_DISABLED); // TODO: NUMA = params.numa
-    ///// if (showFlag) { show(); }
     show();
 }
 
@@ -734,11 +749,11 @@ void * initContext(
 
     // -- Janus sampling
 
-    ::sparams[idx].janus          = janus;
-    ::sparams[idx].depth          = depth;
-    ::sparams[idx].scale          = scale;
-    ::sparams[idx].hi             = hi;
-    ::sparams[idx].lo             = lo;
+    ::jparams[idx].janus          = janus;
+    ::jparams[idx].depth          = depth;
+    ::jparams[idx].scale          = scale;
+    ::jparams[idx].hi             = hi;
+    ::jparams[idx].lo             = lo;
 
     // -- other samplings
 
@@ -756,9 +771,9 @@ void * initContext(
     ::sparams[idx].penalty_last_n  = penalty_last_n;
     
     ::params[idx].seed            = seed;
-    
+
     bool showFlag = false;
-    if (strstr(debug, "cuda") != NULL) { hide(); showFlag = true; }
+    if (strstr(debug, "cuda") == NULL) { hide(); showFlag = true; }
     auto res = init_context(idx);
     if (showFlag) { show(); }
 
@@ -770,7 +785,7 @@ int64_t doInference(
     void * ctx, 
     char * jobID, 
     char * sessionID, 
-    char * prompt) {
+    char * prompt) {  
     
     std::string id = jobID;
     std::string text = prompt;
@@ -814,37 +829,98 @@ uint32_t getSeed(char * jobID) {
 
 }  // ------------------------------------------------------
 
-//
-// Vocab utils
-//
-
-std::vector<llama_token> llama_tokenize(
-  const struct llama_context * ctx,
-           const std::string & text,
-                        bool   add_bos,
-                        bool   special) {
-    return llama_tokenize(llama_get_model(ctx), text, add_bos, special);
-}
-
-std::vector<llama_token> llama_tokenize(
-    const struct llama_model * model,
-           const std::string & text,
-                        bool   add_bos,
-                        bool   special) {
-    // upper limit for the number of tokens
-    int n_tokens = text.length() + add_bos;
-    std::vector<llama_token> result(n_tokens);
-    n_tokens = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos, special);
-    if (n_tokens < 0) {
-        result.resize(-n_tokens);
-        int check = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_bos, special);
-        GGML_ASSERT(check == -n_tokens);
-    } else {
-        result.resize(n_tokens);
+/*
+// does not write null-terminator to buf
+int32_t llama_token_to_piece(const struct llama_model * model, llama_token token, char * buf, int32_t length, bool special) {
+    // ref: https://github.com/ggerganov/llama.cpp/pull/7587#discussion_r1620983843
+    if (!special && llama_is_control_token(model->vocab, token)) {
+        return 0;
     }
-    return result;
+
+    // if we have a cache - use it
+    {
+        const auto & cache = model->vocab.cache_token_to_piece;
+
+        if (!cache.empty()) {
+            const auto & res = cache.at(token);
+            if (length < (int) res.size()) {
+                return -(int) res.size();
+            }
+            memcpy(buf, res.c_str(), res.size());
+            return res.size();
+        }
+    }
+
+    if (0 <= token && token < llama_n_vocab(model)) {
+        switch (llama_vocab_get_type(model->vocab)) {
+            case LLAMA_VOCAB_TYPE_WPM:
+            case LLAMA_VOCAB_TYPE_SPM: {
+                // NOTE: we accept all unsupported token types,
+                // suppressing them like CONTROL tokens.
+                if (llama_is_normal_token(model->vocab, token)) {
+                    std::string result = model->vocab.id_to_token[token].text;
+                    llama_unescape_whitespace(result);
+                    if (length < (int) result.length()) {
+                        return -(int) result.length();
+                    }
+                    memcpy(buf, result.c_str(), result.length());
+                    return result.length();
+                } else if (
+                        (llama_is_user_defined_token(model->vocab, token)) ||
+                        (llama_is_control_token     (model->vocab, token) && special)) {
+                    std::string result = model->vocab.id_to_token[token].text;
+                    if (length < (int) result.length()) {
+                        return -(int) result.length();
+                    }
+                    memcpy(buf, result.c_str(), result.length());
+                    return result.length();
+                } else if (llama_is_unknown_token(model->vocab, token)) { // NOLINT
+                    if (length < 3) {
+                        return -3;
+                    }
+                    memcpy(buf, "\xe2\x96\x85", 3);
+                    return 3;
+                } else if (llama_is_byte_token(model->vocab, token)) {
+                    if (length < 1) {
+                        return -1;
+                    }
+                    buf[0] = llama_token_to_byte(model->vocab, token);
+                    return 1;
+                }
+                break;
+            }
+            case LLAMA_VOCAB_TYPE_BPE: {
+                // NOTE: we accept all unsupported token types,
+                // suppressing them like CONTROL tokens.
+                if (llama_is_normal_token(model->vocab, token)) {
+                    std::string result = model->vocab.id_to_token[token].text;
+                    result = llama_decode_text(result);
+                    if (length < (int) result.length()) {
+                        return -(int) result.length();
+                    }
+                    memcpy(buf, result.c_str(), result.length());
+                    return result.length();
+                } else if (
+                        (llama_is_user_defined_token(model->vocab, token)) ||
+                        (llama_is_control_token     (model->vocab, token) && special)) {
+                    std::string result = model->vocab.id_to_token[token].text;
+                    if (length < (int) result.length()) {
+                        return -(int) result.length();
+                    }
+                    memcpy(buf, result.c_str(), result.length());
+                    return result.length();
+                }
+                break;
+            }
+            default:
+                GGML_ASSERT(false);
+        }
+    }
+    return 0;
 }
 
+
+// NOTE: avoid ever using this except for building the token_to_piece caches
 std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token, bool special) {
     std::vector<char> result(8, 0);
     const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), special);
@@ -858,6 +934,9 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
 
     return std::string(result.data(), result.size());
 }
+*/
+
+
 /*
 std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token) {
     std::vector<char> result(8, 0);
@@ -873,11 +952,6 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
     return std::string(result.data(), result.size());
 }
 */
-bool llama_should_add_bos_token(const llama_model * model) {
-    const int add_bos = llama_add_bos_token(model);
-
-    return add_bos != -1 ? bool(add_bos) : (llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM);
-}
 
 // This works fast and allows for 100% deterministic sampling
 llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logits, const int size) {
@@ -901,60 +975,41 @@ llama_token sample_top_token(/*struct llama_context * ctx,*/ const float * logit
     return id;
 }
 
-void llama_batch_clear(struct llama_batch & batch) {
-    batch.n_tokens = 0;
-}
 
-void llama_batch_add(
-                 struct llama_batch & batch,
-                        llama_token   id,
-                          llama_pos   pos,
-    const std::vector<llama_seq_id> & seq_ids,
-                               bool   logits) {
-    batch.token   [batch.n_tokens] = id;
-    batch.pos     [batch.n_tokens] = pos,
-    batch.n_seq_id[batch.n_tokens] = seq_ids.size();
-    for (size_t i = 0; i < seq_ids.size(); ++i) {
-        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
-    }
-    batch.logits  [batch.n_tokens] = logits;
-
-    batch.n_tokens++;
-}
 
 // ------------------------------------------------------
-
+/*
 struct llama_sampling_context * llama_sampling_init(const struct llama_sampling_params & params) {
     struct llama_sampling_context * result = new llama_sampling_context();
 
     result->params  = params;
     result->grammar = nullptr;
-/*
-    // if there is a grammar, parse it
-    if (!params.grammar.empty()) {
-        result->parsed_grammar = grammar_parser::parse(params.grammar.c_str());
 
-        // will be empty (default) if there are parse errors
-        if (result->parsed_grammar.rules.empty()) {
-            fprintf(stderr, "%s: failed to parse grammar\n", __func__);
-            delete result;
-            return nullptr;
-        }
+    // // if there is a grammar, parse it
+    // if (!params.grammar.empty()) {
+    //     result->parsed_grammar = grammar_parser::parse(params.grammar.c_str());
 
-        std::vector<const llama_grammar_element *> grammar_rules(result->parsed_grammar.c_rules());
+    //     // will be empty (default) if there are parse errors
+    //     if (result->parsed_grammar.rules.empty()) {
+    //         fprintf(stderr, "%s: failed to parse grammar\n", __func__);
+    //         delete result;
+    //         return nullptr;
+    //     }
 
-        result->grammar = llama_grammar_init(
-                grammar_rules.data(),
-                grammar_rules.size(), result->parsed_grammar.symbol_ids.at("root"));
-    }
-*/
+    //     std::vector<const llama_grammar_element *> grammar_rules(result->parsed_grammar.c_rules());
+
+    //     result->grammar = llama_grammar_init(
+    //             grammar_rules.data(),
+    //             grammar_rules.size(), result->parsed_grammar.symbol_ids.at("root"));
+    // }
+
     result->prev.resize(params.n_prev);
 
     return result;
-}
+} */
 
 // -- FIXME: DUP BRIDGE + JANUS
-
+/*
 // no reasons to expose this function in header
 static void sampler_queue(
                    struct llama_context * ctx_main,
@@ -991,7 +1046,8 @@ static void sampler_queue(
         }
     }
 }
-
+*/
+/*
 static llama_token_data_array llama_sampling_prepare_impl(
                   struct llama_sampling_context * ctx_sampling,
                   struct llama_context * ctx_main,
@@ -1067,7 +1123,8 @@ static llama_token_data_array llama_sampling_prepare_impl(
 
     return cur_p;
 }
-
+*/
+/*
 llama_token_data_array llama_sampling_prepare(
                   struct llama_sampling_context * ctx_sampling,
                   struct llama_context * ctx_main,
@@ -1092,7 +1149,7 @@ static llama_token llama_sampling_sample_impl(
     const float   mirostat_eta    = params.mirostat_eta;
 
     std::vector<float> original_logits;
-    auto cur_p = llama_sampling_prepare(ctx_sampling, ctx_main, ctx_cfg, idx, /* apply_grammar= */ is_resampling, &original_logits);
+    auto cur_p = llama_sampling_prepare(ctx_sampling, ctx_main, ctx_cfg, idx, / * apply_grammar= * / is_resampling, &original_logits);
     if (ctx_sampling->grammar != NULL && !is_resampling) {
         GGML_ASSERT(!original_logits.empty());
     }
@@ -1156,7 +1213,7 @@ static llama_token llama_sampling_sample_impl(
             // Restore logits from the copy
             std::copy(original_logits.begin(), original_logits.end(), logits);
 
-            return llama_sampling_sample_impl(ctx_sampling, ctx_main, ctx_cfg, idx, /* is_resampling= */ true);
+            return llama_sampling_sample_impl(ctx_sampling, ctx_main, ctx_cfg, idx, / * is_resampling= * / true);
         }
     }
 
@@ -1164,277 +1221,4 @@ static llama_token llama_sampling_sample_impl(
 
     return id;
 }
-
-llama_token llama_sampling_sample(
-                  struct llama_sampling_context * ctx_sampling,
-                  struct llama_context * ctx_main,
-                  struct llama_context * ctx_cfg,
-                  const int idx) {
-    // Call the implementation function with is_resampling set to false by default
-    return llama_sampling_sample_impl(ctx_sampling, ctx_main, ctx_cfg, idx, /* is_resampling= */ false);
-}
-
-void llama_sampling_accept(
-        struct llama_sampling_context * ctx_sampling,
-        struct llama_context * ctx_main,
-        llama_token id,
-        bool apply_grammar) {
-    ctx_sampling->prev.erase(ctx_sampling->prev.begin());
-    ctx_sampling->prev.push_back(id);
-
-    if (ctx_sampling->grammar != NULL && apply_grammar) {
-        llama_grammar_accept_token(ctx_main, ctx_sampling->grammar, id);
-    }
-}
-
-// ------------------------------------------------------
-
-//
-// CPU utils
-//
-
-int32_t cpu_get_num_physical_cores() {
-#ifdef __linux__
-    // enumerate the set of thread siblings, num entries is num cores
-    std::unordered_set<std::string> siblings;
-    for (uint32_t cpu=0; cpu < UINT32_MAX; ++cpu) {
-        std::ifstream thread_siblings("/sys/devices/system/cpu/cpu"
-            + std::to_string(cpu) + "/topology/thread_siblings");
-        if (!thread_siblings.is_open()) {
-            break; // no more cpus
-        }
-        std::string line;
-        if (std::getline(thread_siblings, line)) {
-            siblings.insert(line);
-        }
-    }
-    if (!siblings.empty()) {
-        return static_cast<int32_t>(siblings.size());
-    }
-#elif defined(__APPLE__) && defined(__MACH__)
-    int32_t num_physical_cores;
-    size_t len = sizeof(num_physical_cores);
-    int result = sysctlbyname("hw.perflevel0.physicalcpu", &num_physical_cores, &len, NULL, 0);
-    if (result == 0) {
-        return num_physical_cores;
-    }
-    result = sysctlbyname("hw.physicalcpu", &num_physical_cores, &len, NULL, 0);
-    if (result == 0) {
-        return num_physical_cores;
-    }
-#elif defined(_WIN32)
-    //TODO: Implement
-#endif
-    unsigned int n_threads = std::thread::hardware_concurrency();
-    return n_threads > 0 ? (n_threads <= 4 ? n_threads : n_threads / 2) : 4;
-}
-
-
-#if defined(__x86_64__) && defined(__linux__) && !defined(__ANDROID__)
-#include <pthread.h>
-
-static void cpuid(unsigned leaf, unsigned subleaf,
-                  unsigned *eax, unsigned *ebx, unsigned *ecx, unsigned *edx) {
-    __asm__("movq\t%%rbx,%%rsi\n\t"
-            "cpuid\n\t"
-            "xchgq\t%%rbx,%%rsi"
-            : "=a"(*eax), "=S"(*ebx), "=c"(*ecx), "=d"(*edx)
-            : "0"(leaf), "2"(subleaf));
-}
-
-static int pin_cpu(int cpu) {
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu, &mask);
-    return pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask);
-}
-
-static bool is_hybrid_cpu(void) {
-    unsigned eax, ebx, ecx, edx;
-    cpuid(7, 0, &eax, &ebx, &ecx, &edx);
-    return !!(edx & (1u << 15));
-}
-
-static bool is_running_on_efficiency_core(void) {
-    unsigned eax, ebx, ecx, edx;
-    cpuid(0x1a, 0, &eax, &ebx, &ecx, &edx);
-    int intel_atom = 0x20;
-    int core_type = (eax & 0xff000000u) >> 24;
-    return core_type == intel_atom;
-}
-
-static int cpu_count_math_cpus(int n_cpu) {
-    int result = 0;
-    for (int cpu = 0; cpu < n_cpu; ++cpu) {
-        if (pin_cpu(cpu)) {
-            return -1;
-        }
-        if (is_running_on_efficiency_core()) {
-            continue; // efficiency cores harm lockstep threading
-        }
-        ++cpu; // hyperthreading isn't useful for linear algebra
-        ++result;
-    }
-    return result;
-}
-
-#endif // __x86_64__ && __linux__
-
-
-
-/**
- * Returns number of CPUs on system that are useful for math.
- */
-
-
-int32_t cpu_get_num_math() {
-#if defined(__x86_64__) && defined(__linux__) && !defined(__ANDROID__)
-    int n_cpu = sysconf(_SC_NPROCESSORS_ONLN);
-    if (n_cpu < 1) {
-        return cpu_get_num_physical_cores();
-    }
-    if (is_hybrid_cpu()) {
-        cpu_set_t affinity;
-        if (!pthread_getaffinity_np(pthread_self(), sizeof(affinity), &affinity)) {
-            int result = cpu_count_math_cpus(n_cpu);
-            pthread_setaffinity_np(pthread_self(), sizeof(affinity), &affinity);
-            if (result > 0) {
-                return result;
-            }
-        }
-    }
-#endif
-    return cpu_get_num_physical_cores();
-}
-
-// ------------------------------------------------------
-/*
-int32_t get_num_physical_cores() {
-#ifdef __linux__
-    // enumerate the set of thread siblings, num entries is num cores
-    std::unordered_set<std::string> siblings;
-    for (uint32_t cpu=0; cpu < UINT32_MAX; ++cpu) {
-        std::ifstream thread_siblings("/sys/devices/system/cpu"
-            + std::to_string(cpu) + "/topology/thread_siblings");
-        if (!thread_siblings.is_open()) {
-            break; // no more cpus
-        }
-        std::string line;
-        if (std::getline(thread_siblings, line)) {
-            siblings.insert(line);
-        }
-    }
-    if (!siblings.empty()) {
-        return static_cast<int32_t>(siblings.size());
-    }
-#elif defined(__APPLE__) && defined(__MACH__)
-    int32_t num_physical_cores;
-    size_t len = sizeof(num_physical_cores);
-    int result = sysctlbyname("hw.perflevel0.physicalcpu", &num_physical_cores, &len, NULL, 0);
-    if (result == 0) {
-        return num_physical_cores;
-    }
-    result = sysctlbyname("hw.physicalcpu", &num_physical_cores, &len, NULL, 0);
-    if (result == 0) {
-        return num_physical_cores;
-    }
-#elif defined(_WIN32)
-    //TODO: Implement
-#endif
-    unsigned int n_threads = std::thread::hardware_concurrency();
-    return n_threads > 0 ? (n_threads <= 4 ? n_threads : n_threads / 2) : 4;
-}
 */
-
-// ------------------------------------------------------
-
-struct llama_model_params llama_model_params_from_gpt_params(const gpt_params & params) {
-    auto mparams = llama_model_default_params();
-
-    if (params.n_gpu_layers != -1) {
-        mparams.n_gpu_layers = params.n_gpu_layers;
-    }
-    mparams.rpc_servers     = params.rpc_servers.c_str();
-    mparams.main_gpu        = params.main_gpu;
-    mparams.split_mode      = params.split_mode;
-    mparams.tensor_split    = params.tensor_split;
-    mparams.use_mmap        = params.use_mmap;
-    mparams.use_mlock       = params.use_mlock;
-    mparams.check_tensors   = params.check_tensors;
-    if (params.kv_overrides.empty()) {
-        mparams.kv_overrides = NULL;
-    } else {
-        GGML_ASSERT(params.kv_overrides.back().key[0] == 0 && "KV overrides not terminated with empty key");
-        mparams.kv_overrides = params.kv_overrides.data();
-    }
-
-    return mparams;
-}
-
-// ------------------------------------------------------
-
-static ggml_type kv_cache_type_from_str(const std::string & s) {
-    if (s == "f32") {
-        return GGML_TYPE_F32;
-    }
-    if (s == "f16") {
-        return GGML_TYPE_F16;
-    }
-    if (s == "q8_0") {
-        return GGML_TYPE_Q8_0;
-    }
-    if (s == "q4_0") {
-        return GGML_TYPE_Q4_0;
-    }
-    if (s == "q4_1") {
-        return GGML_TYPE_Q4_1;
-    }
-    if (s == "iq4_nl") {
-        return GGML_TYPE_IQ4_NL;
-    }
-    if (s == "q5_0") {
-        return GGML_TYPE_Q5_0;
-    }
-    if (s == "q5_1") {
-        return GGML_TYPE_Q5_1;
-    }
-
-    throw std::runtime_error("Invalid cache type: " + s);
-}
-
-// ------------------------------------------------------
-
-struct llama_context_params llama_context_params_from_gpt_params(const gpt_params & params) {
-    auto cparams = llama_context_default_params();
-
-    cparams.n_ctx             = params.n_ctx;
-    cparams.n_seq_max         = params.n_parallel;
-    cparams.n_batch           = params.n_batch;
-    cparams.n_ubatch          = params.n_ubatch;
-    cparams.n_threads         = params.n_threads;
-    cparams.n_threads_batch   = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
-    cparams.seed              = params.seed;
-    cparams.logits_all        = params.logits_all;
-    cparams.embeddings        = params.embedding;
-    cparams.rope_scaling_type = params.rope_scaling_type;
-    cparams.rope_freq_base    = params.rope_freq_base;
-    cparams.rope_freq_scale   = params.rope_freq_scale;
-    cparams.yarn_ext_factor   = params.yarn_ext_factor;
-    cparams.yarn_attn_factor  = params.yarn_attn_factor;
-    cparams.yarn_beta_fast    = params.yarn_beta_fast;
-    cparams.yarn_beta_slow    = params.yarn_beta_slow;
-    cparams.yarn_orig_ctx     = params.yarn_orig_ctx;
-    cparams.pooling_type      = params.pooling_type;
-    cparams.defrag_thold      = params.defrag_thold;
-    cparams.cb_eval           = params.cb_eval;
-    cparams.cb_eval_user_data = params.cb_eval_user_data;
-    cparams.offload_kqv       = !params.no_kv_offload;
-    cparams.flash_attn        = params.flash_attn;
-
-    cparams.type_k = kv_cache_type_from_str(params.cache_type_k);
-    cparams.type_v = kv_cache_type_from_str(params.cache_type_v);
-
-    return cparams;
-}
-
-

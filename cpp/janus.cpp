@@ -9,12 +9,15 @@
 #include <unordered_map>
 #include <tuple>
 
+#include "llama.h"
+#include "common.h"
+#include "sampling.h"
+
 #include "ggml.h"
 #include "ggml-common.h"
 #include "ggml-backend.h"
-#include "llama.h"
 
-#include "bridge.h"
+//#include "bridge.h"
 #include "janus.h"
 
 char * janusDebug; // debug level = "cuda|tokenizer", etc
@@ -187,15 +190,18 @@ llama_token llama_sampling_sample(
 
 llama_token sample_janus_token(
 
-        struct llama_context * ctx, 
-        struct llama_sampling_params & params,
+        struct llama_context * ctx,
+        [[maybe_unused]] struct llama_sampling_params & sampling_params,
+        struct janus_params & params,
         const std::vector<llama_token> & last_tokens,
         const size_t promptLen,
         const size_t pos,
         const size_t max) {
 
     if (!::isJanusInitialized) {
-        initJanus(ctx, params, janusDebug);
+        // FIXME: Real Janus Params from Config
+        janus_params jparams;
+        initJanus(ctx, jparams, janusDebug);
         ::isJanusInitialized = true;
     }
 
@@ -401,7 +407,7 @@ bool isPedantic(struct llama_context * ctx, llama_token id) {
 
 // LLaMA3 vocabSize = 128,288
 
-void initJanus(struct llama_context * ctx, struct llama_sampling_params & params, char * debug) {
+void initJanus(struct llama_context * ctx, struct janus_params & params, char * debug) {
 
     ::isJanusInitialized = true;
     ::janusDebug = debug;
@@ -1082,7 +1088,7 @@ llama_token llama_sample_token(
 }
 */
 // -- FIXME: DUP JANUS + BRIDGE
-
+/*
 // no reasons to expose this function in header
 static void sampler_queue(
                    struct llama_context * ctx_main,
@@ -1119,4 +1125,4 @@ static void sampler_queue(
         }
     }
 }
-
+*/

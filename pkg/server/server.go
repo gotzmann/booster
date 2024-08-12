@@ -822,10 +822,6 @@ func Do(jobID string, pod *Pod) {
 	result := C.GoString(C.status(C.CString(jobID)))
 	promptTokenCount := C.getPromptTokenCount(C.CString(jobID))
 
-	//Colorize("\n=== HISTORY ===\n%s\n", history)
-	//Colorize("\n=== FULL PROMPT ===\n%s\n", fullPrompt)
-	//Colorize("\n=== RESULT ===\n%s\n", result)
-
 	// LLaMA(cpp) tokenizer might add leading space
 	if len(result) > 0 && len(fullPrompt) > 0 && fullPrompt[0] != ' ' && result[0] == ' ' {
 		result = result[1:]
