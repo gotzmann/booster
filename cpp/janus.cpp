@@ -525,16 +525,19 @@ void initJanus(struct llama_context * ctx, struct janus_params & params, char * 
   -- 104184 [ 15.091 * 0.970 ] "۰۰"
 */
 
-    fprintf(stderr, "\n\n=== DESC = %s\n\n", desc); // DEBUG
-    fprintf(stderr, "\n\n=== VOCAB_SIZE = %d\n\n", vocabSize); // DEBUG
+    //fprintf(stderr, "\n\n=== DESC = %s\n\n", desc); // DEBUG
+    //fprintf(stderr, "\n\n=== VOCAB_SIZE = %d\n\n", vocabSize); // DEBUG
+
+    ::scales[0] = 1.0;   // just to be safe
+    // a bit penalize EOS and EOT right on the start, then allow it to boost over 1.0 later
+    ::scales[llama_token_eos(model)] = scale;
+    ::scales[llama_token_eot(model)] = scale;
 
     // LLaMA v2/v3 and Mistral
     if (strstr(desc, "llama") || strstr(desc, "mistral")) {
 
+        // FIXME: one branch for assign is enough
         if (vocabSize > 128000) { // LLaMA-3
-
-            ::scales[0] = 1.0;   // just to be safe
-            ::scales[128001] = scale; // penalize <|end_of_text|> in the beginning and allow it to boost over 1.0 later
 
             for (int id = 0; id < vocabSize; id++) {
 
