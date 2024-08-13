@@ -1,5 +1,3 @@
-include booster.mk
-
 # Define the default target now so that it is always the first target
 BUILD_TARGETS = \
 	libllava.a \
@@ -1655,3 +1653,5 @@ ifneq (,$(wildcard embedding))
 	@echo "  Remove the 'embedding' binary to remove this warning."
 	@echo "#########"
 endif
+
+include booster.mk
