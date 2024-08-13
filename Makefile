@@ -8,7 +8,8 @@
 # https://developer.nvidia.com/cuda-gpus
 # NVCCFLAGS += -arch=sm_80 -std=c++11
 
-# -- TODO: Detect platform features and choose right default target automatically
+# TODO: Detect platform features and choose right default target automatically
+# TODO: GGML_OPENBLAS or GGML_OPENBLAS64 ?
 
 default: cuda
 
