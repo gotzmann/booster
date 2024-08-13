@@ -631,6 +631,10 @@ int64_t do_inference(
         }
         mutex.unlock();
 
+        //llama_token_eos(model) // DEBUG
+        fprintf(stderr, "\n\nllama_token_eos = %d\n\n", llama_token_eos(model));
+        fprintf(stderr, "\n\nllama_token_eot = %d\n\n", llama_token_eot(model));
+
         // end of text token
         // WAS: if (!embd.empty() && llama_token_is_eog(model, embd.back())) {
         if (llama_token_is_eog(model, embd.back())) {
