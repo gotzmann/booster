@@ -460,16 +460,16 @@ int64_t do_inference(
 
     // -- MAIN LOOP --
 
+    // Note: (n_ctx - 4) here is to match the logic for commandline prompt handling via
+    // --prompt or --file which uses the same value.
+    int max_embd_size = n_ctx - 4;
+
     while (n_remain && 
-        // n_past < (n_ctx - 4) && // FIXME
+        n_past < max_embd_size &&
         !stopInferenceFlags[idx]) { 
 
         // predict
         if (!embd.empty()) {
-
-            // Note: (n_ctx - 4) here is to match the logic for commandline prompt handling via
-            // --prompt or --file which uses the same value.
-            int max_embd_size = n_ctx - 4;
 
             // Ensure the input doesn't exceed the context size by truncating embd if necessary.
             if ((int) embd.size() > max_embd_size) {
@@ -632,7 +632,8 @@ int64_t do_inference(
         mutex.unlock();
 
         // end of text token
-        if (!embd.empty() && llama_token_is_eog(model, embd.back())) {
+        // WAS: if (!embd.empty() && llama_token_is_eog(model, embd.back())) {
+        if (llama_token_is_eog(model, embd.back())) {
             break;
         }
     }
