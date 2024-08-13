@@ -122,7 +122,7 @@ struct llama_context * init_context(int idx) {
     // -- initialize the model
     // TODO: Use llama_init_from_gpt_params :: llama_load_model_from_hf
 
-    auto mparams = llama_model_params_from_gpt_params(::params[idx]);
+    auto mparams = llama_model_params_from_gpt_params((const gpt_params &) ::params[idx]);
 
     mparams.main_gpu     = ::params[idx].main_gpu;
     mparams.n_gpu_layers = ::params[idx].n_gpu_layers;
