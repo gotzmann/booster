@@ -272,10 +272,10 @@ int64_t do_inference(
     /////    return NULL;
     ///// }
 
+    bool add_special = false;
+    bool parse_special = true;
     std::vector<llama_token> embd_inp;
-    // WAS: embd_inp = ::llama_tokenize(ctx, prompt, add_bos, true);
-    // embd_inp = ::llama_tokenize(ctx, prompt, true);
-    embd_inp = ::llama_tokenize(ctx, prompt, false);
+    embd_inp = ::llama_tokenize(model, prompt, add_special, parse_special);
 
     // Should not run without any tokens
     ///// if (embd_inp.empty()) {
