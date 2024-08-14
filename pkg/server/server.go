@@ -88,27 +88,34 @@ type Model struct {
 
 	Name string // public name for humans
 	Path string // path to binary file
-	// Locale string
 
-	Context int
-	Predict int
+	Context string // config value like 8K
+	Predict string // config value like 1K
+
+	ContextSize int // real value like 8192
+	PredictSize int // real value like 1024
 }
 
-type Templates struct {
-	System    string
-	User      string
-	Assistant string
-}
+// type Templates struct {
+// 	System    string
+// 	User      string
+// 	Assistant string
+// }
 
 type Prompt struct {
 	ID string
 
 	Locale string
-	System string
+	// System string
+	Prompt string
 
 	// -- new format
 
-	Templates
+	System    string
+	User      string
+	Assistant string
+
+	// Templates
 
 	// -- older format
 
@@ -360,24 +367,24 @@ func Init(
 		Pods[pod].Context = ctx
 
 		Models[pod] = &Model{
-			Path:    model,
-			Context: context,
-			Predict: predict,
+			Path:        model,
+			ContextSize: context,
+			PredictSize: predict,
 		}
 
 		Prompts[pod] = &Prompt{
 			Locale: "", // TODO: Set Locale
-			System: "", // TODO: prompt.System,
+			//System: "", // TODO: prompt.System,
 
 			//Preamble: preamble,
 			//Prefix:   prefix,
 			//Suffix:   suffix,
 
-			Templates: Templates{
-				System:    "", // TODO: prompt.User,
-				User:      "", // TODO: prompt.User,
-				Assistant: "", // TODO: prompt.Assistant,
-			},
+			//Templates: Templates{
+			System:    "", // TODO: prompt.User,
+			User:      "", // TODO: prompt.User,
+			Assistant: "", // TODO: prompt.Assistant,
+			//},
 		}
 
 		Samplings[pod] = &Sampling{
@@ -528,7 +535,7 @@ func InitFromConfig(conf *Config, zapLog *zap.SugaredLogger) {
 			C.int(pod.Threads),
 			C.int(pod.Batch),
 			C.int(gpu1), C.int(gpu2), C.int(gpu3), C.int(gpu4), // FIXME: Slice of GPUs
-			C.int(model.Context), C.int(model.Predict),
+			C.int(model.ContextSize), C.int(model.PredictSize),
 			C.int32_t(sampling.Mirostat), C.float(sampling.MirostatENT), C.float(sampling.MirostatLR),
 			C.float(sampling.Temperature), C.int(sampling.TopK), C.float(sampling.TopP),
 			C.float(sampling.TypicalP),
@@ -720,7 +727,7 @@ func Do(jobID string, pod *Pod) {
 		// -- null the session when near the context limit (allow up to 1/2 of max predict size)
 		// TODO: We need a better (smart) context data handling here
 
-		if (TokensCount[sessionID] + Models[job.ModelID].Predict/2) > Models[job.ModelID].Context {
+		if (TokensCount[sessionID] + Models[job.ModelID].PredictSize/2) > Models[job.ModelID].ContextSize {
 
 			Sessions[sessionID] = ""
 			TokensCount[sessionID] = 0
@@ -754,26 +761,31 @@ func Do(jobID string, pod *Pod) {
 		}
 
 		date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
-		system = strings.Replace(prompt.System, "{DATE}", strings.ToLower(date), 1)
+		system = strings.Replace(prompt.Prompt, "{DATE}", strings.ToLower(date), 1)
 
-		if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
-			system = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1)
-		} else {
-			system = prompt.Templates.System + system
+		systemPromptReplacer := "{PROMPT}"
+		if strings.Contains(prompt.System, "{SYSTEM}") {
+			systemPromptReplacer = "{SYSTEM}"
 		}
 
-		if strings.Contains(prompt.Templates.User, "{USER}") {
-			user = strings.Replace(prompt.Templates.User, "{USER}", job.Prompt, 1)
+		if strings.Contains(prompt.System, systemPromptReplacer) {
+			system = strings.Replace(prompt.System, systemPromptReplacer, system, 1)
 		} else {
-			user = prompt.Templates.User + job.Prompt
+			system = prompt.System + system
+		}
+
+		if strings.Contains(prompt.User, "{USER}") {
+			user = strings.Replace(prompt.User, "{USER}", job.Prompt, 1)
+		} else {
+			user = prompt.User + job.Prompt
 		}
 
 		// adding template prefix for next assistant take at the end
-		if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-			cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
-			assistant = prompt.Templates.Assistant[:cut]
+		if strings.Contains(prompt.Assistant, "{ASSISTANT}") {
+			cut := strings.Index(prompt.Assistant, "{ASSISTANT}")
+			assistant = prompt.Assistant[:cut]
 		} else {
-			assistant = prompt.Templates.Assistant
+			assistant = prompt.Assistant
 		}
 
 		// history is empty for 1) the first iteration, 2) after the limit was reached and 3) when sessions do not stored at all
@@ -855,9 +867,9 @@ func Do(jobID string, pod *Pod) {
 	}
 
 	// remove suffix like <|im_end|> from the output BUT leave it for the session history
-	cut := strings.Index(Prompts[job.PromptID].Templates.Assistant, "{ASSISTANT}")
+	cut := strings.Index(Prompts[job.PromptID].Assistant, "{ASSISTANT}")
 	if cut >= 0 {
-		ending := Prompts[job.PromptID].Templates.Assistant[cut+len("{ASSISTANT}"):]
+		ending := Prompts[job.PromptID].Assistant[cut+len("{ASSISTANT}"):]
 		result, _ = strings.CutSuffix(result, ending)
 	}
 
@@ -1335,43 +1347,48 @@ func buildCompletion(sessionID, promptID string, payload *CompletionPayload) (st
 		case "system":
 			system = message.Content
 		case "user":
-			if strings.Contains(prompt.Templates.User, "{USER}") {
-				history += strings.Replace(prompt.Templates.User, "{USER}", message.Content, 1)
+			if strings.Contains(prompt.User, "{USER}") {
+				history += strings.Replace(prompt.User, "{USER}", message.Content, 1)
 			} else {
-				history += prompt.Templates.User + message.Content
+				history += prompt.User + message.Content
 			}
 		case "assistant":
-			if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-				history += strings.Replace(prompt.Templates.Assistant, "{ASSISTANT}", message.Content, 1)
+			if strings.Contains(prompt.Assistant, "{ASSISTANT}") {
+				history += strings.Replace(prompt.Assistant, "{ASSISTANT}", message.Content, 1)
 			} else {
-				history += prompt.Templates.Assistant + message.Content
+				history += prompt.Assistant + message.Content
 			}
 		}
 
 	}
 
 	// adding prefix for the next assistant take at the end
-	if strings.Contains(prompt.Templates.Assistant, "{ASSISTANT}") {
-		cut := strings.Index(prompt.Templates.Assistant, "{ASSISTANT}")
-		history += prompt.Templates.Assistant[:cut]
+	if strings.Contains(prompt.Assistant, "{ASSISTANT}") {
+		cut := strings.Index(prompt.Assistant, "{ASSISTANT}")
+		history += prompt.Assistant[:cut]
 	} else {
-		history += prompt.Templates.Assistant
+		history += prompt.Assistant
 	}
 
 	// finally prepend system prompt at the beginning
 	if system == "" {
-		system = prompt.System
+		system = prompt.Prompt
 	}
 
 	// inject context vars: {DATE}, etc
 	date := monday.Format(time.Now(), "Monday 2 January 2006", monday.Locale(locale))
 	system = strings.Replace(system, "{DATE}", strings.ToLower(date), 1)
 
-	if strings.Contains(prompt.Templates.System, "{SYSTEM}") {
-		system = strings.Replace(prompt.Templates.System, "{SYSTEM}", system, 1)
+	systemPromptReplacer := "{PROMPT}"
+	if strings.Contains(prompt.System, "{SYSTEM}") {
+		systemPromptReplacer = "{SYSTEM}"
+	}
+
+	if strings.Contains(prompt.System, systemPromptReplacer) {
+		system = strings.Replace(prompt.System, systemPromptReplacer, system, 1)
 		history = system + history
 	} else {
-		history = prompt.Templates.System + system + history
+		history = prompt.System + system + history
 	}
 
 	return history, nil

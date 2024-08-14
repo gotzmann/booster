@@ -27,8 +27,8 @@ models:
   default:
     name: Hermes 8B
     path: ~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
-    context: 8192
-    predict: 1024
+    context: 8K
+    predict: 1K
 
 # -- prompts
 
@@ -36,11 +36,10 @@ prompts:
 
   default:
     locale: en_US
-    system: "Today is {DATE}. You are a helpful virtual assistant."
-    templates:
-      system: "<|im_start|>system\n{SYSTEM}<|im_end|>"
-      user: "\n<|im_start|>user\n{USER}<|im_end|>"
-      assistant: "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>"
+    prompt: "Today is {DATE}. You are a helpful virtual assistant."
+    system: "<|im_start|>system\n{PROMPT}<|im_end|>"
+    user: "\n<|im_start|>user\n{USER}<|im_end|>"
+    assistant: "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>"
 
 # -- samplings
 

@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -65,8 +66,8 @@ type Options struct {
 	Threads       int64   `long:"threads" description:"Max number of CPU cores you allow to use for one pod [ all cores by default ]"`
 	BatchSize     int64   `long:"batch-size" description:"Batch size (in tokens) for one GPU inference flow [ 512 by default ]"`
 	GPUs          []int64 `long:"gpus" description:"Specify GPU split for each pod when there GPUs (one or more) are available"`
-	Context       uint32  `long:"context" description:"Context size in tokens [ 2048 by default ]"`
-	Predict       uint32  `long:"predict" description:"Number of tokens to predict [ 1024 by default ]"`
+	Context       string  `long:"context" description:"Context size in tokens [ 8K by default ]"`
+	Predict       string  `long:"predict" description:"Number of tokens to predict [ 1K by default ]"`
 	Janus         uint32  `long:"janus" description:"Janus Sampling version [ not used by default ]"`
 	Mirostat      uint32  `long:"mirostat" description:"Mirostat version [ zero or disabled by default ]"`
 	MirostatENT   float32 `long:"mirostat-ent" description:"Mirostat target entropy or TAU value [ 0.1 by default ]"`
@@ -89,9 +90,13 @@ type Options struct {
 }
 
 var (
-	doPrint bool = true
 	doLog   bool = false
-	conf    server.Config
+	doPrint bool = true
+
+	contextSize = int64(8192)
+	predictSize = int64(1024)
+
+	conf server.Config
 )
 
 func Run() {
@@ -133,24 +138,48 @@ func Run() {
 			os.Exit(0)
 		}
 
+		// -- Convert short numbers: 8K -> 8192
+
+		for i, model := range conf.Models {
+			size := contextSize
+			if model.Context != "" && strings.Contains(model.Context, "K") {
+				model.Context = strings.Trim(model.Context, "K")
+				size, _ = strconv.ParseInt(model.Context, 0, 64)
+				size *= 1024
+			} else if model.Context != "" {
+				size, _ = strconv.ParseInt(model.Context, 0, 64)
+			}
+			conf.Models[i].ContextSize = int(size)
+
+			size = predictSize
+			if model.Predict != "" && strings.Contains(model.Predict, "K") {
+				model.Predict = strings.Trim(model.Predict, "K")
+				size, _ = strconv.ParseInt(model.Predict, 0, 64)
+				size *= 1024
+			} else if model.Predict != "" {
+				size, _ = strconv.ParseInt(model.Predict, 0, 64)
+			}
+			conf.Models[i].PredictSize = int(size)
+		}
+
 		// -- user-friendly naming for some fields
 
-		for _, sampling := range conf.Samplings {
+		for i, sampling := range conf.Samplings {
 
 			if sampling.Temperature == 0.0 && sampling.Temp != 0.0 {
-				sampling.Temperature = sampling.Temp
+				conf.Samplings[i].Temperature = sampling.Temp
 			}
 
 			if sampling.TopK == 0 && sampling.Top_K != 0 {
-				sampling.TopK = sampling.Top_K
+				conf.Samplings[i].TopK = sampling.Top_K
 			}
 
 			if sampling.TopP == 0.0 && sampling.Top_P != 0.0 {
-				sampling.TopP = sampling.Top_P
+				conf.Samplings[i].TopP = sampling.Top_P
 			}
 
 			if sampling.RepetitionPenalty == 0.0 && sampling.Repetition_Penalty != 0.0 {
-				sampling.RepetitionPenalty = sampling.Repetition_Penalty
+				conf.Samplings[i].RepetitionPenalty = sampling.Repetition_Penalty
 			}
 		}
 
@@ -270,7 +299,7 @@ func Run() {
 			0, 0, 0, 0,
 			opts.Model,
 			opts.Preamble, opts.Prefix, opts.Suffix,
-			int(opts.Context), int(opts.Predict),
+			int(contextSize), int(predictSize),
 			opts.Mirostat, opts.MirostatENT, opts.MirostatLR,
 			opts.Temp, opts.TopK, opts.TopP,
 			opts.TypicalP,
@@ -315,7 +344,7 @@ func Run() {
 					output, _ = strings.CutPrefix(output, server.Jobs[jobID].FullPrompt)
 
 					if server.Jobs[jobID].Status == "finished" {
-						assistantTemplate := server.Prompts[server.Jobs[jobID].PromptID].Templates.Assistant
+						assistantTemplate := server.Prompts[server.Jobs[jobID].PromptID].Assistant
 						if strings.Contains(assistantTemplate, "{ASSISTANT}") {
 							cut := strings.Index(assistantTemplate, "{ASSISTANT}") + len("{ASSISTANT}")
 							assistantSuffix := assistantTemplate[cut:]
@@ -452,12 +481,18 @@ func parseOptions() *Options {
 		opts.Port = "8080"
 	}
 
-	if opts.Context == 0 {
-		opts.Context = 2048
+	if opts.Context != "" {
+		contextSize, _ = strconv.ParseInt(opts.Context, 0, 64)
+		if strings.Contains(opts.Context, "K") || strings.Contains(opts.Context, "k") {
+			contextSize *= 1024
+		}
 	}
 
-	if opts.Predict == 0 {
-		opts.Predict = 1024
+	if opts.Predict != "" {
+		predictSize, _ = strconv.ParseInt(opts.Predict, 0, 64)
+		if strings.Contains(opts.Predict, "K") || strings.Contains(opts.Predict, "k") {
+			predictSize *= 1024
+		}
 	}
 
 	if opts.MirostatENT == 0 {
@@ -571,9 +606,13 @@ func showLogo(model, sampling string) {
 
 	Colorize(logoColored)
 
+	// TODO: Show model context length
+	// TODO: Allow config context length parsing in KB like 128K
+
 	Colorize("\n\n  [magenta]===[light_magenta] [ Booster v" + VERSION +
 		" ] [light_blue][ The Open Platform for serving Large Language Models ] [magenta]===\n")
 
 	Colorize("\n  [magenta][    model ][light_magenta] " + model)
-	Colorize("\n  [blue][ sampling ][light_blue] " + sampling + "\n")
+	Colorize("\n  [blue][ sampling ][light_blue] " + sampling)
+	Colorize("\n  [green][  context ][light_green] " + strconv.FormatInt(int64(contextSize), 10) + "\n")
 }

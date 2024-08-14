@@ -129,7 +129,7 @@ func WireRoutes(app *fiber.App) {
 							output, _ = strings.CutPrefix(output, Jobs[jobID].FullPrompt)
 
 							if Jobs[jobID].Status == "finished" {
-								assistantTemplate := Prompts[Jobs[jobID].PromptID].Templates.Assistant
+								assistantTemplate := Prompts[Jobs[jobID].PromptID].Assistant
 								if strings.Contains(assistantTemplate, "{ASSISTANT}") {
 									cut := strings.Index(assistantTemplate, "{ASSISTANT}") + len("{ASSISTANT}")
 									assistantSuffix := assistantTemplate[cut:]
