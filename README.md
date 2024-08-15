@@ -11,13 +11,13 @@
 
 - Built with performance and scaling in mind **thanks Golang and C++**
 - **No more problems with Python** dependencies
-- **All modern CPUs are supported**: any Intel or AMD x64 platofrms, server ARM64 and Apple Silicon
+- **CPU-only inference if needed**: any Intel or AMD x64, ARM64 and Apple Silicon
 - GPUs supported as well: **Nvidia CUDA, Apple Metal, even OpenCL cards**
 - Split really big models between a number of GPU (**warp LLaMA 70B with 2x RTX 3090**)
 - Great performance on CPU only machines, **fast as hell inference on monsters with beefy GPUs**
 - Both regular FP16/FP32 models and their quantised versions are supported - **4-bit really rocks!**
 - **Popular LLM architectures** already there: **LLaMA**, Mistral, Gemma, etc...
-- **Special bonus: SOTA Janus Sampling implementation** for code generation and non English languages
+- **Special bonus: SOTA Janus Sampling** for code generation and non English languages
 
 ## Motivation
 
@@ -28,15 +28,19 @@ So I've decided to start a new project where best-in-class C++ / CUDA core will 
 ## V3 Roadmap - Summer'24
 
 - [x] Rebrand project again :) **Collider => Booster**
-- [x] Complete LLaMA v3 support
+- [x] Complete LLaMA v3 and v3.1 support
 - [x] OpenAI API Chat Completion compatible endpoints
 - [x] Ollama compatible endpoints
 - [x] Interactive mode for chatting from command line
 - [x] Update Janus Sampling for LLaMA-3
+- [ ] ... and finally V3 release!
+
+## V3+ Roadmap - Fall'24
+
 - [ ] Broader integration with Ollama ecosystem
-- [ ] Smarter context shrinking when reaching its limits chatting with model
+- [ ] Smarter context expanding when reaching its limits
 - [ ] Embedded web UI with no external dependencies
-- [ ] Allow native Windows support
+- [ ] Native Windows binaries
 - [ ] Prebuilt binaries for all platforms
 - [ ] Support LLaVA multi-modal models inference
 - [ ] Better code test coverage
@@ -122,14 +126,15 @@ models:
   hermes:
     name: Hermes2 Pro 8B
     path: ~/models/Hermes-2-Pro-Llama-3-8B-Q4_K_M.gguf
-    context: 8192
-    predict: 1024
+    context: 8K
+    predict: 1K
 
 prompts:
 
   chat:
     locale: en_US
-    system: "<|im_start|>system\nToday is {DATE}. You are virtual assistant. Please answer the question.<|im_end|>"
+    prompt: "Today is {DATE}. You are virtual assistant. Please answer the question."
+    system: "<|im_start|>system\n{PROMPT}<|im_end|>"
     user: "\n<|im_start|>user\n{USER}<|im_end|>"
     assistant: "\n<|im_start|>assistant\n{ASSISTANT}<|im_end|>"
 
@@ -178,7 +183,6 @@ Launch Booster as server to handle all API endpoints and show debug info:
     "prompt": "Who are you?"
 }
 ```
-
 
 6) See results with native HTTP GET to native Async API `http://localhost:8080/jobs/5fb8ebd0-e0c9-4759-8f7d-35590f6c9fc6`
 
