@@ -146,19 +146,6 @@ samplings:
     scale: 0.97
     hi: 0.99
     lo: 0.96
-
-  mirostat:
-    mirostat: 0
-    mirostatent: 3.0
-    mirostatlr: 0.1
-
-  basic:
-    temperature: 0.8
-    top_k: 8
-    topp: 0.9
-    typicalp: 1.0
-    repetition_penalty: 1.1
-    penaltylastn: 200
 ```    
 
 4) When all is done, start the server with debug enabled to be sure it working
