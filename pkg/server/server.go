@@ -755,8 +755,16 @@ func Do(jobID string, pod *Pod) {
 
 		var system, user, assistant string
 
-		locale := monday.LocaleEnUS
-		if prompt.Locale != "" {
+		// TODO: Enable more shortends for different locales
+		var locale string
+		switch prompt.Locale {
+		case "":
+			locale = monday.LocaleEnUS
+		case "en":
+			locale = monday.LocaleEnUS
+		case "ru":
+			locale = monday.LocaleRuRU
+		default:
 			locale = prompt.Locale
 		}
 
@@ -1335,8 +1343,16 @@ func buildCompletion(sessionID, promptID string, payload *CompletionPayload) (st
 		os.Exit(0)
 	}
 
-	locale := monday.LocaleEnUS
-	if prompt.Locale != "" {
+	// TODO: Enable more shortends for different locales
+	var locale string
+	switch prompt.Locale {
+	case "":
+		locale = monday.LocaleEnUS
+	case "en":
+		locale = monday.LocaleEnUS
+	case "ru":
+		locale = monday.LocaleRuRU
+	default:
 		locale = prompt.Locale
 	}
 
